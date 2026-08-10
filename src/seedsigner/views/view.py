@@ -5,8 +5,8 @@ from typing import Type
 
 from seedsigner.helpers.l10n import mark_for_translation as _mft
 from seedsigner.gui.components import SeedSignerIconConstants
-from seedsigner.gui.screens import RET_CODE__POWER_BUTTON, RET_CODE__BACK_BUTTON, RET_CODE__DISPLAY_TOGGLE
-from seedsigner.gui.screens.screen import BaseScreen, ButtonOption, LargeButtonScreen, WarningScreen, ErrorScreen
+from seedsigner.gui.screens import RET_CODE__POWER_BUTTON, RET_CODE__BACK_BUTTON, RET_CODE__DISPLAY_TOGGLE, RET_CODE__REBOOT_TO_LOADER
+from seedsigner.gui.screens.screen import BaseScreen, ButtonListScreen, ButtonOption, LargeButtonScreen, WarningScreen, ErrorScreen
 from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.settings_definition import SettingsDefinition
 from seedsigner.models.threads import BaseThread
@@ -233,6 +233,29 @@ class MainMenuView(View):
         from seedsigner.gui.toast import InfoToast
 
         controller = Controller.get_instance()
+
+        # Reaching Home is the "healthy enough" signal for the U-Boot boot-counter
+        # failover, which runs once per boot. The counter is memory-backed
+        # (CONFIG_SYS_BOOTCOUNT_ADDR = GRF OS_REG scratch register 0xFF020218), so
+        # clearing it via devmem writes no flash.
+        #
+        # The OS watchdog's liveness marker is signalled much earlier, in
+        # Controller.start() — a blocking startup interstitial (the
+        # unhardened-build warning) would otherwise stop a perfectly working
+        # device from ever reaching this point, and the watchdog would reboot it
+        # into Loader. Re-asserted here only to keep the marker present.
+        if Settings.is_seedsigner_os():
+            from seedsigner.helpers.seedsigner_os import signal_app_alive
+
+            signal_app_alive()
+            if not getattr(controller, "boot_failover_cleared", False):
+                controller.boot_failover_cleared = True
+                try:
+                    from subprocess import run as _run, DEVNULL as _DEVNULL
+                    _run(["devmem", "0xFF020218", "32", "0"], stdout=_DEVNULL, stderr=_DEVNULL, check=False)
+                except Exception:
+                    logger.debug("boot-counter clear skipped", exc_info=True)
+
         controller.storage.discard_pending_slip39_shares()
         controller.tools_common_card_filter = None
         controller.psbt_from_microsd = False
@@ -256,6 +279,11 @@ class MainMenuView(View):
             # home screen with the new display dimensions.
             return Destination(MainMenuView)
 
+        if selected_menu_num == RET_CODE__REBOOT_TO_LOADER:
+            # KEY3 very-long-press on Home (Luckfox): reboot into rockusb Loader
+            # mode for flashing — a button-free recovery gesture.
+            return Destination(RebootToLoaderView)
+
         if button_data[selected_menu_num] == self.SCAN:
             from seedsigner.views.scan_views import ScanView
             return Destination(ScanView)
@@ -277,11 +305,22 @@ class MainMenuView(View):
 class PowerOptionsView(View):
     RESET = ButtonOption("Restart", SeedSignerIconConstants.RESTART)
     POWER_OFF = ButtonOption("Power off", SeedSignerIconConstants.POWER)
+    REBOOT_LOADER = ButtonOption("Reboot to flash mode", SeedSignerIconConstants.MICROSD)
+
+    # Luckfox Pico (Rockchip) boards can reboot into rockusb Loader mode for flashing.
+    LUCKFOX_PROFILES = ("luckfox_22", "luckfox_40", "luckfox_pi")
 
     def run(self):
         button_data = [self.RESET, self.POWER_OFF]
+        if Settings.RUNTIME_PROFILE in self.LUCKFOX_PROFILES:
+            button_data.append(self.REBOOT_LOADER)
+
+        # LargeButtonScreen only lays out 2 or 4 buttons; fall back to the
+        # scrollable list when the Luckfox "Reboot to flash mode" option makes it 3.
+        screen_cls = LargeButtonScreen if len(button_data) <= 2 else ButtonListScreen
+
         selected_menu_num = self.run_screen(
-            LargeButtonScreen,
+            screen_cls,
             title=_("Reset / Power"),
             show_back_button=True,
             button_data=button_data
@@ -289,12 +328,15 @@ class PowerOptionsView(View):
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-        
+
         elif button_data[selected_menu_num] == self.RESET:
             return Destination(RestartView)
-        
+
         elif button_data[selected_menu_num] == self.POWER_OFF:
             return Destination(PowerOffView)
+
+        elif button_data[selected_menu_num] == self.REBOOT_LOADER:
+            return Destination(RebootToLoaderView)
 
 
 @dataclass
@@ -347,11 +389,60 @@ class RestartView(View):
             # Python binary names).  The shell subprocess survives the
             # parent being killed and can then start the new process.
             pid = os.getpid()
-            if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
+            if Settings.is_seedsigner_os():
                 python = shlex.quote(sys.executable)
                 call(f"kill {pid}; exec {python} /opt/src/main.py", shell=True)
             else:
                 call(f"kill {pid}", shell=True)
+
+
+@dataclass
+class RebootToLoaderView(View):
+    """Reboot a Rockchip Luckfox Pico into rockusb Loader mode so it can be
+    re-flashed over USB (Rockchip SocToolKit / rkdeveloptool) without the BOOT
+    button."""
+
+    def run(self):
+        from seedsigner.gui.screens.screen import RebootToLoaderScreen
+        # Ensure any pending background settings save completes before rebooting.
+        Settings.get_instance().flush_save()
+
+        if self.renderer.is_screenshot_generator:
+            self.run_screen(RebootToLoaderScreen)
+            return
+
+        thread = RebootToLoaderView.DoRebootToLoaderThread()
+        thread.start()
+        try:
+            self.run_screen(RebootToLoaderScreen)
+        except Exception:
+            thread.stop()
+            raise
+
+    class DoRebootToLoaderThread(BaseThread):
+        def run(self):
+            import ctypes
+            import time
+
+            logger.info("Rebooting Luckfox into Loader (rockusb) mode")
+            # Give the screen a moment to render before the reboot.
+            time.sleep(0.25)
+            if not self.keep_running:
+                return
+
+            # busybox `reboot loader` ignores its mode argument, so issue the
+            # reboot(2) RESTART2 syscall directly. "loader" maps to the Rockchip
+            # device-tree reboot-mode entry; U-Boot then enters rockusb Loader mode.
+            #   ARM 32-bit __NR_reboot = 88
+            #   magic1 0xfee1dead, magic2 0x28121969 (LINUX_REBOOT_MAGIC2),
+            #   cmd 0xa1b2c3d4 (LINUX_REBOOT_CMD_RESTART2), arg "loader"
+            libc = ctypes.CDLL(None, use_errno=True)
+            rc = libc.syscall(88, 0xfee1dead, 0x28121969, 0xa1b2c3d4, b"loader")
+            # On success the syscall does not return; reaching here means it failed.
+            logger.error(
+                "reboot-to-loader syscall returned %s (errno %s)",
+                rc, ctypes.get_errno(),
+            )
 
 
 

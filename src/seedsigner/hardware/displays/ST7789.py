@@ -41,7 +41,14 @@ class ST7789(BaseDisplayDriver):
 
         # Initialize SPI
         spi_bus = f"/dev/spidev{pin_mapping['spi_bus']}.{pin_mapping['spi_device']}"
-        spi_hz = 40_000_000
+        # 40 MHz is the panel's rated maximum and the right default. It is
+        # overridable per board because clock rate is a plausible failure mode
+        # that cannot be observed: a marginal adapter or long jumper leads can
+        # corrupt the command stream at 40 MHz while working at 10 MHz, and with
+        # MISO disabled there is no readback to detect it. Lowering the clock is
+        # the only way to test that hypothesis (see probe-display.py in the OS
+        # repo, which sweeps this alongside the chip-select mode).
+        spi_hz = pin_mapping.get("spi_hz", 40_000_000)
 
         # SPI_NO_CS (0x40): tell the kernel not to assert/deassert any chip-select
         # GPIO.  Use this when LCD CS is tied permanently to GND and the SBC's
@@ -293,7 +300,26 @@ class ST7789(BaseDisplayDriver):
         self._rst.write(False)
         time.sleep(0.01)
         self._rst.write(True)
-        time.sleep(0.01)
+        # The ST7789 datasheet specifies TWO waits after RESX is released: 5 ms
+        # before any command may be sent, and 120 ms before SLPOUT specifically.
+        # Only the first was honoured here (10 ms), and init() reaches SLPOUT
+        # after ~60 register writes — roughly 20-30 ms — so SLPOUT landed well
+        # inside the forbidden window and the panel intermittently never woke:
+        # every SPI transfer still succeeded and the screen simply stayed black.
+        #
+        # It is a *race*, not a hard break, so it presents as a display that
+        # works on some boots and not others, and whose failure rate shifts with
+        # anything that changes boot load or CPU contention (which is why it
+        # appeared to correlate with unrelated OS hardening changes).
+        #
+        # Waiting the full 120 ms here satisfies the requirement independently of
+        # how many commands init() sends or how fast the board executes them.
+        # 150 ms (not the 120 ms minimum) gives OS-timer headroom: on a loaded
+        # Windows host time.sleep can return ~10 ms early relative to
+        # time.monotonic, and a zero-tolerance 120 ms test flakes on CI.  This
+        # mirrors the SLPOUT→DISPON sleep below (also 150 ms "for OS timer
+        # headroom").  150 >= 120, so it is strictly datasheet-compliant.
+        time.sleep(0.150)
         
     def SetWindows(self, Xstart, Ystart, Xend, Yend):
         #set the X coordinates

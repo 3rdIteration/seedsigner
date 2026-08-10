@@ -502,6 +502,83 @@ def test_st7789_init_sleeps_after_slpout():
     )
 
 
+def test_st7789_waits_120ms_between_reset_release_and_slpout():
+    """RESX release → SLPOUT must be ≥120 ms (ST7789 datasheet).
+
+    The datasheet imposes two separate waits after a hardware reset: 5 ms
+    before any command may be sent, and 120 ms before SLPOUT specifically.
+    Only the first was honoured (10 ms), and init() reaches SLPOUT after ~60
+    register writes — roughly 20-30 ms — so SLPOUT was issued well inside the
+    forbidden window.  The panel then intermittently never woke: every SPI
+    transfer still succeeded and the screen simply stayed black.
+
+    Because it is a race rather than a hard failure, it presented as a display
+    that worked on some boots and not others, with a failure rate that shifted
+    with anything altering boot load or CPU contention.
+
+    Unlike the SLPOUT→DISPON test above, this deliberately does NOT stub out
+    reset() — the gap under test is produced inside reset(), and stubbing it is
+    precisely why the regression went uncovered.
+    """
+    import time
+    from unittest.mock import patch
+
+    ST7789_SLPOUT = 0x11
+
+    st7789_module = _import_st7789_with_mocked_periphery()
+    pin_mapping = _make_st7789_pin_mapping()
+
+    events = []
+
+    def fake_command(self_inner, cmd):
+        events.append(("cmd", cmd, time.monotonic()))
+
+    def fake_data(self_inner, val):
+        events.append(("data", val, None))
+
+    with patch.object(st7789_module, "GPIO"), \
+         patch.object(st7789_module, "SPI"), \
+         patch.object(st7789_module, "Settings") as mock_settings, \
+         patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping), \
+         patch.object(st7789_module.ST7789, "command", fake_command), \
+         patch.object(st7789_module.ST7789, "data", fake_data):
+        mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
+        display = st7789_module.ST7789(_width=240, _height=240)
+
+        # Record RST line transitions. Attached after __init__ so the backlight
+        # write during construction is not counted (the patched GPIO class hands
+        # back one shared mock for dc/rst/bl).
+        rst_writes = []
+        display._rst.write.side_effect = (
+            lambda value: rst_writes.append((value, time.monotonic()))
+        )
+
+        display.init()
+
+    # RESX is released on the final write(True) of the reset pulse.
+    release_t = next(
+        (t for value, t in reversed(rst_writes) if value is True), None
+    )
+    assert release_t is not None, "reset() never drove RST high"
+
+    slpout_t = next(
+        (e[2] for e in events if e[0] == "cmd" and e[1] == ST7789_SLPOUT),
+        None,
+    )
+    assert slpout_t is not None, "SLPOUT (0x11) command not found in init() sequence"
+
+    delay_ms = (slpout_t - release_t) * 1000
+    # The regression this catches is "no RESX→SLPOUT sleep at all" (delay
+    # collapses to ~20-30 ms).  110 ms is well above that and tolerates the
+    # ~10 ms that time.sleep can return early on a loaded Windows CI runner
+    # relative to time.monotonic.  The implementation sleeps 150 ms, so a
+    # healthy run lands at ~140-150 ms — far above this floor.
+    assert delay_ms >= 110, (
+        f"SLPOUT must not be sent until ≥120 ms after RESX is released "
+        f"(ST7789 datasheet); actual delay was {delay_ms:.1f} ms"
+    )
+
+
 def test_st7789_falls_back_to_mode3_without_no_cs_on_einval():
     """When the kernel SPI driver rejects SPI_NO_CS (extra_flags=0x40) with
     EINVAL, ST7789.__init__ must retry in SPI Mode 3 with extra_flags=0.

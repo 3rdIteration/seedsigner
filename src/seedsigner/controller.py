@@ -36,6 +36,7 @@ def _get_system_type_and_variant(runtime_profile: str, hardware_profile: str | N
         "luckfox_22": "Luckfox Pico",
         "luckfox_40": "Luckfox Pico",
         "luckfox_pi": "Luckfox Pico",
+        "lc_lafrite": "Libre Computer",
     }
     system_type = system_type_map.get(runtime_profile, "Unknown")
 
@@ -95,7 +96,14 @@ class BackgroundImportThread(BaseThread):
 
         def time_import(module_name):
             last = time.time()
-            import_module(module_name)
+            # Best-effort preload/warm-up. Some modules are platform-specific and
+            # may be unavailable (e.g. numpy / pivideostream are Pi-camera-only and
+            # numpy cannot be built on the Luckfox uClibc toolchain). A missing
+            # optional module must not abort the whole preload thread.
+            try:
+                import_module(module_name)
+            except Exception as e:
+                logger.debug(f"Background preload of {module_name} skipped: {e}")
             # print(f"{time.time() - last:0.4f}: {module_name}")
 
         time_import('embit')
@@ -393,18 +401,35 @@ class Controller(Singleton):
         from seedsigner.models.settings_definition import SettingsConstants
         from seedsigner.views.desktop_warning import DesktopWarningView
         from seedsigner.views.developer_os_warning import DeveloperOSWarningView
-        from seedsigner.helpers.seedsigner_os import is_seedsigner_os_dev_build
+        from seedsigner.helpers.seedsigner_os import is_seedsigner_os_dev_build, signal_app_alive
         from seedsigner.gui.toast import RemoveSDCardToastManagerThread
 
+        # Tell the OS boot watchdog we are alive BEFORE the interstitials run.
+        # One of them (the unhardened-build warning) blocks for a button press,
+        # and on an unattended boot nobody presses it — so signalling only once
+        # Home was reached made the watchdog reboot a working device into Loader
+        # after 120s. Liveness and "user reached Home" are different things; the
+        # U-Boot boot-counter clear stays at Home, where it belongs.
+        signal_app_alive()
+
+        startup_error_destination = None
         if not skip_startup_interstitials:
             # Flow tests start from an expected first interactive screen (usually MainMenu).
             # Skip startup interstitials under pytest to keep deterministic routing.
             if "PYTEST_CURRENT_TEST" not in os.environ:
-                OpeningSplashView().run()
-                if is_seedsigner_os_dev_build():
-                    DeveloperOSWarningView().run()
-                if self.settings.get_value(SettingsConstants.SETTING__DISPLAY_CONFIGURATION).startswith("desktop"):
-                    DesktopWarningView().run()
+                # These interstitials run BEFORE the main loop's per-view exception
+                # handling, so a failure here (e.g. a microSD/storage or hardware
+                # error) would otherwise escape main() and crash the process. Guard
+                # them and route any error into the normal error-handling flow.
+                try:
+                    OpeningSplashView().run()
+                    if is_seedsigner_os_dev_build():
+                        DeveloperOSWarningView().run()
+                    if self.settings.get_value(SettingsConstants.SETTING__DISPLAY_CONFIGURATION).startswith("desktop"):
+                        DesktopWarningView().run()
+                except Exception as e:
+                    logger.exception("Exception during startup interstitials")
+                    startup_error_destination = self.handle_exception(e)
 
         """ Class references can be stored as variables in python!
 
@@ -432,7 +457,9 @@ class Controller(Singleton):
                 View_cls(**init_args).run()
         """
         try:
-            if initial_destination:
+            if startup_error_destination:
+                next_destination = startup_error_destination
+            elif initial_destination:
                 next_destination = initial_destination
             else:
                 next_destination = Destination(MainMenuView)

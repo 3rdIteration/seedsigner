@@ -382,6 +382,11 @@ class SettingsConstants:
     
     PERSISTENT_SETTINGS__SD_INSERTED__HELP_TEXT = _mft("Store Settings on SD card")
     PERSISTENT_SETTINGS__SD_REMOVED__HELP_TEXT = _mft("Insert SD card to enable")
+    # Boards with a dedicated userdata partition (the Luckfox Pico family) persist
+    # settings with no card present at all, so "Insert SD card to enable" is simply
+    # false there -- and disabling the option outright, as it used to, made a
+    # working feature unreachable.
+    PERSISTENT_SETTINGS__ONBOARD__HELP_TEXT = _mft("Store Settings on this device")
 
     # Wipe timer constants (minutes)
     WIPE_TIMER__DISABLED = 0

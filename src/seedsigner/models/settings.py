@@ -15,6 +15,7 @@ from seedsigner.hardware.io_config import (
     get_hardware_profile_label,
     runtime_profile_to_hardware_profile,
 )
+from seedsigner.hardware.microsd import resolve_seedsigner_os_data_dir
 from seedsigner.models.settings_definition import SettingsConstants, SettingsDefinition
 from seedsigner.models.singleton import Singleton
 
@@ -44,6 +45,36 @@ def _detect_runtime_profile(_hostname: str) -> str:
     if detected_profile:
         return detected_profile
     return "desktop"
+
+
+# OS environment (which operating-system image is running) — deliberately kept
+# distinct from RUNTIME_PROFILE (which board/hardware). The same board (e.g. a
+# Raspberry Pi) can run either SeedSigner OS or a development OS, so the board
+# must never imply the OS.
+OS_ENV_SEEDSIGNER = "seedsigner_os"
+OS_ENV_DEV_BOARD = "dev_board"
+OS_ENV_DESKTOP = "desktop"
+
+# Every SeedSigner OS (Buildroot) image ships this marker file, generated at
+# build time by seedsigner-os. Its presence is the primary, board- and
+# hostname-independent signal that we are running on real SeedSigner OS firmware.
+SEEDSIGNER_OS_MARKER = "/etc/seedsigner-os-release"
+
+
+def _detect_os_environment(runtime_profile: str, hostname: str, seedsigner_os_hostname: str) -> str:
+    # 1. Positive marker baked into every SeedSigner OS image (robust: independent
+    #    of board and hostname).
+    if os.path.exists(SEEDSIGNER_OS_MARKER):
+        return OS_ENV_SEEDSIGNER
+    # 2. Back-compat: images predating the marker set the hostname to "seedsigner-os".
+    if hostname == seedsigner_os_hostname:
+        return OS_ENV_SEEDSIGNER
+    # 3. A development board running a general-purpose OS (Raspberry Pi OS has a
+    #    "pi" user home).
+    if os.path.exists("/home/pi"):
+        return OS_ENV_DEV_BOARD
+    # 4. Anything else is a desktop / non-SeedSigner environment.
+    return OS_ENV_DESKTOP
 
 
 def _get_rpi_type() -> str:
@@ -85,8 +116,18 @@ class Settings(Singleton):
     HOSTNAME = platform.uname()[1]
     SEEDSIGNER_OS = "seedsigner-os"
     RUNTIME_PROFILE = _detect_runtime_profile(HOSTNAME)
-    SETTINGS_FILENAME = "/mnt/microsd/settings.json" if HOSTNAME == SEEDSIGNER_OS else "settings.json"
-    SU_COMMAND_PREFIX = "" if HOSTNAME == SEEDSIGNER_OS else "sudo "
+
+    # Which OS image are we running (distinct from RUNTIME_PROFILE, the board)?
+    OS_ENVIRONMENT = _detect_os_environment(RUNTIME_PROFILE, HOSTNAME, SEEDSIGNER_OS)
+
+    # On SeedSigner OS settings persist on the removable card / writable data dir, which is
+    # /mnt/microsd on Pi-style builds and /mnt/sdcard on Luckfox (see resolver). Resolved at
+    # process start (after boot mounts are in place); tests reassign this attribute directly.
+    SETTINGS_FILENAME = (
+        os.path.join(resolve_seedsigner_os_data_dir(), "settings.json")
+        if OS_ENVIRONMENT == OS_ENV_SEEDSIGNER else "settings.json"
+    )
+    SU_COMMAND_PREFIX = "" if OS_ENVIRONMENT == OS_ENV_SEEDSIGNER else "sudo "
 
     # Background save delay in seconds.  After `save()` is called the actual
     # disk write is deferred by this amount so that rapid-fire settings
@@ -103,6 +144,21 @@ class Settings(Singleton):
         if os.path.exists(src_filename):
             return src_filename
         return filename
+
+    @classmethod
+    def is_seedsigner_os(cls) -> bool:
+        """True when running on a SeedSigner OS (Buildroot) firmware image."""
+        return cls.OS_ENVIRONMENT == OS_ENV_SEEDSIGNER
+
+    @classmethod
+    def is_dev_board(cls) -> bool:
+        """True on a development board running a general-purpose OS (e.g. Raspberry Pi OS)."""
+        return cls.OS_ENVIRONMENT == OS_ENV_DEV_BOARD
+
+    @classmethod
+    def is_desktop(cls) -> bool:
+        """True in a desktop / non-SeedSigner environment."""
+        return cls.OS_ENVIRONMENT == OS_ENV_DESKTOP
 
     @classmethod
     def get_platform_default_hardware_config(cls) -> str | None:
@@ -341,8 +397,15 @@ class Settings(Singleton):
         """
         try:
             from seedsigner.hardware.microsd import MicroSD
-            if self._data[SettingsConstants.SETTING__PERSISTENT_SETTINGS] == SettingsConstants.OPTION__ENABLED and MicroSD.get_instance().is_inserted:
+            # Gate on has_persistent_storage, not is_inserted: a card-less Luckfox
+            # with a /userdata partition must still persist, and a board with neither
+            # must skip the save rather than fall back to writing on the rootfs.
+            if self._data[SettingsConstants.SETTING__PERSISTENT_SETTINGS] == SettingsConstants.OPTION__ENABLED and MicroSD.get_instance().has_persistent_storage:
                 data_snapshot = dict(self._data)
+                # No makedirs here on purpose: the target is guaranteed to be a real
+                # mountpoint by has_persistent_storage. Creating a missing directory
+                # would mean creating it on the root filesystem, which is exactly the
+                # write this change exists to prevent.
                 with open(Settings.SETTINGS_FILENAME, 'w') as settings_file:
                     json.dump(data_snapshot, settings_file, indent=4)
                     settings_file.flush()
@@ -504,7 +567,7 @@ class Settings(Singleton):
             logger.debug("Updating PCSC Ignore List to: %s", ':'.join(pcscd_ignore_devices))
 
             # Only do this on SeedSignerOS, not on dev environment
-            if self.HOSTNAME == self.SEEDSIGNER_OS:
+            if self.is_seedsigner_os():
                 self.patch_pcsc_initd_script(':'.join(pcscd_ignore_devices))
 
             #PCSC is restarted at the end
@@ -655,7 +718,7 @@ class Settings(Singleton):
                 self.loading_screen.start()
             except:
                 pass
-            if self.HOSTNAME == self.SEEDSIGNER_OS:
+            if self.is_seedsigner_os():
                 os.system("/etc/init.d/S01pcscd stop")
                 time.sleep(1)
                 os.system("/etc/init.d/S01pcscd start")
@@ -802,36 +865,61 @@ class Settings(Singleton):
 
     def handle_microsd_state_change(action: str):
         """
-        Enables/Disables the Persistent Settings option based on the MicroSD card state.
+        Enables/Disables the Persistent Settings option based on where settings can
+        actually be stored.
+
+        The deciding question is "is there a writable, non-rootfs place to save?",
+        NOT "is a card inserted". Those were the same thing back when every board
+        kept settings on a removable card, and conflating them is what made
+        Persistent Settings permanently unselectable on a card-less Luckfox: the
+        board has a dedicated /userdata partition and saving worked, but the option
+        was pinned to Disabled behind the help text "Insert SD card to enable".
+
+        The insert/remove action still matters -- it is what tells us to reload a
+        settings file from a card that just appeared -- but it no longer decides
+        whether the option is offered at all.
         """
         from seedsigner.hardware.microsd import MicroSD
 
-        if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
-            if action == MicroSD.ACTION__INSERTED:
-                # SD card was just inserted.
-                # Restore persistent settings back to defaults
-                entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__PERSISTENT_SETTINGS)
-                entry.selection_options = SettingsConstants.OPTIONS__ENABLED_DISABLED
+        if not Settings.is_seedsigner_os():
+            return
+
+        if action not in (MicroSD.ACTION__INSERTED, MicroSD.ACTION__REMOVED):
+            raise Exception(f"Invalid MicroSD action: {action}")
+
+        microsd = MicroSD.get_instance()
+        entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__PERSISTENT_SETTINGS)
+
+        # NB: SETTINGS_FILENAME is resolved once at class-definition time and is not
+        # re-resolved here. Repointing it when a card appears mid-session is a real
+        # gap, but it is a separate change: tests assign that attribute directly, and
+        # rewriting it from here silently moves where they read and write.
+
+        if microsd.has_persistent_storage:
+            entry.selection_options = SettingsConstants.OPTIONS__ENABLED_DISABLED
+
+            # Name the real destination. "Store Settings on SD card" on a board that
+            # writes to /userdata tells the user something untrue about where their
+            # data lives.
+            if microsd.is_inserted:
                 entry.help_text = SettingsConstants.PERSISTENT_SETTINGS__SD_INSERTED__HELP_TEXT
-
-                # If a settings file exists, load it without persisting again. This
-                # avoids unnecessary disk writes during boot and when cards are
-                # re-inserted.
-                if os.path.exists(Settings.SETTINGS_FILENAME):
-                    settings = Settings.get_instance()
-                    if settings.get_value(SettingsConstants.SETTING__PERSISTENT_SETTINGS) != SettingsConstants.OPTION__ENABLED:
-                        with open(Settings.SETTINGS_FILENAME) as settings_file:
-                            settings.update(json.load(settings_file), persist=False)
-
-            elif action == MicroSD.ACTION__REMOVED:
-                # SD card was just removed.
-                # Set persistent settings to disabled value directly
-                Settings.get_instance()._data[SettingsConstants.SETTING__PERSISTENT_SETTINGS] = SettingsConstants.OPTION__DISABLED
-
-                # set persistent settings to only have disabled as an option, adding additional help text that microSD is removed
-                entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__PERSISTENT_SETTINGS)
-                entry.selection_options = SettingsConstants.OPTIONS__ONLY_DISABLED
-                entry.help_text = SettingsConstants.PERSISTENT_SETTINGS__SD_REMOVED__HELP_TEXT
-            
             else:
-                raise Exception(f"Invalid MicroSD action: {action}")
+                entry.help_text = SettingsConstants.PERSISTENT_SETTINGS__ONBOARD__HELP_TEXT
+
+            # If a settings file exists, load it without persisting again. This
+            # avoids unnecessary disk writes during boot and when cards are
+            # re-inserted.
+            if action == MicroSD.ACTION__INSERTED and os.path.exists(Settings.SETTINGS_FILENAME):
+                settings = Settings.get_instance()
+                if settings.get_value(SettingsConstants.SETTING__PERSISTENT_SETTINGS) != SettingsConstants.OPTION__ENABLED:
+                    with open(Settings.SETTINGS_FILENAME) as settings_file:
+                        settings.update(json.load(settings_file), persist=False)
+
+        else:
+            # Nowhere to persist to, so force Disabled rather than offer a setting
+            # that would silently fail. Reached on a card-less board with no
+            # userdata partition (Raspberry Pi / La Frite), and on a Luckfox whose
+            # userdata partition did not mount.
+            Settings.get_instance()._data[SettingsConstants.SETTING__PERSISTENT_SETTINGS] = SettingsConstants.OPTION__DISABLED
+            entry.selection_options = SettingsConstants.OPTIONS__ONLY_DISABLED
+            entry.help_text = SettingsConstants.PERSISTENT_SETTINGS__SD_REMOVED__HELP_TEXT
