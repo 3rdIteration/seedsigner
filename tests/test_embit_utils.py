@@ -720,6 +720,30 @@ def test_is_standard_derivation():
     # Non-standard: account beyond 9 still returns False
     assert embit_utils.is_standard_derivation("m/84'/0'/10'", SC.NATIVE_SEGWIT, SC.MAINNET) is False
 
+    # Standard multisig BIP48 native segwit paths
+    assert embit_utils.is_standard_derivation("m/48'/0'/0'/2'", SC.NATIVE_SEGWIT, SC.MAINNET) is True
+    assert embit_utils.is_standard_derivation("m/48'/1'/0'/2'", SC.NATIVE_SEGWIT, SC.TESTNET) is True
+    assert embit_utils.is_standard_derivation("m/48'/1'/0'/2'", SC.NATIVE_SEGWIT, SC.REGTEST) is True
+
+    # Standard multisig BIP48 native segwit with non-zero account
+    assert embit_utils.is_standard_derivation("m/48'/0'/5'/2'", SC.NATIVE_SEGWIT, SC.MAINNET) is True
+    assert embit_utils.is_standard_derivation("m/48'/1'/3'/2'", SC.NATIVE_SEGWIT, SC.TESTNET) is True
+
+    # Standard multisig BIP48 nested segwit paths
+    assert embit_utils.is_standard_derivation("m/48'/0'/0'/1'", SC.NESTED_SEGWIT, SC.MAINNET) is True
+    assert embit_utils.is_standard_derivation("m/48'/1'/0'/1'", SC.NESTED_SEGWIT, SC.TESTNET) is True
+
+    # Standard multisig BIP45 legacy path
+    assert embit_utils.is_standard_derivation("m/45'", SC.LEGACY_P2PKH, SC.MAINNET) is True
+    assert embit_utils.is_standard_derivation("m/45'", SC.LEGACY_P2PKH, SC.TESTNET) is True
+
+    # Non-standard: BIP48 path with wrong script type
+    assert embit_utils.is_standard_derivation("m/48'/0'/0'/2'", SC.NESTED_SEGWIT, SC.MAINNET) is False
+    assert embit_utils.is_standard_derivation("m/48'/0'/0'/1'", SC.NATIVE_SEGWIT, SC.MAINNET) is False
+
+    # Non-standard: BIP48 account beyond 9
+    assert embit_utils.is_standard_derivation("m/48'/0'/10'/2'", SC.NATIVE_SEGWIT, SC.MAINNET) is False
+
 
 def test_normalize_descriptor_str():
     """
