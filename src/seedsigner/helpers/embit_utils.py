@@ -63,20 +63,22 @@ def is_standard_derivation(derivation_path: str, script_type: str, network: str)
     """
     Returns True if the derivation_path matches the standard BIP path for the
     given script_type, network, and any account 0-9.  For example, native segwit
-    on mainnet must be m/84'/0'/<account>'.
+    on mainnet must be m/84'/0'/<account>' for singlesig or
+    m/48'/0'/<account>'/2' for multisig.
     """
-    for account in range(10):
-        try:
-            standard = get_standard_derivation_path(
-                network=network,
-                wallet_type=SettingsConstants.SINGLE_SIG,
-                script_type=script_type,
-                account=account,
-            )
-            if derivation_path == standard:
-                return True
-        except Exception:
-            pass
+    for wallet_type in (SettingsConstants.SINGLE_SIG, SettingsConstants.MULTISIG):
+        for account in range(10):
+            try:
+                standard = get_standard_derivation_path(
+                    network=network,
+                    wallet_type=wallet_type,
+                    script_type=script_type,
+                    account=account,
+                )
+                if derivation_path == standard:
+                    return True
+            except Exception:
+                pass
     return False
 
 
