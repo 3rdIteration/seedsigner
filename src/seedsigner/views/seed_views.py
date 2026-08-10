@@ -467,7 +467,7 @@ class SeedKeeperSelectView(View):
                     text="No BIP39 Secrets to Load from Seedkeeper",
                     show_back_button=False,
                 )
-                if isinstance(self.seed, AezeedSeed):
+                if isinstance(getattr(self, "seed", None), AezeedSeed):
                     return Destination(SeedAezeedPassphraseModeView)
                 return Destination(BackStackView)
 
@@ -480,7 +480,7 @@ class SeedKeeperSelectView(View):
             )
 
             if selected_menu_num == RET_CODE__BACK_BUTTON:
-                if isinstance(self.seed, AezeedSeed):
+                if isinstance(getattr(self, "seed", None), AezeedSeed):
                     return Destination(SeedAezeedPassphraseModeView)
                 return Destination(BackStackView)
 
