@@ -1215,7 +1215,6 @@ def test_bip85_save_and_load(tmp_path):
 
 def test_load_bip85_data_from_microsd(monkeypatch, tmp_path):
     from pathlib import Path
-    from seedsigner.hardware import microsd
     from seedsigner.views import gpg_views
 
     captured = {}
@@ -1225,7 +1224,7 @@ def test_load_bip85_data_from_microsd(monkeypatch, tmp_path):
 
     monkeypatch.setattr(gpg_views, "bip85_load_data", fake_bip85_load_data)
     monkeypatch.setattr(
-        microsd.MicroSD, "get_microsd_dir", staticmethod(lambda: tmp_path)
+        gpg_views, "resolve_microsd_images_dir", lambda: tmp_path / "microsd-images"
     )
 
     def fake_run_screen(self, *args, **kwargs):
@@ -1283,7 +1282,6 @@ def test_bip85_save_to_qr(monkeypatch):
 
 def test_bip85_save_to_microsd_logs_path(monkeypatch, tmp_path):
     from seedsigner.gui.screens.screen import ButtonListScreen, WarningScreen
-    from seedsigner.hardware import microsd
     from seedsigner.views import gpg_views
 
     BIP85_DATA.clear()
@@ -1318,7 +1316,9 @@ def test_bip85_save_to_microsd_logs_path(monkeypatch, tmp_path):
     monkeypatch.setattr(gpg_views.ToolsGPGSaveBip85DataView, "run_screen", fake_run_screen)
     monkeypatch.setattr(gpg_views, "bip85_save_data", fake_save)
     monkeypatch.setattr(gpg_views.logger, "info", fake_log)
-    monkeypatch.setattr(microsd.MicroSD, "get_microsd_dir", staticmethod(lambda: tmp_path))
+    monkeypatch.setattr(
+        gpg_views, "resolve_microsd_images_dir", lambda: tmp_path / "microsd-images"
+    )
 
     view = gpg_views.ToolsGPGSaveBip85DataView()
     view.controller.storage.seeds = []
