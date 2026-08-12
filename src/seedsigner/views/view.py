@@ -234,11 +234,6 @@ class MainMenuView(View):
 
         controller = Controller.get_instance()
 
-        # Reaching Home is the "healthy enough" signal for the U-Boot boot-counter
-        # failover, which runs once per boot. The counter is memory-backed
-        # (CONFIG_SYS_BOOTCOUNT_ADDR = GRF OS_REG scratch register 0xFF020218), so
-        # clearing it via devmem writes no flash.
-        #
         # The OS watchdog's liveness marker is signalled much earlier, in
         # Controller.start() — a blocking startup interstitial (the
         # unhardened-build warning) would otherwise stop a perfectly working
@@ -248,7 +243,19 @@ class MainMenuView(View):
             from seedsigner.helpers.seedsigner_os import signal_app_alive
 
             signal_app_alive()
-            if not getattr(controller, "boot_failover_cleared", False):
+
+            # Reaching Home is the "healthy enough" signal for the Luckfox U-Boot
+            # boot-counter failover, which runs once per boot. That counter is
+            # memory-backed (CONFIG_SYS_BOOTCOUNT_ADDR = Rockchip GRF OS_REG
+            # scratch register 0xFF020218), so clearing it via devmem writes no
+            # flash. This address is meaningless outside Rockchip's memory map —
+            # on the La Frite (Amlogic S805X) it lands on live MMIO register
+            # space and hangs the whole board, not just the app, the first time
+            # Home is reached each boot. Must stay gated to Luckfox boards.
+            if (
+                Settings.RUNTIME_PROFILE in PowerOptionsView.LUCKFOX_PROFILES
+                and not getattr(controller, "boot_failover_cleared", False)
+            ):
                 controller.boot_failover_cleared = True
                 try:
                     from subprocess import run as _run, DEVNULL as _DEVNULL
