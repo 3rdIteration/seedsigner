@@ -35,6 +35,12 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
         max_entropy_frames = 50
         instructions_font = Fonts.get_font(GUIConstants.get_body_font_name(), GUIConstants.get_button_font_size())
 
+        # If the user continues holding the button that brought them into this flow, we
+        # have to ensure that it doesn't trigger the ANYCLICK check below, otherwise they
+        # will inadvertently skip all the preview frames and take the final image
+        # immediately.
+        is_maybe_still_holding = True
+
         while True:
             if self.hw_inputs.check_for_low(HardwareButtonsConstants.KEY_LEFT):
                 # Have to manually update last input time since we're not in a wait_for loop
@@ -75,8 +81,20 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
 
                 self.renderer.canvas.paste(frame.crop(box=box))
 
-            # Check for ANYCLICK to take final entropy image
-            if self.hw_inputs.check_for_low(keys=HardwareButtonsConstants.KEYS__ANYCLICK):
+            # If the ANYCLICK buttons are detected as being all released (none of them
+            # cause check_for_low to return True), we can be sure that the user isn't
+            # still holding down the initial button press that brought them into this
+            # flow. It is then safe to arm the loop to trigger the final image capture for
+            # whenever the *next* ANYCLICK button is pressed.
+            if not self.hw_inputs.check_for_low(keys=HardwareButtonsConstants.KEYS__ANYCLICK):
+                # Confirmed that all ANYCLICK buttons are released. The next click can now
+                # trigger the final image capture.
+                is_maybe_still_holding = False
+
+            elif not is_maybe_still_holding:
+                # We passed the above check; this is a fresh, explicit click. We can now
+                # capture the final image and exit this loop.
+
                 # Have to manually update last input time since we're not in a wait_for loop
                 self.hw_inputs.update_last_input_time()
                 self.camera.stop_video_stream_mode()
@@ -150,6 +168,13 @@ class ToolsImageEntropyFinalImageScreen(BaseScreen):
                 anchor="ms"
             )
             self.renderer.show_image()
+
+        # The button click that triggered the final image might still be held down as this
+        # screen appears. We can't let that held button auto-dismiss the final image
+        # review here. Wait until every button has been released before listening for the
+        # accept/reshoot decision.
+        while self.hw_inputs.check_for_low(keys=[HardwareButtonsConstants.KEY_LEFT, HardwareButtonsConstants.KEY_RIGHT] + HardwareButtonsConstants.KEYS__ANYCLICK):
+            time.sleep(0.01)
 
         # LEFT = reshoot, RIGHT / ANYCLICK = accept
         input = self.hw_inputs.wait_for([HardwareButtonsConstants.KEY_LEFT, HardwareButtonsConstants.KEY_RIGHT] + HardwareButtonsConstants.KEYS__ANYCLICK)
