@@ -63,6 +63,11 @@ on:
         required: false
         default: 'false'
         type: boolean
+      testing-build:
+        description: 'Ship the testing build Home menu (I/O Test, Test Smartcard, Flash Applet, Settings) - off by default'
+        required: false
+        default: 'false'
+        type: boolean
       upload-release:
         description: Upload built .img files to the matching GitHub release (if it exists)
         required: false
@@ -189,6 +194,11 @@ jobs:
           # separately from SS_ARGS rather than appended to it.
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.enable-error-diagnostics }}" = "true" ]; then
             echo "SEEDSIGNER_ENABLE_ERROR_DIAGNOSTICS=1" | tee -a "$GITHUB_ENV"
+          fi
+
+          # Same as above: consumed directly by post-build.sh via docker-compose.yml.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.testing-build }}" = "true" ]; then
+            echo "SEEDSIGNER_TESTING_BUILD=1" | tee -a "$GITHUB_ENV"
           fi
 
       - name: free disk space

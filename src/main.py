@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+import os
 import sys
 
 from seedsigner.controller import Controller
@@ -34,6 +35,11 @@ def main(sys_argv=None):
         action="store_true",
         help="Launch directly into the I/O test screen",
     )
+    parser.add_argument(
+        "--testing-build",
+        action="store_true",
+        help="Launch with the testing build's Home menu (I/O Test, Test Smartcard, Flash Applet, Settings)",
+    )
 
     args = parser.parse_args(sys_argv)
 
@@ -50,6 +56,9 @@ def main(sys_argv=None):
         logging.getLogger(module).setLevel(level)
 
     logger.info(f"Starting SeedSigner with: {args.__dict__}")
+
+    if args.testing_build:
+        os.environ["SEEDSIGNER_TESTING_BUILD"] = "1"
 
     # Get the one and only Controller instance and start our main loop
     initial_destination = None
