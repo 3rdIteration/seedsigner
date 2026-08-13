@@ -84,6 +84,23 @@ def get_os_release(path: str = OS_RELEASE_PATH) -> dict:
     return data
 
 
+ERROR_MICROSD_EXPORT_MARKER_PATH = "/etc/seedsigner-error-microsd-export"
+
+
+def is_error_microsd_export_enabled() -> bool:
+    """Diagnostic aid, off by default: whether an OS/package-error screen (e.g.
+    GPG Tools' "Missing packages") should offer a "Save to MicroSD" button for
+    the exact error text already shown on screen.
+
+    Gated by a build-time marker file rather than an app-source constant so a
+    given image can opt in without a code change, and so the hardening
+    self-check (helpers.hardening) can see it and flag it as an open exposure
+    when present -- a build that ships this should not report itself as fully
+    hardened, since it is a deliberately-added capability, however low-risk.
+    """
+    return os.path.exists(ERROR_MICROSD_EXPORT_MARKER_PATH)
+
+
 def is_running_from_microsd() -> bool:
     """True when the running SeedSigner source is loaded from the microSD card
     (a dev workflow) rather than the embedded system partition.
