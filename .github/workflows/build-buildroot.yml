@@ -58,6 +58,11 @@ on:
         required: false
         default: 'false'
         type: boolean
+      enable-error-diagnostics:
+        description: 'Enable the opt-in "Save to MicroSD" button on OS/package error screens (off by default; also flagged by the hardening self-check when on)'
+        required: false
+        default: 'false'
+        type: boolean
       upload-release:
         description: Upload built .img files to the matching GitHub release (if it exists)
         required: false
@@ -70,9 +75,20 @@ on:
 permissions:
   contents: read
 
-# Cancel in-progress builds when a PR is updated; unique per-PR or per-SHA
+# Cancel in-progress builds when a PR is updated; unique per-PR or per-SHA.
+# workflow_dispatch gets its own branch of the key: two manual dispatches of
+# the SAME commit are common (e.g. dev vs non-dev, or different os-ref/
+# source-ref) and must NOT collide just because the sha matches -- only the
+# combination of sha + the inputs that actually distinguish one build from
+# another should share a group.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  group: >-
+    ${{ github.workflow }}-${{
+      github.event_name == 'workflow_dispatch'
+        && format('dispatch-{0}-{1}-{2}-{3}-{4}', github.sha, github.event.inputs.target, github.event.inputs.dev, github.event.inputs['os-ref'], github.event.inputs['source-ref'])
+        || github.event.pull_request.number
+        || github.sha
+    }}
   cancel-in-progress: true
 
 jobs:
@@ -167,6 +183,13 @@ jobs:
           fi
 
           echo "SS_ARGS=${SS_ARGS}" | tee -a "$GITHUB_ENV"
+
+          # Consumed directly by seedsigner-os's post-build.sh (docker-compose.yml
+          # forwards it through) -- not an opt/build.sh flag, so it's exported
+          # separately from SS_ARGS rather than appended to it.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.enable-error-diagnostics }}" = "true" ]; then
+            echo "SEEDSIGNER_ENABLE_ERROR_DIAGNOSTICS=1" | tee -a "$GITHUB_ENV"
+          fi
 
       - name: free disk space
         run: |
