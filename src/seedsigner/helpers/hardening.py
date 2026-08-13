@@ -338,6 +338,25 @@ def check_remote_shells() -> HardeningCheck:
     )
 
 
+def check_error_diagnostics_export() -> HardeningCheck:
+    """The GPG Tools "Save to MicroSD" diagnostic button (see
+    helpers.seedsigner_os.is_error_microsd_export_enabled) writes OS/package
+    error text -- never seeds, secrets, or PINs -- to a physically inserted
+    card when enabled. Low-risk compared to the other CRITICAL checks here,
+    but it is still a deliberately-added capability a production image
+    should not silently ship with, so it is flagged the same way."""
+    from seedsigner.helpers.seedsigner_os import ERROR_MICROSD_EXPORT_MARKER_PATH
+
+    if os.path.exists(ERROR_MICROSD_EXPORT_MARKER_PATH):
+        state, detail = STATE_FAIL, _("Error-to-MicroSD export enabled")
+    else:
+        state, detail = STATE_PASS, _("Disabled")
+    return HardeningCheck(
+        key="error_diagnostics_export", label=_("Error diagnostics export disabled"), severity=SEVERITY_CRITICAL,
+        state=state, detail=detail, open_name=_("diagnostics"),
+    )
+
+
 # --------------------------------------------------------------------------
 # INFO checks — reported, never warned on.
 # --------------------------------------------------------------------------
@@ -448,6 +467,7 @@ ALL_CHECKS: tuple[Callable[[], HardeningCheck], ...] = (
     check_usb_gadget,
     check_serial_console,
     check_remote_shells,
+    check_error_diagnostics_export,
     check_rootfs_non_persistent,
     check_panic_reboot,
     check_logging_daemons,

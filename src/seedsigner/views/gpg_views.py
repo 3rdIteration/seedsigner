@@ -314,23 +314,36 @@ class ToolsGPGMenuView(View):
     def run(self):
         import shutil
         from seedsigner.controller import Controller
+        from seedsigner.helpers.seedsigner_os import is_error_microsd_export_enabled
 
         # Check that required dependencies are available
         missing = []
         try:
             import pgpy  # noqa: F401
-        except ImportError:
-            missing.append("pgpy")
+        except ImportError as e:
+            # A bare "pgpy" in the UI could mean pgpy itself is absent, or that
+            # something in its own import chain (e.g. cryptography's compiled
+            # extension) failed to load. Put the real exception in the on-screen
+            # text too, not just the log: on a hardened non-dev image there's no
+            # SSH/UART/log file to check it any other way.
+            logger.warning(f"pgpy import failed: {e!r}", exc_info=True)
+            missing.append(f"pgpy ({e})")
         if not shutil.which("gpg"):
             missing.append("gnupg2")
         if missing:
-            self.run_screen(
+            error_text = _("Required but not installed:\n") + ", ".join(missing)
+            export_enabled = is_error_microsd_export_enabled()
+            SAVE_TO_MICROSD = ButtonOption("Save to MicroSD")
+            button_data = [ButtonOption("OK"), SAVE_TO_MICROSD] if export_enabled else [ButtonOption("OK")]
+            selected = self.run_screen(
                 ErrorScreen,
                 title=_("GPG Tools"),
                 status_headline=_("Missing packages"),
-                text=_("Required but not installed:\n") + ", ".join(missing),
-                button_data=[ButtonOption("OK")],
+                text=error_text,
+                button_data=button_data,
             )
+            if export_enabled and button_data[selected] == SAVE_TO_MICROSD:
+                self._save_error_to_microsd(error_text)
             return Destination(BackStackView)
 
         if self.controller.resume_main_flow == self.controller.FLOW__GPG_MESSAGE:
@@ -372,6 +385,49 @@ class ToolsGPGMenuView(View):
             return Destination(ToolsGPGSmartMenuView)
         elif button_data[selected_menu_num] == self.ADVANCED:
             return Destination(ToolsGPGAdvancedMenuView)
+
+
+    def _save_error_to_microsd(self, error_text: str):
+        """Diagnostic aid (see helpers.seedsigner_os.is_error_microsd_export_enabled):
+        write the exact on-screen error text -- and nothing else -- to the
+        microSD card. Requires a physically inserted card; deliberately does
+        not fall back to a non-removable location like resolve_microsd_images_dir()
+        would, since the entire point is getting the text off a device that has
+        no SSH, no UART shell, and no readable log file."""
+        from seedsigner.hardware.microsd import MicroSD
+        import os
+        import time
+
+        if not MicroSD.get_instance().is_inserted:
+            self.run_screen(
+                WarningScreen,
+                title=_("MicroSD"),
+                status_headline=_("No card detected"),
+                text=_("Insert a microSD card and try again."),
+                button_data=[ButtonOption("OK")],
+            )
+            return
+
+        filename = f"seedsigner_error_{time.strftime('%Y%m%d_%H%M%S')}.txt"
+        filepath = os.path.join(MicroSD.get_microsd_dir(), filename)
+        try:
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(error_text)
+            self.run_screen(
+                LargeIconStatusScreen,
+                title=_("Saved"),
+                status_headline=None,
+                text=_("Saved to {filename}").format(filename=filename),
+                button_data=[ButtonOption("OK")],
+            )
+        except OSError as e:
+            self.run_screen(
+                WarningScreen,
+                title=_("MicroSD"),
+                status_headline=_("Save failed"),
+                text=str(e),
+                button_data=[ButtonOption("OK")],
+            )
 
 
 class ToolsGPGAdvancedMenuView(View):
