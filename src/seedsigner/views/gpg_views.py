@@ -322,11 +322,11 @@ class ToolsGPGMenuView(View):
         except ImportError as e:
             # A bare "pgpy" in the UI could mean pgpy itself is absent, or that
             # something in its own import chain (e.g. cryptography's compiled
-            # extension) failed to load -- log the real exception so a
-            # platform-specific failure isn't indistinguishable from a
-            # genuinely missing package.
+            # extension) failed to load. Put the real exception in the on-screen
+            # text too, not just the log: on a hardened non-dev image there's no
+            # SSH/UART/log file to check it any other way.
             logger.warning(f"pgpy import failed: {e!r}", exc_info=True)
-            missing.append("pgpy")
+            missing.append(f"pgpy ({e})")
         if not shutil.which("gpg"):
             missing.append("gnupg2")
         if missing:
