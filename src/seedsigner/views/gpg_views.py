@@ -319,7 +319,13 @@ class ToolsGPGMenuView(View):
         missing = []
         try:
             import pgpy  # noqa: F401
-        except ImportError:
+        except ImportError as e:
+            # A bare "pgpy" in the UI could mean pgpy itself is absent, or that
+            # something in its own import chain (e.g. cryptography's compiled
+            # extension) failed to load -- log the real exception so a
+            # platform-specific failure isn't indistinguishable from a
+            # genuinely missing package.
+            logger.warning(f"pgpy import failed: {e!r}", exc_info=True)
             missing.append("pgpy")
         if not shutil.which("gpg"):
             missing.append("gnupg2")
