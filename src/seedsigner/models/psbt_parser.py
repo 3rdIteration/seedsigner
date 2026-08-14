@@ -20,9 +20,28 @@ class OPCODES:
 
 
 class PSBTParser():
-    # Upper bound on how many derived levels a single parse will hold on to; see
-    # _derive_with_cache.
+    """
+    Reads a psbt on behalf of one seed and works out everything the signing flow shows
+    the user before they approve: the wallet policy (script type, plus m-of-n and the
+    cosigners for multisig), the amount coming in, what is being spent, what comes back
+    as change, the fee, where the spend is going, and any OP_RETURN payload.
+
+    Constructing it with a seed parses immediately. The results are read off the instance
+    attributes, with per-change-output detail in change_data.
+
+    has_matching_input_fingerprint answers the earlier question of which seed a psbt is
+    for and needs no parse.
+    """
+
+    # Upper bound on how many levels of derivation a single parse will cache in
+    # _child_key_derivation_cache. 1000 is just slightly under a 3-of-5 multisig
+    # consolidating 200 inputs and holds the cache to a max of about half a megabyte. A
+    # psbt that requires more levels will still parse correctly, but may have to derive
+    # some levels more than once. Capping the cache at a realistic upper bound protects
+    # against a maliciously crafted psbt that would otherwise consume unbounded memory
+    # while still providing cache wins for even atypically large real-world psbts.
     MAX_CACHED_DERIVATIONS = 1000
+
 
     def __init__(self, p: PSBT, seed: Seed, network: str = SettingsConstants.MAINNET):
         self.psbt: PSBT = p
@@ -376,10 +395,7 @@ class PSBTParser():
         malicious coordinator to grind a deliberate collision, and the cosigner xpubs come
         from the psbt.
 
-        The cache stops accepting new levels at MAX_CACHED_DERIVATIONS. A real wallet
-        needs orders of magnitude fewer, but a hostile psbt can name any number of
-        derivation paths, and every level of every one of them would otherwise be held
-        in memory at once. Past the limit each level is simply derived as needed.
+        The cache stops accepting new levels at MAX_CACHED_DERIVATIONS.
         """
         if cache is None:
             return parent_key.derive(derivation_path)

@@ -3,6 +3,7 @@ import random
 
 from binascii import a2b_base64
 from copy import deepcopy
+from unittest.mock import patch
 from embit import bip32
 from embit.networks import NETWORKS
 from embit.psbt import PSBT, DerivationPath
@@ -508,6 +509,27 @@ class TestPSBTParserOptimizations:
             seed.seed_bytes, version=NETWORKS["main"]["xprv"])
 
 
+    def assert_same_parse_result(self, parser_a: PSBTParser, parser_b: PSBTParser):
+        """
+        Asserts that two parses produced the same result, field by field so that a failure
+        names the exact field that differs.
+
+        The fill path writes recovered fingerprints back into the psbt, so the serialized
+        psbt is compared too, not just the parser's own attributes.
+        """
+        assert parser_a.policy == parser_b.policy
+        assert parser_a.input_amount == parser_b.input_amount
+        assert parser_a.spend_amount == parser_b.spend_amount
+        assert parser_a.change_amount == parser_b.change_amount
+        assert parser_a.fee_amount == parser_b.fee_amount
+        assert parser_a.num_inputs == parser_b.num_inputs
+        assert parser_a.destination_addresses == parser_b.destination_addresses
+        assert parser_a.destination_amounts == parser_b.destination_amounts
+        assert parser_a.change_data == parser_b.change_data
+        assert parser_a.op_return_data == parser_b.op_return_data
+        assert parser_a.psbt.serialize() == parser_b.psbt.serialize()
+
+
     def test_my_fingerprint_equals_child0_fingerprint(self):
         """
         Reading my_fingerprint in place of child(0).fingerprint is byte-identical,
@@ -697,3 +719,50 @@ class TestPSBTParserOptimizations:
             lambda parent_key, derivation_path, cache=None: uncached(parent_key, derivation_path)))
 
         assert parse_everything() == with_cache
+
+
+    def test_maxed_out_cache_does_not_change_parse_output(self):
+        """
+        There should be no effect on the parse output when the cache is maxed out.
+
+        Parse a multisig and a single-sig psbt with the cache free to grow, then parse
+        them again with the cap low enough that both hit the cap partway through. Verify
+        that we get the identical parser state each time.
+        """
+        multisig_case = (PSBTTestData.MULTISIG_NATIVE_SEGWIT_1_INPUT, PSBTTestData.MULTISIG_NATIVE_SEGWIT_CHANGE)
+        singlesig_case = (PSBTTestData.SINGLE_SIG_NATIVE_SEGWIT_1_INPUT, PSBTTestData.SINGLE_SIG_NATIVE_SEGWIT_CHANGE)
+
+        def build_psbt(case: tuple) -> PSBT:
+            # A fresh psbt for each parse: the case's base psbt plus its change output
+            input_base64, change_hex = case
+            psbt = PSBT.parse(a2b_base64(input_base64))
+            psbt.outputs.append(create_output(change_hex, 10_000))
+            return psbt
+
+        # Wrapping _derive_with_cache leaves it doing its real work while recording every
+        # call it received. The cache it was handed is the third of those arguments, and
+        # what the recording holds is a reference to the actual cache dict. So reading it
+        # back afterward gives that cache's final contents.
+        with patch.object(PSBTParser, "_derive_with_cache", wraps=PSBTParser._derive_with_cache) as mock_unconstrained:
+            multisig_unconstrained = PSBTParser(build_psbt(multisig_case), self.seed, network=SettingsConstants.REGTEST)
+            singlesig_unconstrained = PSBTParser(build_psbt(singlesig_case), self.seed, network=SettingsConstants.REGTEST)
+
+        # Now constrain the cache enough that both psbts fill it partway through their
+        # parse.
+        cap = 3
+        with patch.object(PSBTParser, "MAX_CACHED_DERIVATIONS", cap):
+            with patch.object(PSBTParser, "_derive_with_cache", wraps=PSBTParser._derive_with_cache) as mock_capped:
+                multisig_capped = PSBTParser(build_psbt(multisig_case), self.seed, network=SettingsConstants.REGTEST)
+                singlesig_capped = PSBTParser(build_psbt(singlesig_case), self.seed, network=SettingsConstants.REGTEST)
+
+        self.assert_same_parse_result(multisig_unconstrained, multisig_capped)
+        self.assert_same_parse_result(singlesig_unconstrained, singlesig_capped)
+
+        # How large did the "unconstrained" (max 1000) cache grow vs the capped?
+        unconstrained_max = max(len(call.args[2]) for call in mock_unconstrained.call_args_list)
+        capped_max = max(len(call.args[2]) for call in mock_capped.call_args_list)
+
+        # Sanity check: this test depends on the unconstrained cache actually being larger
+        # than the capped cache's max.
+        assert unconstrained_max > cap
+        assert capped_max == cap
