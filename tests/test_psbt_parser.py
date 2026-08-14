@@ -658,8 +658,12 @@ class TestPSBTParserOptimizations:
         each cosigner's account xpub.
         """
         def build_psbt(input_base64: str, change_hex: str) -> PSBT:
-            # A fresh psbt for each parse: the base psbt plus its change output
+            # A fresh psbt for each parse: the base psbt plus its change output, twice.
             psbt = PSBT.parse(a2b_base64(input_base64))
+            psbt.outputs.append(create_output(change_hex, 10_000))
+
+            # Add a duplicate output to ensure that the cache yields some hits; the second
+            # output will traverse the same levels the first one just cached.
             psbt.outputs.append(create_output(change_hex, 10_000))
             return psbt
 
