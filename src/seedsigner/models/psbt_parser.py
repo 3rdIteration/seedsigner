@@ -34,12 +34,9 @@ class PSBTParser():
     """
 
     # Upper bound on how many levels of derivation a single parse will cache. 1000 is
-    # just slightly under a 3-of-5 multisig consolidating 200 inputs and holds the cache
-    # to a max of about 600 kilobytes. A psbt that requires more levels will still parse
-    # correctly, but may have to derive some levels more than once. Capping the cache at
-    # a realistic upper bound protects against a maliciously crafted psbt that would
-    # otherwise consume unbounded memory while still providing cache wins for even
-    # atypically large real-world psbts.
+    # just slightly under a 3-of-5 multisig consolidating 200 inputs, which costs roughly
+    # 650 kilobytes. A psbt that needs more levels than that still parses correctly; it
+    # just stops getting cache hits once the cache is full.
     MAX_CACHED_DERIVATIONS = 1000
 
 
