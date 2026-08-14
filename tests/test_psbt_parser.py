@@ -654,7 +654,7 @@ class TestPSBTParserOptimizations:
         inp = psbt.inputs[0]
         pubkeys = list(inp.bip32_derivations.keys())
 
-        uncached = PSBTParser._get_cosigners(pubkeys, inp.bip32_derivations, psbt.xpubs)
+        uncached = PSBTParser._get_cosigners(pubkeys, inp.bip32_derivations, psbt.xpubs, None)
 
         child_key_derivation_cache = {}
         cached = PSBTParser._get_cosigners(

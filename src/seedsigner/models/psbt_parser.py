@@ -303,7 +303,7 @@ class PSBTParser():
 
 
     @staticmethod
-    def _get_policy(scope, scriptpubkey, xpubs, child_key_derivation_cache=None):
+    def _get_policy(scope, scriptpubkey, xpubs, child_key_derivation_cache: dict | None):
         """Parse scope and get policy"""
         # we don't know the policy yet, let's parse it
         script_type = scriptpubkey.script_type()
@@ -371,7 +371,7 @@ class PSBTParser():
 
 
     @staticmethod
-    def _derive_with_cache(parent_key: bip32.HDKey, derivation_path: List[int], cache: dict | None = None) -> bip32.HDKey:
+    def _derive_with_cache(parent_key: bip32.HDKey, derivation_path: List[int], child_key_derivation_cache: dict | None = None) -> bip32.HDKey:
         """
         Derives the key that sits at the given derivation path below parent_key, reusing
         any levels along the way that have already been derived during this parse.
@@ -397,7 +397,7 @@ class PSBTParser():
 
         The cache stops accepting new levels at MAX_CACHED_DERIVATIONS.
         """
-        if cache is None:
+        if child_key_derivation_cache is None:
             return parent_key.derive(derivation_path)
 
         derived_key = parent_key
@@ -407,14 +407,14 @@ class PSBTParser():
         for index in derivation_path:
             derivation_path_so_far += (index,)
             cache_key = (id(parent_key), derivation_path_so_far)
-            cached_entry = cache.get(cache_key)
+            cached_entry = child_key_derivation_cache.get(cache_key)
             if cached_entry is None:
                 # First time deriving this level. Do the work to derive this level's child
                 # and store it in the cache.
                 already_derived = derived_key.child(index)
-                if len(cache) < PSBTParser.MAX_CACHED_DERIVATIONS:
+                if len(child_key_derivation_cache) < PSBTParser.MAX_CACHED_DERIVATIONS:
                     # Parent must also be stored to keep its id() from being reused
-                    cache[cache_key] = (parent_key, already_derived)
+                    child_key_derivation_cache[cache_key] = (parent_key, already_derived)
             else:
                 cached_parent, already_derived = cached_entry
             derived_key = already_derived
@@ -422,7 +422,7 @@ class PSBTParser():
 
 
     @staticmethod
-    def _get_cosigners(pubkeys, derivations, xpubs, child_key_derivation_cache=None):
+    def _get_cosigners(pubkeys, derivations, xpubs, child_key_derivation_cache: dict | None):
         """Returns xpubs used to derive pubkeys using global xpub field from psbt"""
         cosigners = []
         for i, pubkey in enumerate(pubkeys):
