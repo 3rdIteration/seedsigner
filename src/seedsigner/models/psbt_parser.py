@@ -172,10 +172,6 @@ class PSBTParser():
                 # empty script by default
                 sc = script.Script(b"")
 
-                # if older multisig, just use existing script
-                if self.policy["type"] == "p2sh":
-                    sc = script.p2sh(out.redeem_script)
-
                 # multisig, we know witness script
                 if self.policy["type"] == "p2wsh":
                     sc = script.p2wsh(out.witness_script)
