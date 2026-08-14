@@ -535,8 +535,8 @@ class TestPSBTParserOptimizations:
         Returns a stand-in for _derive_with_cache that derives exactly as the real one
         does, but appends the cache's size to cache_sizes on the way out of every call.
 
-        Reading the cache back once the parse is over depends on the parse disposing of
-        it by rebinding the attribute; recording sizes as the parse runs does not.
+        The cache is a local inside parse(), so intercepting the calls it gets handed to
+        is the only way to see how large it grew.
         """
         real_derive_with_cache = PSBTParser._derive_with_cache
 
@@ -763,21 +763,3 @@ class TestPSBTParserOptimizations:
         assert max(capped_sizes) == cap
 
 
-    def test_cache_is_dropped_when_the_parse_ends(self):
-        """
-        The cache holds keys derived from the signing seed, so the parser must not still
-        be holding it once the parse it belongs to is over.
-        """
-        psbt = PSBT.parse(a2b_base64(PSBTTestData.MULTISIG_NATIVE_SEGWIT_1_INPUT))
-        psbt.outputs.append(create_output(PSBTTestData.MULTISIG_NATIVE_SEGWIT_CHANGE, 10_000))
-
-        cache_sizes = []
-        with patch.object(PSBTParser, "_derive_with_cache", staticmethod(self.cache_size_recorder(cache_sizes))):
-            psbt_parser = PSBTParser(psbt, self.seed, network=SettingsConstants.REGTEST)
-
-        # Sanity check: there is something to drop, i.e. the parse really did fill the
-        # cache it was handed.
-        assert max(cache_sizes) > 0
-
-        # But since the parse is done, the PSBTParser should have an empty cache again
-        assert psbt_parser._child_key_derivation_cache == {}
