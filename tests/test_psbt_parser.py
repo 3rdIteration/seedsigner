@@ -530,6 +530,24 @@ class TestPSBTParserOptimizations:
         assert parser_a.psbt.serialize() == parser_b.psbt.serialize()
 
 
+    def cache_size_recorder(self, cache_sizes: list):
+        """
+        Returns a stand-in for _derive_with_cache that derives exactly as the real one
+        does, but appends the cache's size to cache_sizes on the way out of every call.
+
+        Reading the cache back once the parse is over depends on the parse disposing of
+        it by rebinding the attribute; recording sizes as the parse runs does not.
+        """
+        real_derive_with_cache = PSBTParser._derive_with_cache
+
+        def recorded(parent_key, derivation_path, cache=None):
+            derived_key = real_derive_with_cache(parent_key, derivation_path, cache)
+            cache_sizes.append(len(cache))
+            return derived_key
+
+        return recorded
+
+
     def test_my_fingerprint_equals_child0_fingerprint(self):
         """
         Reading my_fingerprint in place of child(0).fingerprint is byte-identical,
@@ -721,33 +739,28 @@ class TestPSBTParserOptimizations:
             psbt.outputs.append(create_output(change_hex, 10_000))
             return psbt
 
-        # Wrapping _derive_with_cache leaves it doing its real work while recording every
-        # call it received. The cache it was handed is the third of those arguments, and
-        # what the recording holds is a reference to the actual cache dict. So reading it
-        # back afterward gives that cache's final contents.
-        with patch.object(PSBTParser, "_derive_with_cache", wraps=PSBTParser._derive_with_cache) as mock_unconstrained:
+        # Record how large the cache grew over the course of each parse
+        unconstrained_sizes = []
+        with patch.object(PSBTParser, "_derive_with_cache", staticmethod(self.cache_size_recorder(unconstrained_sizes))):
             multisig_unconstrained = PSBTParser(build_psbt(multisig_case), self.seed, network=SettingsConstants.REGTEST)
             singlesig_unconstrained = PSBTParser(build_psbt(singlesig_case), self.seed, network=SettingsConstants.REGTEST)
 
         # Now constrain the cache enough that both psbts fill it partway through their
         # parse.
         cap = 3
+        capped_sizes = []
         with patch.object(PSBTParser, "MAX_CACHED_DERIVATIONS", cap):
-            with patch.object(PSBTParser, "_derive_with_cache", wraps=PSBTParser._derive_with_cache) as mock_capped:
+            with patch.object(PSBTParser, "_derive_with_cache", staticmethod(self.cache_size_recorder(capped_sizes))):
                 multisig_capped = PSBTParser(build_psbt(multisig_case), self.seed, network=SettingsConstants.REGTEST)
                 singlesig_capped = PSBTParser(build_psbt(singlesig_case), self.seed, network=SettingsConstants.REGTEST)
 
         self.assert_same_parse_result(multisig_unconstrained, multisig_capped)
         self.assert_same_parse_result(singlesig_unconstrained, singlesig_capped)
 
-        # How large did the "unconstrained" (max 1000) cache grow vs the capped?
-        unconstrained_max = max(len(call.args[2]) for call in mock_unconstrained.call_args_list)
-        capped_max = max(len(call.args[2]) for call in mock_capped.call_args_list)
-
         # Sanity check: this test depends on the unconstrained cache actually being larger
         # than the capped cache's max.
-        assert unconstrained_max > cap
-        assert capped_max == cap
+        assert max(unconstrained_sizes) > cap
+        assert max(capped_sizes) == cap
 
 
     def test_cache_is_dropped_when_the_parse_ends(self):
@@ -758,15 +771,13 @@ class TestPSBTParserOptimizations:
         psbt = PSBT.parse(a2b_base64(PSBTTestData.MULTISIG_NATIVE_SEGWIT_1_INPUT))
         psbt.outputs.append(create_output(PSBTTestData.MULTISIG_NATIVE_SEGWIT_CHANGE, 10_000))
 
-        # Wrapping _derive_with_cache records the cache it was handed on each call, and
-        # what the recording holds is a reference to the actual cache dict.
-        with patch.object(PSBTParser, "_derive_with_cache", wraps=PSBTParser._derive_with_cache) as mock_derive:
+        cache_sizes = []
+        with patch.object(PSBTParser, "_derive_with_cache", staticmethod(self.cache_size_recorder(cache_sizes))):
             psbt_parser = PSBTParser(psbt, self.seed, network=SettingsConstants.REGTEST)
 
         # Sanity check: there is something to drop, i.e. the parse really did fill the
         # cache it was handed.
-        cache_used = mock_derive.call_args_list[0].args[2]
-        assert len(cache_used) > 0
+        assert max(cache_sizes) > 0
 
         # But since the parse is done, the PSBTParser should have an empty cache again
         assert psbt_parser._child_key_derivation_cache == {}
