@@ -101,6 +101,24 @@ def is_error_microsd_export_enabled() -> bool:
     return os.path.exists(ERROR_MICROSD_EXPORT_MARKER_PATH)
 
 
+TESTING_BUILD_MARKER_PATH = "/etc/seedsigner-testing-build"
+
+
+def is_testing_build_enabled() -> bool:
+    """Off by default. Swaps Home's normal 4 options for a hardware-bring-up set
+    (I/O Test, Test Smartcard, Flash Applet, Settings) -- see views.view.MainMenuView.
+
+    Gated by a build-time marker file (same pattern as
+    is_error_microsd_export_enabled()) so an image can opt in without a code change,
+    and by the SEEDSIGNER_TESTING_BUILD env var so a desktop/dev-board run can flip
+    it on without rebuilding an image (see the --testing-build flag in main.py).
+    """
+    return (
+        os.path.exists(TESTING_BUILD_MARKER_PATH)
+        or os.environ.get("SEEDSIGNER_TESTING_BUILD") == "1"
+    )
+
+
 def is_running_from_microsd() -> bool:
     """True when the running SeedSigner source is loaded from the microSD card
     (a dev workflow) rather than the embedded system partition.

@@ -227,6 +227,11 @@ class MainMenuView(View):
     TOOLS = ButtonOption("Tools", SeedSignerIconConstants.TOOLS)
     SETTINGS = ButtonOption("Settings", SeedSignerIconConstants.SETTINGS)
 
+    # Testing build only (off by default; see helpers.seedsigner_os.is_testing_build_enabled)
+    IO_TEST = ButtonOption("I/O Test")
+    TEST_SMARTCARD = ButtonOption("Test Smartcard")
+    FLASH_APPLET = ButtonOption("Flash Applet")
+
     def run(self):
         from seedsigner.gui.screens.screen import MainMenuScreen
         from seedsigner.controller import Controller
@@ -271,10 +276,18 @@ class MainMenuView(View):
         if controller.auto_wiped:
             controller.auto_wiped = False
             controller.activate_toast(InfoToast(label_text=_("Data wiped after inactivity")))
-        button_data = [self.SCAN, self.SEEDS, self.TOOLS, self.SETTINGS]
+        from seedsigner.helpers.seedsigner_os import is_testing_build_enabled
+
+        if is_testing_build_enabled():
+            button_data = [self.IO_TEST, self.TEST_SMARTCARD, self.FLASH_APPLET, self.SETTINGS]
+            title = _("Testing")
+        else:
+            button_data = [self.SCAN, self.SEEDS, self.TOOLS, self.SETTINGS]
+            title = _("Home")
+
         selected_menu_num = self.run_screen(
             MainMenuScreen,
-            title=_("Home"),
+            title=title,
             button_data=button_data,
         )
 
@@ -294,7 +307,7 @@ class MainMenuView(View):
         if button_data[selected_menu_num] == self.SCAN:
             from seedsigner.views.scan_views import ScanView
             return Destination(ScanView)
-        
+
         elif button_data[selected_menu_num] == self.SEEDS:
             from seedsigner.views.seed_views import SeedsMenuView
             return Destination(SeedsMenuView)
@@ -306,6 +319,18 @@ class MainMenuView(View):
         elif button_data[selected_menu_num] == self.SETTINGS:
             from seedsigner.views.settings_views import SettingsMenuView
             return Destination(SettingsMenuView)
+
+        elif button_data[selected_menu_num] == self.IO_TEST:
+            from seedsigner.views.settings_views import IOTestView
+            return Destination(IOTestView)
+
+        elif button_data[selected_menu_num] == self.TEST_SMARTCARD:
+            from seedsigner.views.settings_views import SCARDTestView
+            return Destination(SCARDTestView)
+
+        elif button_data[selected_menu_num] == self.FLASH_APPLET:
+            from seedsigner.views.smartcard_views import ToolsDIYInstallAppletView
+            return Destination(ToolsDIYInstallAppletView)
 
 
 
