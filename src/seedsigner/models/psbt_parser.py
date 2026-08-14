@@ -35,7 +35,7 @@ class PSBTParser():
 
     # Upper bound on how many levels of derivation a single parse will cache in
     # _child_key_derivation_cache. 1000 is just slightly under a 3-of-5 multisig
-    # consolidating 200 inputs and holds the cache to a max of about half a megabyte. A
+    # consolidating 200 inputs and holds the cache to a max of about 600 kilobytes. A
     # psbt that requires more levels will still parse correctly, but may have to derive
     # some levels more than once. Capping the cache at a realistic upper bound protects
     # against a maliciously crafted psbt that would otherwise consume unbounded memory
@@ -391,6 +391,11 @@ class PSBTParser():
         object's identity; the parent belongs in the key because a multisig parse runs
         these same derivations below each cosigner's xpub in turn.
 
+        Each entry also holds on to the parent it was derived from. id() is only the
+        object's address, which Python is free to hand to a new object once the original
+        is released. Keeping the parent means its address cannot be reused for as long as
+        the entry it belongs to is alive.
+
         Keying on the parent's fingerprint was rejected: four bytes is small enough for a
         malicious coordinator to grind a deliberate collision, and the cosigner xpubs come
         from the psbt.
@@ -407,13 +412,16 @@ class PSBTParser():
         for index in derivation_path:
             derivation_path_so_far += (index,)
             cache_key = (id(parent_key), derivation_path_so_far)
-            already_derived = cache.get(cache_key)
-            if already_derived is None:
+            cached_entry = cache.get(cache_key)
+            if cached_entry is None:
                 # First time deriving this level. Do the work to derive this level's child
                 # and store it in the cache.
                 already_derived = derived_key.child(index)
                 if len(cache) < PSBTParser.MAX_CACHED_DERIVATIONS:
-                    cache[cache_key] = already_derived
+                    # Parent must also be stored to keep its id() from being reused
+                    cache[cache_key] = (parent_key, already_derived)
+            else:
+                cached_parent, already_derived = cached_entry
             derived_key = already_derived
         return derived_key
 
