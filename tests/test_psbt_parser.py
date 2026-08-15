@@ -493,12 +493,8 @@ def test_parse_op_return_content():
 
 class TestPSBTParserOptimizations:
     """
-    Guard tests for the parse-time optimizations in PSBTParser.
-
-    These verify the claims the speedups rely on:
-        * root.my_fingerprint equals root.child(0).fingerprint
-        * reusing an already-derived level yields exactly the same key as deriving it
-          again.
+    Guard tests for the parse-time optimizations in PSBTParser: that each one actually
+    takes effect, and that none of them changes the result of a parse.
     """
     seed = PSBTTestData.seed
 
@@ -637,8 +633,10 @@ class TestPSBTParserOptimizations:
         from_a = PSBTParser._derive_with_cache(cosigner_a_xpub, receive_index_5, cache)
         from_b = PSBTParser._derive_with_cache(cosigner_b_xpub, receive_index_5, cache)
 
-        assert len(cache) == 4, "the cache should have 4 entries: 2 levels for each cosigner's parent xpub"
+        # Two levels should have been added for each cosigner
+        assert len(cache) == 4
 
+        # The resulting derived child keys should be different
         assert from_a.key.sec() != from_b.key.sec()
 
         # The result derived with the cache must be identical to deriving from the xpub
@@ -648,20 +646,31 @@ class TestPSBTParserOptimizations:
 
 
     def test_get_cosigners_identical_with_and_without_cache(self):
-        """The cache is transparent to callers: _get_cosigners returns the same cosigner
-        list whether or not a cache is threaded in."""
+        """
+        The cache is transparent to callers: _get_cosigners returns the same cosigner
+        list whether it derives every level itself or reads them back out of the cache.
+        """
         psbt = PSBT.parse(a2b_base64(PSBTTestData.MULTISIG_NATIVE_SEGWIT_1_INPUT))
         inp = psbt.inputs[0]
         pubkeys = list(inp.bip32_derivations.keys())
 
+        # No cache at all; every level is derived directly
         uncached = PSBTParser._get_cosigners(pubkeys, inp.bip32_derivations, psbt.xpubs, None)
 
+        # An empty cache still has to derive every level, but now stores each one
         child_key_derivation_cache = {}
-        cached = PSBTParser._get_cosigners(
-            pubkeys, inp.bip32_derivations, psbt.xpubs, child_key_derivation_cache)
+        populating_the_cache = PSBTParser._get_cosigners(pubkeys, inp.bip32_derivations, psbt.xpubs, child_key_derivation_cache)
 
-        assert cached == uncached
-        assert len(child_key_derivation_cache) > 0, "the cache was never populated"
+        # 3 cosigners x 2 levels each
+        assert len(child_key_derivation_cache) == 6
+
+        # The same call against the now-populated cache reads those levels back instead
+        # of deriving them. Each level sits below a different cosigner's xpub, so a cache
+        # that confused parents would return the wrong cosigner here.
+        reading_from_the_cache = PSBTParser._get_cosigners(pubkeys, inp.bip32_derivations, psbt.xpubs, child_key_derivation_cache)
+
+        assert populating_the_cache == uncached
+        assert reading_from_the_cache == uncached
 
 
     def test_cache_does_not_change_parse_output(self):
