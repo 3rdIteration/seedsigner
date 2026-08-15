@@ -27,10 +27,30 @@ class PSBTParser():
     as change, the fee, where the spend is going, and any OP_RETURN payload.
 
     Constructing it with a seed parses immediately. The results are read off the instance
-    attributes, with per-change-output detail in change_data.
+    attributes, with per-output detail in change_data. Note that change_data and
+    change_amount cover every output coming back to this seed, self-transfers to a receive
+    address included, not just the ones on a change branch. The view layer tells the two
+    apart by the branch index in the derivation path.
 
     has_matching_input_fingerprint answers the earlier question of which seed a psbt is
     for and needs no parse.
+
+    A psbt is written by an untrusted coordinator. The metadata it carries about keys
+    (fingerprints, derivation paths, xpubs) is a claim, not a fact. The onus is on us to
+    verify by re-deriving from the signing seed. For multisig, verification depends on the
+    user providing a "known good" descriptor (i.e. can be trusted) from which we can
+    verify the outputs by deriving from the cosigners' xpubs.
+
+    This class makes the difference visible in its own names:
+
+      claimed_...   coordinator-supplied metadata (fingerprints, derivation paths, xpubs).
+                    Safe to read and display; never safe to make a decision on.
+      verified_...  a fact this device proved by re-deriving from the signing seed and
+                    matching real key material. Only assigned by code that performed that
+                    derivation.
+
+    Invariant: no verified_ value is ever assigned from a claimed_ value without an
+    intervening re-derivation from self.root.
     """
 
     # Upper bound on how many levels of derivation a single parse will cache. 1000 is
@@ -237,27 +257,27 @@ class PSBTParser():
 
             elif is_change:
                 addr = vout[i].script_pubkey.address(NETWORKS[SettingsConstants.map_network_to_embit(self.network)])
-                fingerprints = []
-                derivation_paths = []
+                claimed_fingerprints = []
+                claimed_derivation_paths = []
 
                 # extract info from non-taproot outputs
                 if len(self.psbt.outputs[i].bip32_derivations) > 0:
                     for d, derivation_path in self.psbt.outputs[i].bip32_derivations.items():
-                        fingerprints.append(hexlify(derivation_path.fingerprint).decode())
-                        derivation_paths.append(bip32.path_to_str(derivation_path.derivation))
+                        claimed_fingerprints.append(hexlify(derivation_path.fingerprint).decode())
+                        claimed_derivation_paths.append(bip32.path_to_str(derivation_path.derivation))
 
                 # extract info from taproot outputs
                 if len(self.psbt.outputs[i].taproot_bip32_derivations) > 0:
                     for d, (leaf_hashes, derivation) in self.psbt.outputs[i].taproot_bip32_derivations.items():
-                        fingerprints.append(hexlify(derivation.fingerprint).decode())
-                        derivation_paths.append(bip32.path_to_str(derivation.derivation))
+                        claimed_fingerprints.append(hexlify(derivation.fingerprint).decode())
+                        claimed_derivation_paths.append(bip32.path_to_str(derivation.derivation))
 
                 self.change_data.append({
                     "output_index": i,
                     "address": addr,
                     "amount": vout[i].value,
-                    "fingerprint": fingerprints,
-                    "derivation_path": derivation_paths,
+                    "claimed_fingerprint": claimed_fingerprints,
+                    "claimed_derivation_path": claimed_derivation_paths,
                 })
                 self.change_amount += vout[i].value
 

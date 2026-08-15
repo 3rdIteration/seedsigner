@@ -116,16 +116,16 @@ class PSBTOverviewView(View):
                 {
                     'address': 'bc1q............', 
                     'amount': 397621401, 
-                    'fingerprint': ['22bde1a9', '73c5da0a'], 
-                    'derivation_path': ['m/48h/1h/0h/2h/1/0', 'm/48h/1h/0h/2h/1/0']
+                    'claimed_fingerprint': ['22bde1a9', '73c5da0a'],
+                    'claimed_derivation_path': ['m/48h/1h/0h/2h/1/0', 'm/48h/1h/0h/2h/1/0']
                 }, {},
             ]
         """
         num_change_outputs = 0
         num_self_transfer_outputs = 0
         for change_output in change_data:
-            # print(f"""{change_output["derivation_path"][0]}""")
-            if change_output["derivation_path"][0].split("/")[-2] == "1":
+            # print(f"""{change_output["claimed_derivation_path"][0]}""")
+            if change_output["claimed_derivation_path"][0].split("/")[-2] == "1":
                 num_change_outputs += 1
             else:
                 num_self_transfer_outputs += 1
@@ -325,8 +325,8 @@ class PSBTChangeDetailsView(View):
             {
                 'address': 'bc1q............', 
                 'amount': 397621401, 
-                'fingerprint': ['22bde1a9', '73c5da0a'], 
-                'derivation_path': ['m/48h/1h/0h/2h/1/0', 'm/48h/1h/0h/2h/1/0']
+                'claimed_fingerprint': ['22bde1a9', '73c5da0a'],
+                'claimed_derivation_path': ['m/48h/1h/0h/2h/1/0', 'm/48h/1h/0h/2h/1/0']
             }
         """
 
@@ -334,16 +334,16 @@ class PSBTChangeDetailsView(View):
         # and derivation path.
         seed_fingerprint = self.controller.psbt_seed.get_fingerprint(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
 
-        if seed_fingerprint not in change_data.get("fingerprint"):
+        if seed_fingerprint not in change_data.get("claimed_fingerprint"):
             # TODO: Something is wrong with this psbt(?). Reroute to warning?
             return Destination(NotYetImplementedView)
 
-        i = change_data.get("fingerprint").index(seed_fingerprint)
-        derivation_path = change_data.get("derivation_path")[i]
+        i = change_data.get("claimed_fingerprint").index(seed_fingerprint)
+        claimed_derivation_path = change_data.get("claimed_derivation_path")[i]
 
         # 'm/84h/1h/0h/1/0' would be a change addr while 'm/84h/1h/0h/0/0' is a self-receive
-        is_change_derivation_path = int(derivation_path.split("/")[-2]) == 1
-        derivation_path_addr_index = int(derivation_path.split("/")[-1])
+        is_change_derivation_path = int(claimed_derivation_path.split("/")[-2]) == 1
+        derivation_path_addr_index = int(claimed_derivation_path.split("/")[-1])
 
         if is_change_derivation_path:
             # TRANSLATOR_NOTE: The amount you're receiving back from the transaction
@@ -384,8 +384,8 @@ class PSBTChangeDetailsView(View):
                 script_type = pubkey.script_type()
                 
                 # extract derivation path to get wallet and change derivation
-                change_path = '/'.join(derivation_path.split("/")[-2:])
-                wallet_path = '/'.join(derivation_path.split("/")[:-2])
+                change_path = '/'.join(claimed_derivation_path.split("/")[-2:])
+                wallet_path = '/'.join(claimed_derivation_path.split("/")[:-2])
                 
                 xpub = self.controller.psbt_seed.get_xpub(
                     wallet_path=wallet_path,
@@ -425,7 +425,7 @@ class PSBTChangeDetailsView(View):
             amount=change_data.get("amount"),
             is_multisig=psbt_parser.is_multisig,
             fingerprint=seed_fingerprint,
-            derivation_path=derivation_path,
+            derivation_path=claimed_derivation_path,
             is_change_derivation_path=is_change_derivation_path,
             derivation_path_addr_index=derivation_path_addr_index,
             is_change_addr_verified=is_change_addr_verified,
