@@ -19,6 +19,62 @@ class OPCODES:
 
 
 
+class PSBTVerificationError(Exception):
+    """
+    Base for the checks that reject a psbt outright while it is being parsed.
+
+    A psbt that trips one of these is never shown to the user. The view layer should catch
+    these exceptions and route to a warning (the severity of which and the allowed next
+    steps are determined by the specific subclass error encountered).
+    """
+    pass
+
+
+class PSBTOutputOwnershipClaimError(PSBTVerificationError):
+    """
+    An output scope claims this seed's fingerprint on a key the seed does not derive.
+
+    This is not a psbt that merely fails to be ours. A fingerprint is
+    coordinator-supplied metadata, so this is a psbt asserting that a key belongs to this
+    seed when it does not. On an output that assertion is how a fake change output is
+    dressed up as the user's own, so it should be treated as an attack.
+    """
+    pass
+
+
+class PSBTInputOwnershipClaimError(PSBTVerificationError):
+    """
+    An input scope claims this seed's fingerprint on a key the seed does not derive.
+
+    The same false claim as PSBTOutputOwnershipClaimError, but on an input the threat
+    picture inverts. A forged input claim has no path to losing funds: it cannot produce a
+    signature (embit re-derives the real key and refuses on a mismatch), and it cannot
+    alter the amounts, the fee, or how outputs are classified. The likely causes are
+    instead a psbt assembled for a different wallet, a corrupted entry, or a collaborative
+    spend that happens to include a key whose 4-byte fingerprint collides with ours (1 in
+    2^32 chance).
+
+    The psbt still fails, deliberately, following embit's lead: sign_with raises on this
+    same condition and abandons the entire signing pass, so tolerating the entry here
+    would only defer the failure to a worse spot. Changing this behavior, if desired,
+    should happen in embit first. Until then the trade-off is accepted: a
+    collaborative-spend counterparty could grief such a transaction into unsignability.
+    """
+    pass
+
+
+class PSBTSeedCannotSignError(PSBTVerificationError):
+    """
+    The selected seed holds no key that could sign any input.
+
+    This is a mismatch rather than an attack: the usual cause is the user picking the
+    wrong seed. It is raised so the flow can say so up front, instead of walking the user
+    through reviewing and approving a transaction that would then produce no signatures.
+    """
+    pass
+
+
+
 class PSBTParser():
     """
     Reads a psbt on behalf of one seed and works out everything the signing flow shows the
@@ -26,7 +82,8 @@ class PSBTParser():
     cosigners for multisig), the amount coming in, what is being spent, what comes back as
     change, the fee, where the spend is going, and any OP_RETURN payload.
 
-    Constructing it with a seed parses immediately.
+    Constructing it with a seed parses immediately; see parse() for what that establishes
+    in what order and which psbts it turns away.
 
     The parse fully processes the psbt, validates what it can, then stores the organized
     results in the instance attributes (spend_amount, fee_amount, destination_addresses,
@@ -76,6 +133,12 @@ class PSBTParser():
         self.destination_amounts = []
         self.op_return_data: bytes = None
 
+        # Indexed alongside psbt.inputs / psbt.outputs. Each entry is the derivation path
+        # the seed genuinely owns in each scope or None where it owns nothing. Determined
+        # in _scan_seed_ownership.
+        self.verified_input_derivation_paths: List[List[int] | None] = []
+        self.verified_output_derivation_paths: List[List[int] | None] = []
+
         self.root = None
 
         if self.seed is not None:
@@ -111,6 +174,37 @@ class PSBTParser():
 
     def parse(self):
         """
+        Establishes, in order:
+
+          1. _fill_missing_fingerprints: backfills all-zero fingerprints, but only for
+             scopes the seed provably derives.
+
+          2. _scan_seed_ownership: records, per scope, the derivation path the seed
+             genuinely owns or None. Raises an Input/Output OwnershipClaimError if any
+             scope claims this seed's fingerprint on a key the seed does not control.
+
+          3. _reject_if_seed_cannot_sign: raises PSBTSeedCannotSignError if none of the
+             inputs can be signed by the seed. A mismatch rather than an attack, caught
+             here so the flow can say so before showing a transaction.
+
+          4. _parse_inputs: every input must resolve to the same policy otherwise a
+             RuntimeError is raised. TODO: make this a PSBTVerificationError subclass so
+             the view can deliberately catch this scenario and route accordingly.
+
+             A policy is one of:
+               - single-sig: the script type alone. Says nothing about keys.
+               - multisig, cosigners resolved: script type, m-of-n, and the cosigner
+                 xpubs that every key in the script was traced back to.
+               - multisig, cosigners unresolved: script type and m-of-n only.
+                 _get_policy doesn't propagate cosigner errors, so two such policies match
+                 without anything having tied them to the same keys. TODO: don't let a
+                 policy with no cosigner information pass as a match.
+
+          5. _parse_outputs: works out which outputs come back to this seed. For
+             single-sig this proves the output script derives from the seed at the
+             claimed path. TODO: reject outputs at a path the user's wallet would never
+             scan.
+
         Parsing traverses a derivation path down to an individual address one level at a
         time, over and over, and where that traversal begins depends on the wallet.
 
@@ -118,7 +212,7 @@ class PSBTParser():
         the PSBT claims is ours.
 
         Multisig instead traverses just the last two levels down from each cosigner's
-        account xpub — once per cosigner, on every INPUT and on every OUTPUT carrying the
+        account xpub, once per cosigner, on every INPUT and on every OUTPUT carrying the
         multisig script.
 
         Deriving each level costs a hash and an elliptic curve operation, and these
@@ -144,6 +238,11 @@ class PSBTParser():
 
         # Try to fix missing fingerprints before parsing
         self._fill_missing_fingerprints(child_key_derivation_cache)
+
+        # Work out what this seed actually owns before anything below reads the psbt's
+        # claims about it.
+        self._scan_seed_ownership(child_key_derivation_cache)
+        self._reject_if_seed_cannot_sign()
 
         rt = self._parse_inputs(child_key_derivation_cache)
         if rt == False:
@@ -232,9 +331,6 @@ class PSBTParser():
                     elif self.policy["type"] == "p2wpkh" and my_pubkey is not None:
                         sc = script.p2wpkh(my_pubkey)
 
-                    if sc.data == vout[i].script_pubkey.data:
-                        is_change = True
-
                 elif "p2tr" in self.policy["type"]:
                     my_pubkey = None
                     # should have one or zero derivations for single-key addresses
@@ -244,9 +340,6 @@ class PSBTParser():
                         der = derivation.derivation
                         my_pubkey = PSBTParser._derive_with_cache(self.root, der, child_key_derivation_cache)
                         sc = script.p2tr(my_pubkey)
-
-                    if sc.data == vout[i].script_pubkey.data:
-                        is_change = True
 
                 if sc.data == vout[i].script_pubkey.data:
                     is_change = True
@@ -353,6 +446,12 @@ class PSBTParser():
                     cosigners = PSBTParser._get_cosigners(pubkeys, scope.bip32_derivations, xpubs, child_key_derivation_cache)
                     policy.update({"m": m, "n": n, "cosigners": cosigners})
                 except:
+                    # TODO: stop swallowing everything here. This also catches bugs in the
+                    # cosigner check itself, and cannot tell those apart from the psbt
+                    # simply not supplying xpubs to check against, which is valid and must
+                    # not be rejected outright. The fallback policy carries no cosigner
+                    # information at all, and two of those compare equal on script type
+                    # and m-of-n alone. Fix pending with the multisig verification work.
                     policy.update({"m": m, "n": n})
         
         return policy
@@ -398,7 +497,7 @@ class PSBTParser():
         cache, so a later derivation running through that level picks it up instead of
         deriving it a second time.
 
-        Entries are keyed on (id(parent_key), derivation_path_so_far) — the path traversed
+        Entries are keyed on (id(parent_key), derivation_path_so_far), the path traversed
         down from that parent to reach this point. id() is the Python built-in for an
         object's identity; the parent belongs in the key because a multisig parse runs
         these same derivations below each cosigner's xpub in turn.
@@ -529,6 +628,134 @@ class PSBTParser():
                     return True
         
         return False
+
+
+    @staticmethod
+    def seed_owns_pubkey(root: bip32.HDKey, claimed_derivation_path: List[int], public_key: PublicKey, child_key_derivation_cache: dict | None, is_taproot: bool = False) -> bool:
+        """
+        Returns True if the signing seed (root) really does derive public_key at
+        claimed_derivation_path.
+
+        This is the canonical ownership check. The fingerprint a psbt or a descriptor
+        carries alongside a key is metadata that whoever wrote the file chose, so it can
+        say anything. Ownership is established here and only here, by deriving the key
+        again from the seed and comparing the actual key material.
+        """
+        derived_public_key = PSBTParser._derive_with_cache(root, claimed_derivation_path, child_key_derivation_cache).get_public_key()
+
+        if is_taproot:
+            # Taproot keys are x-only
+            return derived_public_key.xonly() == public_key.xonly()
+
+        # For ecdsa the parity byte IS part of the identity, so compare the full key.
+        # This is deliberately stricter than embit, whose sign_with compares x-only even
+        # for ecdsa. embit would sign a psbt whose entry names the parity-flipped twin of
+        # our real key. The flipped key is still one this seed does NOT derive, and the
+        # signature embit produces under it is one no standard finalizer can use. So this
+        # extra strictness only rejects transactions that could never actually complete.
+        return derived_public_key == public_key
+
+
+    @staticmethod
+    def _get_seed_derivation_path(scope: InputScope | OutputScope, root: bip32.HDKey, child_key_derivation_cache: dict) -> List[int] | None:
+        """
+        Scans the derivation path(s) in the provided input or output scope to determine
+        which, if any, are provably derived from the signing seed (for multisig a path is
+        provided per key; if the seed is part of the multisig, one of the n paths will
+        match). Returns the verified derivation path (as a list of ints) or None.
+
+        Every key in the scope that claims this seed's fingerprint is re-derived and
+        checked. A claim that does not hold up raises
+        PSBT[Output|Input]OwnershipClaimError. This includes fingerprint collisions (two
+        different keys with the same 4-byte fingerprint):
+        * On the output side, a collision is considered an attack.
+        * On the input side it is merely disallowed because it is unsignable by embit.
+
+        One edge case:
+        * A multisig could use this seed in more than one cosigner slot, each
+          at its own derivation path. The scope then carries several entries that all
+          verify against this seed; we return the first but still check the rest.
+
+        The path itself is still whatever the psbt supplied: it can be any length or
+        shape, since any path that derives from the seed will pass. Whether the path is
+        one the user's wallet would ever look at is a separate question, answered
+        elsewhere.
+        """
+        seed_fingerprint = root.my_fingerprint
+        verified_derivation_path = None
+
+        def _check_claim(public_key: PublicKey, derivation_path_obj: DerivationPath, is_taproot: bool):
+            nonlocal verified_derivation_path
+
+            if derivation_path_obj.fingerprint != seed_fingerprint:
+                # Claims to belong to some other key. Nothing to prove or disprove here.
+                return
+
+            if not PSBTParser.seed_owns_pubkey(root, derivation_path_obj.derivation, public_key, child_key_derivation_cache, is_taproot=is_taproot):
+                error_class = (PSBTInputOwnershipClaimError if isinstance(scope, InputScope) else PSBTOutputOwnershipClaimError)
+                raise error_class(f"Key at {bip32.path_to_str(derivation_path_obj.derivation)} claims this seed's fingerprint but does not derive from it")
+
+            # Store only the first verified path
+            if verified_derivation_path is None:
+                verified_derivation_path = derivation_path_obj.derivation
+
+        # Note that both loops check EVERY claim
+        for public_key, derivation_path_obj in scope.bip32_derivations.items():
+            _check_claim(public_key, derivation_path_obj, is_taproot=False)
+
+        for public_key, (leaf_hashes, derivation_path_obj) in scope.taproot_bip32_derivations.items():
+            # TODO: Support keys in taptree leaves
+            _check_claim(public_key, derivation_path_obj, is_taproot=True)
+
+        return verified_derivation_path
+
+
+    def _scan_seed_ownership(self, child_key_derivation_cache: dict):
+        """
+        Verifies the input/output derivation paths the signing seed provably owns and
+        stores them in verified_[input|output]_derivation_paths. These member vars are the
+        definitive ownership record from this point forward in the psbt parse.
+
+        The coordinator-supplied fingerprints cannot be trusted as-is. We must derive and
+        verify the ownership of each one that claims to belong to this seed.
+
+        Outputs are scanned before inputs; a false claim on an output (e.g. fake-change
+        forgery) is likely an attack whereas a false claim on an input is merely
+        unsignable.
+
+        Raises PSBT[Output|Input]OwnershipClaimError on the first false claim detected.
+        """
+        self.verified_output_derivation_paths = [
+            PSBTParser._get_seed_derivation_path(out, self.root, child_key_derivation_cache)
+            for out in self.psbt.outputs
+        ]
+
+        self.verified_input_derivation_paths = [
+            PSBTParser._get_seed_derivation_path(inp, self.root, child_key_derivation_cache)
+            for inp in self.psbt.inputs
+        ]
+
+
+    def _reject_if_seed_cannot_sign(self):
+        """
+        Rejects the psbt when none of its inputs rely on a key derived by this seed.
+
+        We detect it here, early, so the psbt can be rejected without sending the user
+        through the full verification flow only for signing to fail at the end anyway.
+
+        (embit's sign_with is marginally more permissive: it also signs an input whose
+        script names the master key directly, with no derivation. That runs against how HD
+        wallets are built. The master key is a derivation root, not a spending key, so no
+        standard wallet produces such a psbt. We deliberately ignore this case.)
+        """
+        # An input names a key at a derivation path and _scan_seed_ownership proved the
+        # seed derives it (single-sig: one such key; multisig: one per cosigner, ours
+        # among them). One verified input path is enough for the psbt to be signable.
+        if any(path is not None for path in self.verified_input_derivation_paths):
+            return
+
+        # There's nothing for this seed to sign
+        raise PSBTSeedCannotSignError()
 
 
     def verify_multisig_output(self, descriptor: Descriptor, change_num: int) -> bool:
