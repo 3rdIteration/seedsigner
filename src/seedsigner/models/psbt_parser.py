@@ -277,8 +277,8 @@ class PSBTParser():
                     "output_index": i,
                     "address": addr,
                     "amount": vout[i].value,
-                    "claimed_fingerprint": claimed_fingerprints,
-                    "claimed_derivation_path": claimed_derivation_paths,
+                    "claimed_fingerprints": claimed_fingerprints,
+                    "claimed_derivation_paths": claimed_derivation_paths,
                 })
                 self.change_amount += vout[i].value
 

@@ -321,8 +321,8 @@ def test_p2tr_change_detection():
             'output_index': 0,
             'address': 'bcrt1prz4g6saush37epdwhvwpu78td3q7yfz3xxz37axlx7udck6wracq3rwq30',
             'amount': 2871443918,
-            'claimed_fingerprint': ['394aed14'],
-            'claimed_derivation_path': ['m/86h/1h/0h/1/1']}
+            'claimed_fingerprints': ['394aed14'],
+            'claimed_derivation_paths': ['m/86h/1h/0h/1/1']}
         ]
     assert pp.spend_amount == 319049328
     assert pp.change_amount == 2871443918
@@ -481,8 +481,8 @@ def test_parse_op_return_content():
             'output_index': 0,
             'address': 'bcrt1qvwkhakqhz7m7kmz6332avatsmdy32m644g86vv',
             'amount': 99992296,
-            'claimed_fingerprint': ['0fb882ff'],
-            'claimed_derivation_path': ["m/84h/1h/0h/0/2"]}
+            'claimed_fingerprints': ['0fb882ff'],
+            'claimed_derivation_paths': ["m/84h/1h/0h/0/2"]}
         ]
     assert psbt_parser.spend_amount == 0  # This is a self-spend; no value being spent, other than the tx fee
     assert psbt_parser.change_amount == 99992296

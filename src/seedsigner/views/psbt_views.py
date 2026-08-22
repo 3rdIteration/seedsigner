@@ -116,16 +116,15 @@ class PSBTOverviewView(View):
                 {
                     'address': 'bc1q............', 
                     'amount': 397621401, 
-                    'claimed_fingerprint': ['22bde1a9', '73c5da0a'],
-                    'claimed_derivation_path': ['m/48h/1h/0h/2h/1/0', 'm/48h/1h/0h/2h/1/0']
+                    'claimed_fingerprints': ['22bde1a9', '73c5da0a'],
+                    'claimed_derivation_paths': ['m/48h/1h/0h/2h/1/0', 'm/48h/1h/0h/2h/1/0']
                 }, {},
             ]
         """
         num_change_outputs = 0
         num_self_transfer_outputs = 0
         for change_output in change_data:
-            # print(f"""{change_output["claimed_derivation_path"][0]}""")
-            if change_output["claimed_derivation_path"][0].split("/")[-2] == "1":
+            if change_output["claimed_derivation_paths"][0].split("/")[-2] == "1":
                 num_change_outputs += 1
             else:
                 num_self_transfer_outputs += 1
@@ -325,8 +324,8 @@ class PSBTChangeDetailsView(View):
             {
                 'address': 'bc1q............', 
                 'amount': 397621401, 
-                'claimed_fingerprint': ['22bde1a9', '73c5da0a'],
-                'claimed_derivation_path': ['m/48h/1h/0h/2h/1/0', 'm/48h/1h/0h/2h/1/0']
+                'claimed_fingerprints': ['22bde1a9', '73c5da0a'],
+                'claimed_derivation_paths': ['m/48h/1h/0h/2h/1/0', 'm/48h/1h/0h/2h/1/0']
             }
         """
 
@@ -334,12 +333,12 @@ class PSBTChangeDetailsView(View):
         # and derivation path.
         seed_fingerprint = self.controller.psbt_seed.get_fingerprint(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
 
-        if seed_fingerprint not in change_data.get("claimed_fingerprint"):
+        if seed_fingerprint not in change_data.get("claimed_fingerprints"):
             # TODO: Something is wrong with this psbt(?). Reroute to warning?
             return Destination(NotYetImplementedView)
 
-        i = change_data.get("claimed_fingerprint").index(seed_fingerprint)
-        claimed_derivation_path = change_data.get("claimed_derivation_path")[i]
+        i = change_data.get("claimed_fingerprints").index(seed_fingerprint)
+        claimed_derivation_path = change_data.get("claimed_derivation_paths")[i]
 
         # 'm/84h/1h/0h/1/0' would be a change addr while 'm/84h/1h/0h/0/0' is a self-receive
         is_change_derivation_path = int(claimed_derivation_path.split("/")[-2]) == 1
