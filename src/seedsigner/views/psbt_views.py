@@ -484,7 +484,7 @@ class PSBTSeedCannotSignView(View):
             title=_("Seed Can't Sign"),
             status_icon_name=SeedSignerIconConstants.INFO,
             status_color=GUIConstants.INFO_COLOR,
-            text=_("None of the inputs in this psbt are controlled by this seed."),
+            text=_("None of the inputs in this transaction are controlled by this seed."),
             button_data=[self.SELECT_DIFFERENT_SEED],
             show_back_button=False,
         )
