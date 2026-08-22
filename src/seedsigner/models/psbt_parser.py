@@ -50,7 +50,8 @@ class PSBTParser():
                     derivation.
 
     Invariant: no verified_ value is ever assigned from a claimed_ value without an
-    intervening re-derivation from self.root.
+    intervening re-derivation from self.root or from a user-supplied "known good"
+    descriptor.
     """
 
     # Upper bound on how many levels of derivation a single parse will cache. 1000 is
