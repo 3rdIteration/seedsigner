@@ -1,5 +1,53 @@
-picamera==1.13
+# Raspberry Pi hardware dependencies (installed on the Pi itself; see
+# docs/raspberry_pi_os_build_instructions.md). Entries are pinned and
+# hash-locked: pip refuses any artifact that does not match a hash below.
+# Hashes cover every published file of each release (wheels + sdist).
+#
+# To update a pin: change the version, then refresh its hashes from
+# https://pypi.org/pypi/<package>/<version>/json (or pip download + pip hash).
+#
+# NOTE: piwheels rebuilds wheels, so its artifacts will not match these PyPI
+# hashes. pip skips the mismatched piwheels candidates and builds from the
+# PyPI sdists instead (the from-source build the install doc already assumes);
+# very old pips may error on the mismatch instead of skipping — upgrade pip.
+picamera==1.13 \
+    --hash=sha256:890815aa01e4d855a6a95dd3ad0953b872a6b954982106407df0c5a31a163e50
 # numpy = transitive picamera dependency
-numpy==1.25.0
-RPi.GPIO==0.7.1
-spidev==3.6
+numpy==1.25.0 \
+    --hash=sha256:0ac6edfb35d2a99aaf102b509c8e9319c499ebd4978df4971b94419a116d0790 \
+    --hash=sha256:26815c6c8498dc49d81faa76d61078c4f9f0859ce7817919021b9eba72b425e3 \
+    --hash=sha256:4aedd08f15d3045a4e9c648f1e04daca2ab1044256959f1f95aafeeb3d794c16 \
+    --hash=sha256:4c69fe5f05eea336b7a740e114dec995e2f927003c30702d896892403df6dbf0 \
+    --hash=sha256:5177310ac2e63d6603f659fadc1e7bab33dd5a8db4e0596df34214eeab0fee3b \
+    --hash=sha256:5aa48bebfb41f93043a796128854b84407d4df730d3fb6e5dc36402f5cd594c0 \
+    --hash=sha256:5b1b90860bf7d8a8c313b372d4f27343a54f415b20fb69dd601b7efe1029c91e \
+    --hash=sha256:6c284907e37f5e04d2412950960894b143a648dea3f79290757eb878b91acbd1 \
+    --hash=sha256:6d183b5c58513f74225c376643234c369468e02947b47942eacbb23c1671f25d \
+    --hash=sha256:7412125b4f18aeddca2ecd7219ea2d2708f697943e6f624be41aa5f8a9852cc4 \
+    --hash=sha256:7cd981ccc0afe49b9883f14761bb57c964df71124dcd155b0cba2b591f0d64b9 \
+    --hash=sha256:85cdae87d8c136fd4da4dad1e48064d700f63e923d5af6c8c782ac0df8044542 \
+    --hash=sha256:8aa130c3042052d656751df5e81f6d61edff3e289b5994edcf77f54118a8d9f4 \
+    --hash=sha256:95367ccd88c07af21b379be1725b5322362bb83679d36691f124a16357390153 \
+    --hash=sha256:9c7211d7920b97aeca7b3773a6783492b5b93baba39e7c36054f6e749fc7490c \
+    --hash=sha256:9e3f2b96e3b63c978bc29daaa3700c028fe3f049ea3031b58aa33fe2a5809d24 \
+    --hash=sha256:b76aa836a952059d70a2788a2d98cb2a533ccd46222558b6970348939e55fc24 \
+    --hash=sha256:b792164e539d99d93e4e5e09ae10f8cbe5466de7d759fc155e075237e0c274e4 \
+    --hash=sha256:c0dc071017bc00abb7d7201bac06fa80333c6314477b3d10b52b58fa6a6e38f6 \
+    --hash=sha256:cc3fda2b36482891db1060f00f881c77f9423eead4c3579629940a3e12095fe8 \
+    --hash=sha256:d6b267f349a99d3908b56645eebf340cb58f01bd1e773b4eea1a905b3f0e4208 \
+    --hash=sha256:d76a84998c51b8b68b40448ddd02bd1081bb33abcdc28beee6cd284fe11036c6 \
+    --hash=sha256:e559c6afbca484072a98a51b6fa466aae785cfe89b69e8b856c3191bc8872a82 \
+    --hash=sha256:ecc68f11404930e9c7ecfc937aa423e1e50158317bf67ca91736a9864eae0232 \
+    --hash=sha256:f1accae9a28dc3cda46a91de86acf69de0d1b5f4edd44a9b0c3ceb8036dfff19
+RPi.GPIO==0.7.1 \
+    --hash=sha256:15311d3b063b71dee738cd26570effc9985a952454d162937c34e08c0fc99902 \
+    --hash=sha256:26b2ade4bb353bbe5417a64e40b45cdf00a82f27c2d320c0dd46c59751959d77 \
+    --hash=sha256:29226823da8b5ccb9001d795a944f2e00924eeae583490f0bc7317581172c624 \
+    --hash=sha256:57b6c044ef5375a78c8dda27cdfadf329e76aa6943cd6cffbbbd345a9adf9ca5 \
+    --hash=sha256:77afb817b81331ce3049a4b8f94a85e41b7c404d8e56b61ac0f1eb75c3120868 \
+    --hash=sha256:96ea7e5bf6bf592828487bfa7d3d1d0e432d5d1682e9e33b4dab398914628fcd \
+    --hash=sha256:b86b66dc02faa5461b443a1e1f0c1d209d64ab5229696f32fb3b0215e0600c8c \
+    --hash=sha256:cd61c4b03c37b62bba4a5acfea9862749c33c618e0295e7e90aa4713fb373b70
+spidev==3.6 \
+    --hash=sha256:14dbc37594a4aaef85403ab617985d3c3ef464d62bc9b769ef552db53701115b \
+    --hash=sha256:280abc00a1ef7780ef62c3f294f52a2527b6c47d8c269fea98664970bcaf6da5
