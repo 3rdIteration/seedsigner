@@ -21,19 +21,18 @@ class OPCODES:
 
 class PSBTParser():
     """
-    Reads a psbt on behalf of one seed and works out everything the signing flow shows
-    the user before they approve: the wallet policy (script type, plus m-of-n and the
-    cosigners for multisig), the amount coming in, what is being spent, what comes back
-    as change, the fee, where the spend is going, and any OP_RETURN payload.
+    Reads a psbt on behalf of one seed and works out everything the signing flow shows the
+    user before they approve: the wallet policy (script type, plus m-of-n and the
+    cosigners for multisig), the amount coming in, what is being spent, what comes back as
+    change, the fee, where the spend is going, and any OP_RETURN payload.
 
-    Constructing it with a seed parses immediately. The results are read off the instance
-    attributes, with per-output detail in change_data. Note that change_data and
-    change_amount cover every output coming back to this seed, self-transfers to a receive
-    address included, not just the ones on a change branch. The view layer tells the two
+    Constructing it with a seed parses immediately.
+
+    The parse fully processes the psbt, validates what it can, then stores the organized
+    results in the instance attributes (spend_amount, fee_amount, destination_addresses,
+    etc.). Note that change_data and change_amount cover EVERY output coming back to this
+    seed, including self-transfers to a receive address. The view layer tells the two
     apart by the branch index in the derivation path.
-
-    has_matching_input_fingerprint answers the earlier question of which seed a psbt is
-    for and needs no parse.
 
     A psbt is written by an untrusted coordinator. The metadata it carries about keys
     (fingerprints, derivation paths, xpubs) is a claim, not a fact. The onus is on us to
@@ -490,8 +489,13 @@ class PSBTParser():
     @staticmethod
     def has_matching_input_fingerprint(psbt: PSBT, seed: Seed, network: str = SettingsConstants.MAINNET):
         """
-            Extracts the fingerprint from each psbt input utxo. Returns True if any match
-            the current seed.
+            Extracts the claimed fingerprint from each psbt input. Returns True if any
+            match the provided seed.
+
+            This is merely a routing hint to help the user select a seed that looks like
+            it should be able to sign the psbt; it verifies nothing. Actual verification
+            only begins once a seed has been selected and passed into a PSBTParser
+            instance.
         """
         seed_fingerprint = seed.get_fingerprint(network)
         
