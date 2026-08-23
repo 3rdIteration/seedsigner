@@ -21,16 +21,36 @@ class OPCODES:
 
 class PSBTParser():
     """
-    Reads a psbt on behalf of one seed and works out everything the signing flow shows
-    the user before they approve: the wallet policy (script type, plus m-of-n and the
-    cosigners for multisig), the amount coming in, what is being spent, what comes back
-    as change, the fee, where the spend is going, and any OP_RETURN payload.
+    Reads a psbt on behalf of one seed and works out everything the signing flow shows the
+    user before they approve: the wallet policy (script type, plus m-of-n and the
+    cosigners for multisig), the amount coming in, what is being spent, what comes back as
+    change, the fee, where the spend is going, and any OP_RETURN payload.
 
-    Constructing it with a seed parses immediately. The results are read off the instance
-    attributes, with per-change-output detail in change_data.
+    Constructing it with a seed parses immediately.
 
-    has_matching_input_fingerprint answers the earlier question of which seed a psbt is
-    for and needs no parse.
+    The parse fully processes the psbt, validates what it can, then stores the organized
+    results in the instance attributes (spend_amount, fee_amount, destination_addresses,
+    etc.). Note that change_data and change_amount cover EVERY output coming back to this
+    seed, including self-transfers to a receive address. The view layer tells the two
+    apart by the branch index in the derivation path.
+
+    A psbt is written by an untrusted coordinator. The metadata it carries about keys
+    (fingerprints, derivation paths, xpubs) is a claim, not a fact. The onus is on us to
+    verify by re-deriving from the signing seed. For multisig, verification depends on the
+    user providing a "known good" descriptor (i.e. can be trusted) from which we can
+    verify the outputs by deriving from the cosigners' xpubs.
+
+    This class makes the difference visible in its own names:
+
+      claimed_...   coordinator-supplied metadata (fingerprints, derivation paths, xpubs).
+                    Safe to read and display; never safe to make a decision on.
+      verified_...  a fact this device proved by re-deriving from the signing seed and
+                    matching real key material. Only assigned by code that performed that
+                    derivation.
+
+    Invariant: no verified_ value is ever assigned from a claimed_ value without an
+    intervening re-derivation from self.root or from a user-supplied "known good"
+    descriptor.
     """
 
     # Upper bound on how many levels of derivation a single parse will cache. 1000 is
@@ -237,27 +257,27 @@ class PSBTParser():
 
             elif is_change:
                 addr = vout[i].script_pubkey.address(NETWORKS[SettingsConstants.map_network_to_embit(self.network)])
-                fingerprints = []
-                derivation_paths = []
+                claimed_fingerprints = []
+                claimed_derivation_paths = []
 
                 # extract info from non-taproot outputs
                 if len(self.psbt.outputs[i].bip32_derivations) > 0:
                     for d, derivation_path in self.psbt.outputs[i].bip32_derivations.items():
-                        fingerprints.append(hexlify(derivation_path.fingerprint).decode())
-                        derivation_paths.append(bip32.path_to_str(derivation_path.derivation))
+                        claimed_fingerprints.append(hexlify(derivation_path.fingerprint).decode())
+                        claimed_derivation_paths.append(bip32.path_to_str(derivation_path.derivation))
 
                 # extract info from taproot outputs
                 if len(self.psbt.outputs[i].taproot_bip32_derivations) > 0:
                     for d, (leaf_hashes, derivation) in self.psbt.outputs[i].taproot_bip32_derivations.items():
-                        fingerprints.append(hexlify(derivation.fingerprint).decode())
-                        derivation_paths.append(bip32.path_to_str(derivation.derivation))
+                        claimed_fingerprints.append(hexlify(derivation.fingerprint).decode())
+                        claimed_derivation_paths.append(bip32.path_to_str(derivation.derivation))
 
                 self.change_data.append({
                     "output_index": i,
                     "address": addr,
                     "amount": vout[i].value,
-                    "fingerprint": fingerprints,
-                    "derivation_path": derivation_paths,
+                    "claimed_fingerprints": claimed_fingerprints,
+                    "claimed_derivation_paths": claimed_derivation_paths,
                 })
                 self.change_amount += vout[i].value
 
@@ -469,8 +489,13 @@ class PSBTParser():
     @staticmethod
     def has_matching_input_fingerprint(psbt: PSBT, seed: Seed, network: str = SettingsConstants.MAINNET):
         """
-            Extracts the fingerprint from each psbt input utxo. Returns True if any match
-            the current seed.
+            Extracts the claimed fingerprint from each psbt input. Returns True if any
+            match the provided seed.
+
+            This is merely a routing hint to help the user select a seed that looks like
+            it should be able to sign the psbt; it verifies nothing. Actual verification
+            only begins once a seed has been selected and passed into a PSBTParser
+            instance.
         """
         seed_fingerprint = seed.get_fingerprint(network)
         
