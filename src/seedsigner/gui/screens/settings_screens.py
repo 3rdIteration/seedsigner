@@ -9,6 +9,7 @@ from typing import List
 
 
 from seedsigner.helpers.l10n import mark_for_translation as _mft
+from seedsigner.helpers.system_memory import format_kb, get_memory_stats
 from seedsigner.gui.components import Button, CheckboxButton, CheckedSelectionButton, FontAwesomeIconConstants, Fonts, GUIConstants, Icon, IconButton, IconTextLine, SeedSignerIconConstants, TextArea, resize_image_to_fit
 from seedsigner.gui.screens.scan_screens import ScanScreen
 from seedsigner.gui.screens.screen import BaseScreen, BaseTopNavScreen, ButtonListScreen, ButtonOption, KeyboardScreen
@@ -569,6 +570,134 @@ class SystemInfoScreen(BaseTopNavScreen):
             )
             self.components.append(text_area)
             start_y += text_area.height + line_spacing
+
+
+@dataclass
+class MemoryInfoScreen(BaseTopNavScreen):
+    """Live system RAM usage, refreshed on a timer.
+
+    Polls like BatteryInfoScreen, but lays its rows out left-aligned like
+    SystemInfoScreen: these values are columnar and centering makes them hard to
+    compare at a glance.
+    """
+    # Seconds between reads. /proc/meminfo is cheap, but re-rendering six
+    # TextAreas is not free on a Luckfox, so don't poll faster than the numbers
+    # are worth watching.
+    REFRESH_INTERVAL = 2.0
+
+    # (attribute name, display label) -- also fixes the row order.
+    ROWS = [
+        ("total_text", "Total"),
+        ("available_text", "Available"),
+        ("free_text", "Free"),
+        ("cached_text", "Buf/Cache"),
+        ("swap_text", "Swap"),
+        ("rss_text", "App (RSS)"),
+    ]
+
+    def __post_init__(self):
+        self.title = _("Memory Info")
+        super().__post_init__()
+
+        # Labels are translated once here rather than on every refresh tick.
+        self.row_labels = [
+            (attr, _(label)) for attr, label in MemoryInfoScreen.ROWS
+        ]
+
+        start_y = self.top_nav.height + 2 * GUIConstants.COMPONENT_PADDING
+        line_spacing = GUIConstants.COMPONENT_PADDING
+
+        # Populate with a real reading immediately; waiting for the first thread
+        # tick would show a screen full of placeholders for two seconds.
+        for (attr, _label), line in zip(self.row_labels, self._build_lines()):
+            text_area = self._build_text_area(line, start_y)
+            setattr(self, attr, text_area)
+            self.components.append(text_area)
+            start_y += text_area.height + line_spacing
+
+        self.threads.append(MemoryInfoScreen.UpdateThread(self))
+
+    def _build_text_area(self, text: str, screen_y: int) -> TextArea:
+        return TextArea(
+            text=text,
+            screen_x=GUIConstants.EDGE_PADDING,
+            width=self.canvas_width - 2 * GUIConstants.EDGE_PADDING,
+            is_text_centered=False,
+            auto_line_break=True,
+            screen_y=screen_y,
+        )
+
+    def _build_lines(self) -> List[str]:
+        """Read memory now and format one "Label: value" line per row."""
+        stats = get_memory_stats()
+
+        available = format_kb(stats.available_kb)
+        percent = stats.available_percent
+        if percent is not None:
+            available = f"{available} ({percent:.0f}%)"
+
+        if stats.swap_total_kb:
+            swap = f"{format_kb(stats.swap_used_kb)} / {format_kb(stats.swap_total_kb)}"
+        elif stats.swap_total_kb == 0:
+            # A real answer, and the expected one on these boards; "0.0 MB / 0.0 MB"
+            # reads like a failed lookup.
+            swap = _("None")
+        else:
+            swap = "--"
+
+        values = [
+            format_kb(stats.total_kb),
+            available,
+            format_kb(stats.free_kb),
+            format_kb(stats.buffers_cached_kb),
+            swap,
+            format_kb(stats.app_rss_kb),
+        ]
+
+        return [
+            f"{label}: {value}"
+            for (_attr, label), value in zip(self.row_labels, values)
+        ]
+
+    def _replace_info_text(self, attribute: str, text: str) -> None:
+        text_area = getattr(self, attribute)
+        if text_area.text == text:
+            # Most rows are unchanged between ticks; skip the re-render.
+            return
+
+        updated_area = self._build_text_area(text, text_area.screen_y)
+        try:
+            index = self.components.index(text_area)
+        except ValueError:
+            index = None
+        if index is None:
+            self.components.append(updated_area)
+        else:
+            self.components[index] = updated_area
+        setattr(self, attribute, updated_area)
+        updated_area.render()
+
+    class UpdateThread(BaseThread):
+        def __init__(self, screen):
+            super().__init__()
+            self.screen = screen
+
+        def run(self):
+            while self.keep_running:
+                # Read outside the lock; only the render needs it.
+                lines = self.screen._build_lines()
+                with self.screen.renderer.lock:
+                    for (attr, _label), line in zip(self.screen.row_labels, lines):
+                        self.screen._replace_info_text(attr, line)
+                    self.screen.renderer.show_image()
+
+                # Sleep in short steps rather than one flat interval:
+                # BaseScreen.display() spins until every thread is dead, so a
+                # flat sleep would make the back button feel laggy on exit.
+                elapsed = 0.0
+                while self.keep_running and elapsed < MemoryInfoScreen.REFRESH_INTERVAL:
+                    time.sleep(0.25)
+                    elapsed += 0.25
 
 
 @dataclass

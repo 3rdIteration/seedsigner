@@ -29,6 +29,7 @@ class SettingsMenuView(View):
     RESTART_PCSC = ButtonOption("Restart PCSC")
     BATTERY_INFO = ButtonOption("Battery info")
     SYSTEM_INFO = ButtonOption("System info")
+    MEMORY_INFO = ButtonOption("Memory info")
     TEST_HARDENING = ButtonOption("Test hardening")
     LOAD_BACKUP_FILES = ButtonOption("Load Backup Files", right_icon_name=SeedSignerIconConstants.CHEVRON_RIGHT)
 
@@ -91,6 +92,7 @@ class SettingsMenuView(View):
         elif self.visibility == SettingsConstants.VISIBILITY__HARDWARE:
             title = "Hardware"
             button_data.append(self.SYSTEM_INFO)
+            button_data.append(self.MEMORY_INFO)
             button_data.append(self.BATTERY_INFO)
             button_data.append(self.IO_TEST)
             if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
@@ -158,6 +160,9 @@ class SettingsMenuView(View):
 
         elif button_data[selected_menu_num] == self.SYSTEM_INFO:
             return Destination(SystemInfoView)
+
+        elif button_data[selected_menu_num] == self.MEMORY_INFO:
+            return Destination(MemoryInfoView)
 
         elif settings_entries[selected_menu_num].attr_name == SettingsConstants.SETTING__ENCRYPTION_ITER:
             return Destination(SettingPBKDF2IterationsView, view_args=dict(attr_name=settings_entries[selected_menu_num].attr_name, parent_initial_scroll=initial_scroll))
@@ -932,6 +937,18 @@ class SystemInfoView(View):
             os_build=self._format_build(os_release, "SEEDSIGNER_OS_"),
             app_build=self._format_build(os_release, "SEEDSIGNER_APP_"),
         )
+
+        return Destination(SettingsMenuView, view_args={"visibility": SettingsConstants.VISIBILITY__HARDWARE})
+
+
+class MemoryInfoView(View):
+    """Live RAM headroom, mainly for the memory-constrained Luckfox Pico boards.
+
+    All probing lives in helpers.system_memory and all polling in the screen's
+    update thread, so this View stays a thin route.
+    """
+    def run(self):
+        self.run_screen(settings_screens.MemoryInfoScreen)
 
         return Destination(SettingsMenuView, view_args={"visibility": SettingsConstants.VISIBILITY__HARDWARE})
 
