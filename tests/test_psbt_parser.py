@@ -212,14 +212,63 @@ class TestPSBTParser:
                     from binascii import hexlify
                     fingerprint_hex = hexlify(derivation.fingerprint).decode()
                     
-                    # Check if this public key derives from the current seed
+                    # Check if this public key derives from the current seed. A psbt
+                    # carries a taproot key as its bare 32-byte x coordinate, and embit
+                    # rebuilds a full key from it by just assuming even parity. The real
+                    # derived key can be odd-parity, so a full-key compare would wrongly
+                    # report a mismatch. Only the x coordinate is real data: compare
+                    # x-only.
                     derived_key = parser.root.derive(derivation.derivation)
-                    if derived_key.key.sec() == pub.sec():
+                    if derived_key.xonly() == pub.xonly():
                         # This pubkey derives from current seed, should have current seed's fingerprint
                         assert fingerprint_hex == seed_fingerprint, f"Expected {seed_fingerprint}, got {fingerprint_hex} for taproot pubkey that derives from current seed"
                     else:
                         # This pubkey doesn't derive from current seed, should remain 00000000
                         assert fingerprint_hex == "00000000"
+
+        # All of the above only proves the even-parity case. A psbt carries taproot keys
+        # as bare 32-byte x coordinates and embit rebuilds full keys from them by assuming
+        # even parity; that assumption happens to hold for the fixture's key at
+        # m/86h/1h/0h/0/0. Re-key the taproot input to a path whose key really derives
+        # with odd parity to prove the ownership fallback compares x-only rather than
+        # trusting embit's artificial parity.
+        root = root_for_seed(PSBTTestData.seed)
+        odd_parity_derivation_path = "m/86h/1h/0h/0/1"
+        odd_parity_public_key = root.derive(odd_parity_derivation_path).get_public_key()
+        assert odd_parity_public_key.sec()[0] == 0x03  # odd parity
+
+        psbt = PSBT.parse(a2b_base64(PSBTTestData.SINGLE_SIG_TAPROOT_1_INPUT))
+        taproot_input = psbt.inputs[0]
+
+        # Present the key the way embit's psbt parsing yields it: rebuilt from just the
+        # x coordinate, carrying the assumed even parity (wrong for this key)
+        x_only_public_key = PublicKey.from_xonly(odd_parity_public_key.xonly())
+        taproot_input.taproot_bip32_derivations.clear()
+        taproot_input.taproot_bip32_derivations[x_only_public_key] = ([], DerivationPath(
+            fingerprint=b"\x00\x00\x00\x00",
+            derivation=bip32.parse_path(odd_parity_derivation_path)
+        ))
+        taproot_input.taproot_internal_key = x_only_public_key
+        taproot_input.witness_utxo.script_pubkey = script.p2tr(x_only_public_key)
+
+        # The zeroed-fingerprint fallback check must recognize this input as the seed's,
+        # even though embit's internal parity byte for the pubkey is wrong. Taproot
+        # pubkeys must be compared by their x-only representation.
+        assert PSBTParser.has_matching_input_fingerprint(psbt, PSBTTestData.seed, SettingsConstants.REGTEST)
+
+        # Comparing x-only looks less strict than the full-key comparison used for
+        # non-taproot keys, but nothing is actually given up: a psbt never carries a
+        # parity byte for a taproot key, so the x coordinate is all the key material
+        # there is to compare. A completely wrong seed will still fail to match.
+        wrong_seed = Seed(["bacon"] * 24)
+        assert not PSBTParser.has_matching_input_fingerprint(psbt, wrong_seed, SettingsConstants.REGTEST)
+
+        # Parsing should successfully fill the fingerprint and verify that the input
+        # belongs to the seed.
+        parser = PSBTParser(p=psbt, seed=PSBTTestData.seed, network=SettingsConstants.REGTEST)
+        (_, filled_derivation) = parser.psbt.inputs[0].taproot_bip32_derivations[x_only_public_key]
+        assert filled_derivation.fingerprint == parser.root.my_fingerprint
+        assert parser.verified_input_derivation_paths == [bip32.parse_path(odd_parity_derivation_path)]
 
 
     def test_trim_and_sig_count(self):

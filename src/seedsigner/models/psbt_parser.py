@@ -598,33 +598,32 @@ class PSBTParser():
         """
         seed_fingerprint = seed.get_fingerprint(network)
         
-        def check_fingerprint_match(public_key: PublicKey, derivation_path_obj: DerivationPath):
+        def check_fingerprint_match(public_key: PublicKey, derivation_path_obj: DerivationPath, is_taproot: bool):
             """Check fingerprint match with missing fingerprint fallback"""
 
             # If exact fingerprint match
             if hexlify(derivation_path_obj.fingerprint).decode() == seed_fingerprint:
                 return True
-            
+
             # Missing fingerprint fallback
             if derivation_path_obj.fingerprint == b"\x00\x00\x00\x00":
                 root = bip32.HDKey.from_seed(seed.seed_bytes, version=NETWORKS[SettingsConstants.map_network_to_embit(network)]["xprv"])
                 try:
-                    derived_key = root.derive(derivation_path_obj.derivation)
-                    return derived_key.key.sec() == public_key.sec() # Public keys match
+                    return PSBTParser.seed_owns_pubkey(root, derivation_path_obj.derivation, public_key, child_key_derivation_cache=None, is_taproot=is_taproot)
                 except Exception as e:
                     logger.debug("Fingerprint fallback derive failed: %s", e, exc_info=True)
             return False
-        
+
         # Check all derivations in all inputs
         for input in psbt.inputs:
             # Check regular BIP32 derivations
             for public_key, derivation_path_obj in input.bip32_derivations.items():
-                if check_fingerprint_match(public_key, derivation_path_obj):
+                if check_fingerprint_match(public_key, derivation_path_obj, is_taproot=False):
                     return True
-            
+
             # Check Taproot derivations
             for public_key, (leaf_hashes, derivation_path_obj) in input.taproot_bip32_derivations.items():
-                if check_fingerprint_match(public_key, derivation_path_obj):
+                if check_fingerprint_match(public_key, derivation_path_obj, is_taproot=True):
                     return True
         
         return False
@@ -644,7 +643,12 @@ class PSBTParser():
         derived_public_key = PSBTParser._derive_with_cache(root, claimed_derivation_path, child_key_derivation_cache).get_public_key()
 
         if is_taproot:
-            # Taproot keys are x-only
+            # A psbt carries a taproot key as its bare 32-byte x coordinate, but embit
+            # rebuilds a full key from it by just assuming even parity. The key derived
+            # from the seed carries its real parity, so a naive full-key comparison
+            # succeeds only when that real parity happens to be even, wrongly rejecting
+            # roughly half of the keys this seed genuinely owns. Only the x coordinate is
+            # real information: compare x-only.
             return derived_public_key.xonly() == public_key.xonly()
 
         # For ecdsa the parity byte IS part of the identity, so compare the full key.
@@ -785,32 +789,29 @@ class PSBTParser():
             """Helper function to fill missing fingerprints in a scope (input/output)"""
 
             # Helper function to check and fix fingerprint
-            def _get_updated_fingerprint(public_key: PublicKey, derivation_path_obj: DerivationPath) -> DerivationPath | None:
+            def _get_updated_fingerprint(public_key: PublicKey, derivation_path_obj: DerivationPath, is_taproot: bool) -> DerivationPath | None:
                 if derivation_path_obj.fingerprint != b"\x00\x00\x00\x00":
                     return None
-                
-                # Derive the public key from the currently loaded seed using the derivation 
-                # contained in the PSBT. If the derived public key exactly matches 
-                # the PSBT-provided public key, we can be confident that this input/output 
-                # is owned by the signing seed. In that case we populate the missing (zero) 
-                # fingerprint with the signing seed's master fingerprint so downstream 
-                # parsing/signing can treat it as owned by this seed.
-                derived_key = PSBTParser._derive_with_cache(
-                    self.root, derivation_path_obj.derivation, child_key_derivation_cache)
-                if derived_key.key.sec() == public_key.sec():
+
+                # If the signing seed really derives the psbt-provided public key at the
+                # claimed derivation path, this input/output is owned by the signing seed.
+                # In that case we populate the missing (zero) fingerprint with the signing
+                # seed's master fingerprint so downstream parsing/signing can treat it as
+                # owned by this seed.
+                if PSBTParser.seed_owns_pubkey(self.root, derivation_path_obj.derivation, public_key, child_key_derivation_cache, is_taproot=is_taproot):
                     return DerivationPath(self.root.my_fingerprint, derivation_path_obj.derivation)
                 return None
-            
+
             # Handle regular BIP32 derivations
             for public_key, derivation_path_obj in list(scope.bip32_derivations.items()):
-                new_derivation = _get_updated_fingerprint(public_key, derivation_path_obj)
+                new_derivation = _get_updated_fingerprint(public_key, derivation_path_obj, is_taproot=False)
                 if new_derivation:
                     scope.bip32_derivations[public_key] = new_derivation
                     logger.debug(f"Filled missing fingerprint for pubkey {public_key.sec().hex()} derivation {bip32.path_to_str(derivation_path_obj.derivation)}")
-            
-            # Handle Taproot derivations  
+
+            # Handle Taproot derivations
             for public_key, (leaf_hashes, derivation_path_obj) in list(scope.taproot_bip32_derivations.items()):
-                new_derivation = _get_updated_fingerprint(public_key, derivation_path_obj)
+                new_derivation = _get_updated_fingerprint(public_key, derivation_path_obj, is_taproot=True)
                 if new_derivation:
                     scope.taproot_bip32_derivations[public_key] = (leaf_hashes, new_derivation)
                     logger.debug(f"Filled missing fingerprint for pubkey {public_key.sec().hex()} derivation {bip32.path_to_str(derivation_path_obj.derivation)}")
