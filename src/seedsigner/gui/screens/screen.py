@@ -144,6 +144,27 @@ class LoadingScreenThread(BaseThread):
         self.text =text
 
 
+    def __enter__(self):
+        """
+        Start the spinner and guarantee it is stopped again, even if the body
+        raises. A leaked spinner thread keeps holding the renderer lock, which
+        freezes the display far more visibly than the original error.
+
+        Note that the spinner must be stopped *before* the next screen is
+        drawn, so keep the `with` body limited to the slow work itself and
+        render results after the block exits.
+        """
+        self.start()
+        return self
+
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        # BaseThread.stop() only clears a flag, so calling it again on a
+        # path that already stopped the spinner is harmless.
+        self.stop()
+        return False
+
+
     def run(self):
         from seedsigner.gui.renderer import Renderer
         renderer: Renderer = Renderer.get_instance()

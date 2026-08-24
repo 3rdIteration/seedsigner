@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 import time
 import traceback
 from gettext import gettext as _
@@ -524,7 +525,18 @@ class Controller(Singleton):
                     # Re-raise so the test suite can handle it.
                     raise e
 
-                except Exception as e:
+                except (KeyboardInterrupt, SystemExit):
+                    # Deliberate exit paths (PowerOffView calls sys.exit(0); the
+                    # screensaver and button loop re-raise KeyboardInterrupt on
+                    # purpose). These must keep unwinding.
+                    raise
+
+                except BaseException as e:
+                    # Deliberately BaseException, not Exception. A library that
+                    # raises bare BaseException -- as PyGP <=0.2a did on every
+                    # card error -- would otherwise escape this loop entirely
+                    # and kill the process, leaving the user a blank screen with
+                    # no message and no log.
                     # Display user-friendly error screen w/debugging info
                     import traceback
                     traceback.print_exc()
@@ -579,9 +591,14 @@ class Controller(Singleton):
             if self.rng_monitor_thread and self.rng_monitor_thread.is_alive():
                 self.rng_monitor_thread.stop()
 
-            # Clear the screen when exiting
-            logger.info("Clearing screen, exiting")
-            Renderer.get_instance().display_blank_screen()
+            # Clear the screen when exiting. If we are unwinding because of an
+            # unhandled error, leave whatever is on the panel alone: blanking it
+            # here is what turned a crash into a silent black screen.
+            if sys.exc_info()[0] is None:
+                logger.info("Clearing screen, exiting")
+                Renderer.get_instance().display_blank_screen()
+            else:
+                logger.info("Exiting due to an unhandled error; leaving screen as-is")
 
 
     @property
@@ -706,8 +723,11 @@ class Controller(Singleton):
         else:
             exception_msg = ""
 
-        # Scan for the last debugging line that includes a line number reference
-        line_info = None
+        # Scan for the last debugging line that includes a line number reference.
+        # Defaults to "" rather than None: UnhandledExceptionView concatenates
+        # this with a str, so a None here raised TypeError and replaced the real
+        # error on screen with a bogus one.
+        line_info = ""
         for i in range(len(traceback.format_exc().splitlines()) - 1, 0, -1):
             traceback_line = traceback.format_exc().splitlines()[i]
             if ", line " in traceback_line:
