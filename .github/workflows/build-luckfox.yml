@@ -2,14 +2,15 @@ name: Build Luckfox Pico
 run-name: >-
   Build Luckfox Pico${{ github.event_name == 'workflow_dispatch'
     && format(
-      ' {0}/{1} {2} from {3}@{4} (os {5}@{6})',
+      ' {0}/{1} {2}{7} from {3}@{4} (os {5}@{6})',
       github.event.inputs.hardware_type,
       github.event.inputs.boot_medium,
       github.event.inputs.build_variant,
       github.event.inputs['app-repo'] || github.repository,
       github.event.inputs['source-ref'],
       github.event.inputs['os-repo'],
-      github.event.inputs['os-ref']
+      github.event.inputs['os-ref'],
+      github.event.inputs['testing-build'] == 'on' && ' TESTING' || ''
     )
     || github.event_name == 'pull_request' && format(' Pico Pi hardened, PR #{0}', github.event.pull_request.number)
     || github.event_name == 'push' && format(' Pico Pi hardened, push {0}', github.ref_name)
@@ -110,6 +111,14 @@ on:
           - 'on'
           - 'off'
         default: 'off'
+      testing-build:
+        description: 'Ship the testing build Home menu (I/O Test, Test Smartcard, Flash Applet, Settings) - off by default'
+        required: false
+        type: choice
+        options:
+          - 'off'
+          - 'on'
+        default: 'off'
       source-ref:
         description: The seedsigner ref (tag/branch/sha1) to use
         required: true
@@ -161,6 +170,7 @@ jobs:
       harden_adb: 'on'
       readonly_rootfs: 'on'
       boot_log: 'off'
+      testing_build: 'off'
       # Unlike build-buildroot.yml, the app cannot be pinned to a commit sha
       # here: the reusable workflow clones it with `git clone -b <ref>`, which
       # takes a branch or tag only. On a pull_request, github.ref_name is
@@ -194,6 +204,7 @@ jobs:
       harden_adb: ${{ github.event.inputs.harden_adb }}
       readonly_rootfs: ${{ github.event.inputs.readonly_rootfs }}
       boot_log: ${{ github.event.inputs.boot_log }}
+      testing_build: ${{ github.event.inputs['testing-build'] }}
       seedsigner_repo_url: https://github.com/${{ github.event.inputs['app-repo'] }}
       seedsigner_branch: ${{ github.event.inputs['source-ref'] }}
       seedsigner_os_repo: ${{ github.event.inputs['os-repo'] }}
