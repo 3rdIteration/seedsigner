@@ -8,7 +8,7 @@ pycryptodomex==3.23.0
 pgpy @ https://github.com/3rdIteration/PGPy/archive/7cdad000a76ced53c873211241d5ba20019a8488.zip  # v0.6.0 fork: cryptography primary backend, pycryptodomex/ecdsa/embit fallbacks
 pyasn1==0.6.2
 specter-card @ git+https://github.com/3rdIteration/specter-javacard.git@06dcde629cdc1057934b434afc46d822c2d2425d#subdirectory=py
-pygp @ https://github.com/3rdIteration/pygp/archive/15682ec8fd042b5d0ae3422e9434e9734db6e55b.zip
+pygp @ https://github.com/3rdIteration/pygp/archive/e316f6b427b7d1020cf24d082f28bd7be7d3874c.zip
 pysatochip==0.17.0
 ndeflib==0.3.3
 pyscard==2.3.1
