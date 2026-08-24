@@ -593,6 +593,7 @@ class MemoryInfoScreen(BaseTopNavScreen):
         ("cached_text", "Buf/Cache"),
         ("swap_text", "Swap"),
         ("rss_text", "App (RSS)"),
+        ("peak_text", "App (peak)"),
     ]
 
     def __post_init__(self):
@@ -652,6 +653,9 @@ class MemoryInfoScreen(BaseTopNavScreen):
             format_kb(stats.buffers_cached_kb),
             swap,
             format_kb(stats.app_rss_kb),
+            # VmHWM: the kernel's own high-water mark, so this is the exact peak
+            # rather than whatever a sampling thread happened to catch.
+            format_kb(stats.app_peak_rss_kb),
         ]
 
         return [

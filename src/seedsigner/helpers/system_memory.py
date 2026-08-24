@@ -37,6 +37,7 @@ class MemoryStats:
     swap_total_kb: int | None = None
     swap_used_kb: int | None = None
     app_rss_kb: int | None = None
+    app_peak_rss_kb: int | None = None
 
     @property
     def available_percent(self) -> float | None:
@@ -63,22 +64,35 @@ def _read_file(path: str) -> str | None:
         return None
 
 
-def _get_app_rss_kb() -> int | None:
-    """This process's resident set size, from ``/proc/self/status``.
+def _get_app_rss() -> tuple[int | None, int | None]:
+    """This process's current and peak resident set size, from ``/proc/self/status``.
 
-    On a 64MB Luckfox this is the number that actually says how close to OOM the
-    app is, so it's worth showing alongside the system-wide figures.
+    On a 64MB Luckfox the current figure is what says how close to OOM the app
+    is right now. ``VmHWM`` is the kernel's own high-water mark, updated on
+    every allocation, so the peak is both exact and free: a sampling thread
+    could only ever catch peaks that happened to land on a tick, and would miss
+    a spike during e.g. PSBT signing entirely.
     """
     text = _read_file(SELF_STATUS_PATH)
     if not text:
-        return None
+        return None, None
+
+    current = None
+    peak = None
     for line in text.splitlines():
-        if line.startswith("VmRSS:"):
-            match = _MEMINFO_LINE.match(line.strip())
-            if match:
-                return int(match.group("value"))
+        if not line.startswith(("VmRSS:", "VmHWM:")):
+            continue
+        match = _MEMINFO_LINE.match(line.strip())
+        if not match:
+            continue
+        if match.group("key") == "VmRSS":
+            current = int(match.group("value"))
+        else:
+            peak = int(match.group("value"))
+        if current is not None and peak is not None:
             break
-    return None
+
+    return current, peak
 
 
 def get_memory_stats() -> MemoryStats:
@@ -86,7 +100,7 @@ def get_memory_stats() -> MemoryStats:
     stats = MemoryStats()
 
     # Read RSS first so it still reports if /proc/meminfo is the thing that fails.
-    stats.app_rss_kb = _get_app_rss_kb()
+    stats.app_rss_kb, stats.app_peak_rss_kb = _get_app_rss()
 
     text = _read_file(MEMINFO_PATH)
     if not text:

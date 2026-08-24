@@ -37,7 +37,9 @@ class TestParseMeminfo:
 
 
 class TestGetMemoryStats:
-    def _patch_reads(self, monkeypatch, meminfo, status="VmRSS:\t   39112 kB\n"):
+    STATUS_SAMPLE = "VmPeak:\t  102400 kB\nVmRSS:\t   39112 kB\nVmHWM:\t   46080 kB\n"
+
+    def _patch_reads(self, monkeypatch, meminfo, status=STATUS_SAMPLE):
         def fake_read(path):
             if path == system_memory.MEMINFO_PATH:
                 return meminfo
@@ -58,6 +60,7 @@ class TestGetMemoryStats:
         assert stats.swap_total_kb == 0
         assert stats.swap_used_kb == 0
         assert stats.app_rss_kb == 39112
+        assert stats.app_peak_rss_kb == 46080
 
     def test_swap_used(self, monkeypatch):
         self._patch_reads(monkeypatch, "SwapTotal: 65536 kB\nSwapFree: 20480 kB\n")
@@ -80,6 +83,21 @@ class TestGetMemoryStats:
 
         assert stats.app_rss_kb == 39112
         assert stats.total_kb is None
+        assert stats.app_peak_rss_kb == 46080
+
+    def test_peak_absent_without_vmhwm(self, monkeypatch):
+        """VmHWM is universal on Linux, but don't blank VmRSS if it is missing."""
+        self._patch_reads(monkeypatch, MEMINFO_SAMPLE, status="VmRSS:\t   39112 kB\n")
+        stats = get_memory_stats()
+
+        assert stats.app_rss_kb == 39112
+        assert stats.app_peak_rss_kb is None
+
+    def test_vmpeak_is_not_mistaken_for_vmhwm(self, monkeypatch):
+        """VmPeak is peak *virtual* size and precedes VmHWM; only VmHWM is RSS."""
+        self._patch_reads(monkeypatch, MEMINFO_SAMPLE)
+
+        assert get_memory_stats().app_peak_rss_kb == 46080
 
     def test_no_proc_at_all(self, monkeypatch):
         """Desktop/Windows/CI: returns an all-None snapshot rather than raising."""
