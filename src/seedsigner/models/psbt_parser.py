@@ -135,7 +135,7 @@ class PSBTParser():
 
         # Indexed alongside psbt.inputs / psbt.outputs. Each entry is the derivation path
         # the seed genuinely owns in each scope or None where it owns nothing. Determined
-        # in _scan_seed_ownership.
+        # in _verify_claimed_derivation_paths.
         self.verified_input_derivation_paths: List[List[int] | None] = []
         self.verified_output_derivation_paths: List[List[int] | None] = []
 
@@ -179,9 +179,9 @@ class PSBTParser():
           1. _fill_missing_fingerprints: backfills all-zero fingerprints, but only for
              scopes the seed provably derives.
 
-          2. _scan_seed_ownership: records, per scope, the derivation path the seed
-             genuinely owns or None. Raises an Input/Output OwnershipClaimError if any
-             scope claims this seed's fingerprint on a key the seed does not control.
+          2. _verify_claimed_derivation_paths: each input and output scope that claims to
+             be controlled by the seed is verified. Raises an Input/Output
+             OwnershipClaimError if a claimed scope fails verification.
 
           3. _reject_if_seed_cannot_sign: raises PSBTSeedCannotSignError if none of the
              inputs can be signed by the seed. A mismatch rather than an attack, caught
@@ -205,6 +205,7 @@ class PSBTParser():
              claimed path. TODO: reject outputs at a path the user's wallet would never
              scan.
 
+        Optimization via child_key_derivation_cache:
         Parsing traverses a derivation path down to an individual address one level at a
         time, over and over, and where that traversal begins depends on the wallet.
 
@@ -241,7 +242,7 @@ class PSBTParser():
 
         # Work out what this seed actually owns before anything below reads the psbt's
         # claims about it.
-        self._scan_seed_ownership(child_key_derivation_cache)
+        self._verify_claimed_derivation_paths(child_key_derivation_cache)
         self._reject_if_seed_cannot_sign()
 
         rt = self._parse_inputs(child_key_derivation_cache)
@@ -714,16 +715,16 @@ class PSBTParser():
         return verified_derivation_path
 
 
-    def _scan_seed_ownership(self, child_key_derivation_cache: dict):
+    def _verify_claimed_derivation_paths(self, child_key_derivation_cache: dict):
         """
-        Verifies the input/output derivation paths the signing seed provably owns and
-        stores them in verified_[input|output]_derivation_paths. These member vars are the
-        definitive ownership record from this point forward in the psbt parse.
+        Verifies every claimed derivation path that names this seed's fingerprint. The
+        result, stored in verified_[input|output]_derivation_paths, is either the verified
+        derivation path or None (the seed was not named) for each input/output scope.
 
         The coordinator-supplied fingerprints cannot be trusted as-is. We must derive and
         verify the ownership of each one that claims to belong to this seed.
 
-        Outputs are scanned before inputs; a false claim on an output (e.g. fake-change
+        Outputs are verified before inputs; a false claim on an output (e.g. fake-change
         forgery) is likely an attack whereas a false claim on an input is merely
         unsignable.
 
@@ -750,11 +751,17 @@ class PSBTParser():
         (embit's sign_with is marginally more permissive: it also signs an input whose
         script names the master key directly, with no derivation. That runs against how HD
         wallets are built. The master key is a derivation root, not a spending key, so no
-        standard wallet produces such a psbt. We deliberately ignore this case.)
+        standard wallet produces such a psbt. We deliberately ignore this case.
+
+        Similarly, it's not worth the effort to verify that each key is included in its
+        input's script. A psbt that excludes a key in that way would be nonsensical but
+        harmless: the excluded key cannot spend the input, so nothing of this seed's is
+        at risk.)
         """
-        # An input names a key at a derivation path and _scan_seed_ownership proved the
-        # seed derives it (single-sig: one such key; multisig: one per cosigner, ours
-        # among them). One verified input path is enough for the psbt to be signable.
+        # An input names a key at a derivation path and _verify_claimed_derivation_paths
+        # proved the seed derives it (single-sig: one such key; multisig: one per
+        # cosigner, ours among them). One verified input path is enough for the psbt to
+        # be signable.
         if any(path is not None for path in self.verified_input_derivation_paths):
             return
 
