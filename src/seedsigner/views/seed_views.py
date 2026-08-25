@@ -1996,8 +1996,6 @@ class SeedSlip39RegenerateSharesView(View):
     def __init__(self, seed: Seed):
         super().__init__()
         self.seed = seed
-        self.seed = seed
-        self.seed = seed
 
     def run(self):
         if not self.seed.extendable:
