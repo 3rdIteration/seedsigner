@@ -141,8 +141,9 @@ class PSBTParser():
         self.fee_amount = 0
         self.input_amount = 0
         self.num_inputs = 0
-        self.input_derivation_prefixes: set = set()
-        self.max_input_derivation_index: int = -1
+        self.verified_input_prefixes: set = set()
+        self.verified_max_input_index: int = -1
+        self.can_verify_derivations: bool = False
         self.destination_addresses = []
         self.destination_amounts = []
         self.op_return_data: bytes = None
@@ -356,19 +357,37 @@ class PSBTParser():
     def _parse_inputs(self):
         self.input_amount = 0
         self.num_inputs = len(self.psbt.inputs)
-        self.input_derivation_prefixes = set()
-        self.max_input_derivation_index = -1
+        self.verified_input_prefixes = set()
+        self.verified_max_input_index = -1
+        # A derivable root is what makes verification possible at all. Without
+        # one -- WIF/BIP38 signing, or a seedless multisig pre-parse -- no
+        # evidence can be gathered and none is expected.
+        self.can_verify_derivations = self.root is not None and hasattr(self.root, "derive")
         for i, inp in enumerate(self.psbt.inputs):
             PSBTParser._validate_input(i, inp)
 
-            # Everything above the trailing branch/index pair. These utxos are
-            # already in the wallet, so this is evidence of where it keeps keys.
-            for derivation in self._scope_derivations(inp):
-                if len(derivation) >= 2:
-                    self.input_derivation_prefixes.add(tuple(derivation[:-2]))
-                if derivation:
-                    self.max_input_derivation_index = max(
-                        self.max_input_derivation_index,
+            # Everything above the trailing branch/index pair, for the inputs this
+            # seed actually produces. Each is a utxo the wallet already found, so
+            # once re-derived it is evidence of where this wallet keeps its keys --
+            # which is what the change-binding check measures against. Cosigners'
+            # derivations, and any the coordinator made up, simply do not verify.
+            # Skipped when there is no key to verify against: a seedless multisig
+            # pre-parse, or WIF / BIP38 signing. Nothing there can become
+            # evidence, and the absence of evidence must not read as evidence of
+            # absence -- is_reachable_derivation gets None rather than an empty
+            # set in that case.
+            if self.can_verify_derivations:
+                for public_key, derivation in self._scope_keyed_derivations(inp):
+                    if not derivation:
+                        continue
+                    if not self._verify_derivation(inp, public_key, derivation):
+                        # A path we cannot re-derive, or one the utxo does not
+                        # commit to: a cosigner's, or a fabrication. Not evidence.
+                        continue
+                    if len(derivation) >= 2:
+                        self.verified_input_prefixes.add(tuple(derivation[:-2]))
+                    self.verified_max_input_index = max(
+                        self.verified_max_input_index,
                         derivation[-1] & 0x7FFFFFFF,
                     )
 
@@ -390,7 +409,7 @@ class PSBTParser():
                     )
 
     @staticmethod
-    def is_reachable_derivation(derivation: list[int], input_prefixes: set) -> bool:
+    def is_reachable_derivation(derivation: list[int], input_prefixes: set | None) -> bool:
         """
         Whether a wallet scanning for this seed's addresses will ever find this
         one.
@@ -406,15 +425,23 @@ class PSBTParser():
         refusing a change path that has been moved somewhere the wallet will
         never look.
 
-        `input_prefixes` empty means the psbt carries no input derivations at
-        all (WIF and BIP38 signing have no BIP32 paths); there is nothing to
-        compare against, so only the branch is checked.
+        `input_prefixes` is None when no evidence could be gathered at all --
+        the psbt carries no input bip32 derivations, or there was no key to
+        verify them against (WIF/BIP38, or a seedless multisig pre-parse). Only
+        the branch is checked then.
+
+        An *empty set* is different and deliberately fails everything: we had a
+        key to verify with and still gathered nothing, either because the inputs
+        carried no derivations or because none held up. Such a psbt cannot be
+        signed anyway -- without a usable input derivation there is no key to
+        sign with -- and treating "no evidence" as permission would let an
+        attacker switch the check off just by withholding it.
         """
         if len(derivation) < 2:
             return False
         if derivation[-2] not in (0, 1):
             return False
-        if input_prefixes and tuple(derivation[:-2]) not in input_prefixes:
+        if input_prefixes is not None and tuple(derivation[:-2]) not in input_prefixes:
             return False
         return True
 
@@ -427,10 +454,88 @@ class PSBTParser():
 
     @staticmethod
     def _scope_derivations(scope: InputScope | OutputScope) -> list[list[int]]:
-        """Every bip32 derivation on a scope, taproot and non-taproot alike."""
+        """Every claimed bip32 derivation on a scope, taproot and non-taproot alike."""
         derivations = [d.derivation for d in scope.bip32_derivations.values()]
         derivations += [d.derivation for _, d in scope.taproot_bip32_derivations.values()]
         return derivations
+
+
+    @staticmethod
+    def _scope_keyed_derivations(scope: InputScope | OutputScope) -> list[tuple]:
+        """Every claimed derivation paired with the pubkey it claims to produce."""
+        pairs = [(pub, d.derivation) for pub, d in scope.bip32_derivations.items()]
+        pairs += [(pub, d.derivation) for pub, (_, d) in scope.taproot_bip32_derivations.items()]
+        return pairs
+
+
+    @staticmethod
+    def _input_commits_to_key(inp: InputScope, derived_key) -> bool:
+        """
+        Whether the input being spent actually commits to `derived_key`.
+
+        Re-deriving proves a path belongs to this seed, but not that it is the
+        path of *this utxo*: an attacker holding the account xpub can supply a
+        matched path/pubkey pair from somewhere else in our own tree. Only the
+        prevout's script says which key really unlocks these coins.
+        """
+        utxo = inp.witness_utxo or (
+            inp.non_witness_utxo.vout[inp.vout] if inp.non_witness_utxo else None
+        )
+        if utxo is None:
+            return False
+
+        script_pubkey = utxo.script_pubkey
+        script_type = script_pubkey.script_type()
+        if script_type == "p2sh" and inp.redeem_script is not None:
+            # Unwrap the p2sh: what matters is the script it commits to.
+            script_pubkey = inp.redeem_script
+            script_type = script_pubkey.script_type()
+
+        sec = derived_key.key.sec()
+
+        if script_type == "p2wpkh":
+            return script.p2wpkh(derived_key).data == script_pubkey.data
+        if script_type == "p2pkh":
+            return script.p2pkh(derived_key).data == script_pubkey.data
+        if script_type == "p2wsh":
+            # Multisig: our key is one of the cosigners named in the witness script.
+            return inp.witness_script is not None and sec in inp.witness_script.data
+        if script_type == "p2tr":
+            # A taproot output key is the internal key tweaked by the merkle root,
+            # so it never equals the derived key directly. The internal key is the
+            # nearest thing the psbt commits to.
+            if inp.taproot_internal_key is not None:
+                return inp.taproot_internal_key.xonly() == derived_key.key.xonly()
+            return script.p2tr(derived_key).data == script_pubkey.data
+        if script_type is None:
+            # Bare multisig inside a p2sh redeem script.
+            return sec in script_pubkey.data
+
+        return False
+
+
+    def _verify_derivation(self, inp: InputScope, public_key, derivation: list[int]) -> bool:
+        """
+        Whether this seed really does produce `public_key` at `derivation`, *and*
+        whether the utxo being spent actually commits to that key.
+
+        The path and the pubkey both come from the coordinator, so on their own
+        they are a matched pair of claims -- an attacker who knows our xpub can
+        supply a self-consistent lie drawn from elsewhere in our own tree. Both
+        halves are needed: re-deriving makes it a fact about this seed, and the
+        script check makes it a fact about this utxo.
+        """
+        if self.root is None or not hasattr(self.root, "derive"):
+            # WIF/BIP38 signing has no BIP32 tree to check against.
+            return False
+        try:
+            derived = self.root.derive(derivation[len(self.root_path):])
+        except Exception as e:
+            logger.debug("Could not derive %s: %s", derivation, e)
+            return False
+        if derived.key.xonly() != public_key.xonly():
+            return False
+        return PSBTParser._input_commits_to_key(inp, derived)
 
 
     def _parse_outputs(self):
@@ -530,7 +635,10 @@ class PSBTParser():
                 unreachable = [
                     d for d in derivations
                     if not PSBTParser.is_reachable_derivation(
-                        d, self.input_derivation_prefixes
+                        d,
+                        self.verified_input_prefixes
+                        if self.can_verify_derivations
+                        else None,
                     )
                 ]
                 if unreachable:
@@ -545,14 +653,14 @@ class PSBTParser():
                 # scanner may never walk to. Unlike the other refusals this is a
                 # threshold rather than an impossibility, which is why it is
                 # adjustable -- the view tells the user where.
-                if self.change_index_lookahead > 0 and self.max_input_derivation_index >= 0:
-                    ceiling = self.max_input_derivation_index + self.change_index_lookahead
+                if self.change_index_lookahead > 0 and self.verified_max_input_index >= 0:
+                    ceiling = self.verified_max_input_index + self.change_index_lookahead
                     for derivation in derivations:
                         index = derivation[-1] & 0x7FFFFFFF
                         if index > ceiling:
                             raise InvalidPSBTError(
                                 f"Change index {index} past gap limit "
-                                f"(inputs {self.max_input_derivation_index}).",
+                                f"(inputs {self.verified_max_input_index}).",
                                 code=RejectCode.CHANGE_INDEX_TOO_FAR,
                             )
 
@@ -574,27 +682,27 @@ class PSBTParser():
 
             elif is_change:
                 addr = self.psbt.tx.vout[i].script_pubkey.address(NETWORKS[SettingsConstants.map_network_to_embit(self.network)])
-                fingerprints = []
-                derivation_paths = []
+                claimed_fingerprints = []
+                claimed_derivation_paths = []
 
                 # extract info from non-taproot outputs
                 if len(self.psbt.outputs[i].bip32_derivations) > 0:
                     for d, derivation_path in self.psbt.outputs[i].bip32_derivations.items():
-                        fingerprints.append(hexlify(derivation_path.fingerprint).decode())
-                        derivation_paths.append(bip32.path_to_str(derivation_path.derivation))
+                        claimed_fingerprints.append(hexlify(derivation_path.fingerprint).decode())
+                        claimed_derivation_paths.append(bip32.path_to_str(derivation_path.derivation))
 
                 # extract info from taproot outputs
                 if len(self.psbt.outputs[i].taproot_bip32_derivations) > 0:
                     for d, (leaf_hashes, derivation) in self.psbt.outputs[i].taproot_bip32_derivations.items():
-                        fingerprints.append(hexlify(derivation.fingerprint).decode())
-                        derivation_paths.append(bip32.path_to_str(derivation.derivation))
+                        claimed_fingerprints.append(hexlify(derivation.fingerprint).decode())
+                        claimed_derivation_paths.append(bip32.path_to_str(derivation.derivation))
 
                 self.change_data.append({
                     "output_index": i,
                     "address": addr,
                     "amount": self.psbt.tx.vout[i].value,
-                    "fingerprint": fingerprints,
-                    "derivation_path": derivation_paths,
+                    "claimed_fingerprints": claimed_fingerprints,
+                    "claimed_derivation_paths": claimed_derivation_paths,
                 })
                 self.change_amount += self.psbt.tx.vout[i].value
 

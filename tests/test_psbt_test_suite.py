@@ -16,6 +16,7 @@ import pytest
 from embit.base import EmbitError
 
 from seedsigner.models.psbt_parser import InvalidPSBTError, PSBTParser
+from seedsigner.models.settings_definition import SettingsConstants
 
 from embit import bip32
 
@@ -269,18 +270,110 @@ class TestChangeBinding:
         parser = parse_vector(vector)
 
         for change in parser.change_data:
-            for path_str in change["derivation_path"]:
+            for path_str in change["claimed_derivation_paths"]:
                 path = bip32.parse_path(path_str)
 
                 assert path[-2] in (0, 1), (
                     f"{vector.name}: {path_str} uses branch {path[-2]}, "
                     f"outside the receive/change branches {{0, 1}}"
                 )
-                assert tuple(path[:-2]) in parser.input_derivation_prefixes, (
+                assert tuple(path[:-2]) in parser.verified_input_prefixes, (
                     f"{vector.name}: {path_str} sits under "
                     f"{bip32.path_to_str(list(path[:-2]))}, but the inputs are all "
-                    f"under {[bip32.path_to_str(list(x)) for x in parser.input_derivation_prefixes]}"
+                    f"under {[bip32.path_to_str(list(x)) for x in parser.verified_input_prefixes]}"
                 )
+
+
+class TestEvidenceCannotBeForged:
+    """
+    Change binding measures a claimed change path against the prefixes the
+    *inputs* demonstrate. That is only worth anything if the inputs themselves
+    cannot be forged, so each way of manufacturing or withholding that evidence
+    gets its own test.
+    """
+
+    def _tx01_with(self, mutate):
+        from psbt_suite_util import RejectCode
+
+        psbt = load_psbt("TX-01")
+        mutate(psbt)
+        with pytest.raises(InvalidPSBTError) as excinfo:
+            PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK)
+        assert excinfo.value.code == RejectCode.UNREACHABLE_CHANGE_PATH
+
+    def test_self_consistent_input_path_lie_is_rejected(self):
+        """
+        An attacker holding the account xpub can compute a matching path/pubkey
+        pair from elsewhere in our own tree and put it on the input, so the
+        malicious change path shares its prefix. Re-deriving alone accepts that
+        pair -- it really is ours -- so the input's script has to be checked too:
+        only the prevout says which key actually unlocks these coins.
+        """
+        from embit.psbt import DerivationPath
+
+        root = suite_seed().get_root(SUITE_NETWORK)
+
+        def graft_lie(psbt):
+            inp = psbt.inputs[0]
+            public_key, derivation = list(inp.bip32_derivations.items())[0]
+            forged = list(derivation.derivation[:3]) + [127, 0, 0]
+            del inp.bip32_derivations[public_key]
+            inp.bip32_derivations[root.derive(forged).key] = DerivationPath(
+                derivation.fingerprint, forged
+            )
+
+        self._tx01_with(graft_lie)
+
+    def test_withholding_input_derivations_is_rejected(self):
+        """
+        The cheaper attack: supply no input derivations at all, so no evidence
+        can be gathered and a naive check has nothing to compare against. No
+        evidence must not read as permission.
+        """
+        def strip(psbt):
+            for inp in psbt.inputs:
+                inp.bip32_derivations.clear()
+                inp.taproot_bip32_derivations.clear()
+
+        self._tx01_with(strip)
+
+    def test_cosigner_derivations_are_not_treated_as_our_evidence(self):
+        """
+        A multisig input carries a derivation per cosigner. Only the one this
+        seed reproduces is evidence about *this* wallet.
+        """
+        from binascii import a2b_base64
+
+        from embit.psbt import PSBT
+
+        from psbt_testing_util import PSBTTestData
+
+        psbt = PSBT.parse(a2b_base64(PSBTTestData.MULTISIG_NATIVE_SEGWIT_1_INPUT))
+        parser = PSBTParser(p=psbt, seed=PSBTTestData.seed,
+                            network=SettingsConstants.REGTEST)
+
+        # Three cosigners on the input, one prefix verified: ours.
+        assert len(psbt.inputs[0].bip32_derivations) == 3
+        assert len(parser.verified_input_prefixes) == 1
+
+    def test_no_key_to_verify_with_is_not_an_empty_verdict(self):
+        """
+        A seedless multisig pre-parse has nothing to verify against. That must
+        read as "no opinion", not as "verified nothing" -- otherwise the
+        smartcard flow's first look at a psbt would refuse every change output.
+        """
+        from binascii import a2b_base64
+
+        from embit.psbt import PSBT
+
+        from psbt_testing_util import PSBTTestData
+
+        psbt = PSBT.parse(a2b_base64(PSBTTestData.MULTISIG_NATIVE_SEGWIT_1_INPUT))
+        parser = PSBTParser(psbt)
+        parser.parse()
+
+        assert parser.can_verify_derivations is False
+        assert parser.num_change_outputs >= 0  # parsed without refusing
 
 
 class TestAdvisories:
@@ -336,11 +429,11 @@ class TestAdvisories:
         """
         for vector in PARSING_VECTORS:
             parser = parse_vector(vector)
-            if parser.max_input_derivation_index < 0:
+            if parser.verified_max_input_index < 0:
                 continue
             for change in parser.change_data:
-                for path_str in change["derivation_path"]:
-                    gap = (bip32.parse_path(path_str)[-1] & 0x7FFFFFFF) - parser.max_input_derivation_index
+                for path_str in change["claimed_derivation_paths"]:
+                    gap = (bip32.parse_path(path_str)[-1] & 0x7FFFFFFF) - parser.verified_max_input_index
                     assert gap <= CHANGE_INDEX_LOOKAHEAD, (
                         f"{vector.name}: {path_str} is {gap} past the highest input index"
                     )

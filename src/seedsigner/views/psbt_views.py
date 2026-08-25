@@ -509,8 +509,8 @@ class PSBTOverviewView(View):
                 {
                     'address': 'bc1q............', 
                     'amount': 397621401, 
-                    'fingerprint': ['22bde1a9', '73c5da0a'], 
-                    'derivation_path': ['m/48h/1h/0h/2h/1/0', 'm/48h/1h/0h/2h/1/0']
+                    'claimed_fingerprints': ['22bde1a9', '73c5da0a'], 
+                    'claimed_derivation_paths': ['m/48h/1h/0h/2h/1/0', 'm/48h/1h/0h/2h/1/0']
                 }, {},
             ]
         """
@@ -519,7 +519,7 @@ class PSBTOverviewView(View):
         for change_output in change_data:
             # PSBTParser has already rejected any derivation a wallet could not
             # scan for, so all that's left here is which branch it sits on.
-            path_ints = bip32.parse_path(change_output["derivation_path"][0])
+            path_ints = bip32.parse_path(change_output["claimed_derivation_paths"][0])
             if PSBTParser.is_change_branch(path_ints):
                 num_change_outputs += 1
             else:
@@ -784,15 +784,15 @@ class PSBTChangeDetailsView(View):
             {
                 'address': 'bc1q............', 
                 'amount': 397621401, 
-                'fingerprint': ['22bde1a9', '73c5da0a'], 
-                'derivation_path': ['m/48h/1h/0h/2h/1/0', 'm/48h/1h/0h/2h/1/0']
+                'claimed_fingerprints': ['22bde1a9', '73c5da0a'], 
+                'claimed_derivation_paths': ['m/48h/1h/0h/2h/1/0', 'm/48h/1h/0h/2h/1/0']
             }
         """
 
         # Single-sig verification is easy. We expect to find a single fingerprint
         # and derivation path.
-        fingerprints = change_data.get("fingerprint") or []
-        derivation_paths = change_data.get("derivation_path") or []
+        claimed_fingerprints = change_data.get("claimed_fingerprints") or []
+        claimed_derivation_paths = change_data.get("claimed_derivation_paths") or []
 
         if self.controller.psbt_seed:
             seed_fingerprint = self.controller.psbt_seed.get_fingerprint(
@@ -803,25 +803,28 @@ class PSBTChangeDetailsView(View):
             seed_fingerprint = hexlify(master_fp).decode() if master_fp else None
 
         if seed_fingerprint:
-            if seed_fingerprint not in fingerprints:
+            if seed_fingerprint not in claimed_fingerprints:
                 # TODO: Something is wrong with this psbt(?). Reroute to warning?
                 return Destination(NotYetImplementedView)
-            index = fingerprints.index(seed_fingerprint)
+            index = claimed_fingerprints.index(seed_fingerprint)
         else:
-            index = 0 if fingerprints else None
+            index = 0 if claimed_fingerprints else None
             if index is not None:
-                seed_fingerprint = fingerprints[index]
+                seed_fingerprint = claimed_fingerprints[index]
 
-        derivation_path = ""
-        if index is not None and index < len(derivation_paths):
-            derivation_path = derivation_paths[index]
+        claimed_derivation_path = ""
+        if index is not None and index < len(claimed_derivation_paths):
+            claimed_derivation_path = claimed_derivation_paths[index]
 
-        # 'm/84h/1h/0h/1/0' would be a change addr while 'm/84h/1h/0h/0/0' is a self-receive
-        if derivation_path:
-            path_ints = bip32.parse_path(derivation_path)
+        # 'm/84h/1h/0h/1/0' would be a change addr while 'm/84h/1h/0h/0/0' is a self-receive.
+        # Safe to read from the claim here: PSBTParser has already refused any path whose
+        # prefix does not match one the inputs demonstrate, so an output that reaches this
+        # point sits where this wallet actually keeps its keys.
+        if claimed_derivation_path:
+            path_ints = bip32.parse_path(claimed_derivation_path)
         else:
             path_ints = []
-        is_change_derivation_path = len(path_ints) >= 2 and (path_ints[-2] & 0x7FFFFFFF) == 1
+        is_change_derivation_path = PSBTParser.is_change_branch(path_ints)
         derivation_path_addr_index = path_ints[-1] & 0x7FFFFFFF if path_ints else 0
 
         if is_change_derivation_path:
@@ -943,7 +946,7 @@ class PSBTChangeDetailsView(View):
             amount=change_data.get("amount"),
             is_multisig=psbt_parser.is_multisig,
             fingerprint=seed_fingerprint or "",
-            derivation_path=derivation_path or "",
+            derivation_path=claimed_derivation_path or "",
             is_change_derivation_path=is_change_derivation_path,
             derivation_path_addr_index=derivation_path_addr_index,
             is_change_addr_verified=is_change_addr_verified,
