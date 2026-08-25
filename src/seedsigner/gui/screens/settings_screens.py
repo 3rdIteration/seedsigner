@@ -13,6 +13,7 @@ from seedsigner.helpers.l10n import mark_for_translation as _mft
 from seedsigner.helpers.system_memory import format_kb, get_memory_stats
 from seedsigner.gui.components import Button, CheckboxButton, CheckedSelectionButton, FontAwesomeIconConstants, Fonts, GUIConstants, Icon, IconButton, IconTextLine, SeedSignerIconConstants, TextArea, resize_image_to_fit
 from seedsigner.gui.screens.scan_screens import ScanScreen
+from seedsigner.gui.keyboard import Keyboard
 from seedsigner.gui.screens.screen import BaseScreen, BaseTopNavScreen, ButtonListScreen, ButtonOption, KeyboardScreen
 from seedsigner.models.threads import BaseThread
 from seedsigner.hardware.buttons import HardwareButtonsConstants
@@ -67,6 +68,11 @@ class SettingsEntryUpdateSelectionScreen(ButtonListScreen):
 @dataclass
 class SettingPBFDK2IterationsScreen(KeyboardScreen):
     def __post_init__(self):
+        # A list, not KeyboardScreen's default ADDITIONAL_KEYS dict: Keyboard sums
+        # each entry's "size" to check the layout fits, so it needs the key dicts
+        # themselves rather than their codes.
+        self.custom_additional_keys = [Keyboard.KEY_BACKSPACE_5]
+
         self.title = "PBKDF2 Iter.(in units of 10k)"
         self.user_input = ""
 

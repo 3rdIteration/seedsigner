@@ -574,6 +574,11 @@ class SeedWordsBackupTestPromptScreen(ButtonListScreen):
 @dataclass
 class SeedExportXpubAccountNumberScreen(KeyboardScreen):
     def __post_init__(self):
+        # A list, not KeyboardScreen's default ADDITIONAL_KEYS dict: Keyboard sums
+        # each entry's "size" to check the layout fits, so it needs the key dicts
+        # themselves rather than their codes.
+        self.custom_additional_keys = [Keyboard.KEY_BACKSPACE_5]
+
         self.title = _("Account Number")
         self.user_input = "0"
 
