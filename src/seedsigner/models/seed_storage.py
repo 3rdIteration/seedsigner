@@ -83,7 +83,13 @@ class SeedStorage:
         # Create an independent copy so that wipe_list() in
         # discard_pending_mnemonic() won't corrupt the shared
         # global wordlist strings via wipe_string/ctypes.memset.
-        self._pending_mnemonic[index] = "".join(word)
+        #
+        # `None` clears a slot rather than setting one, and is a legitimate
+        # caller value: ToolsCalcFinalWordFinalizePromptView empties the final
+        # slot before asking the user to choose that word. It has no shared
+        # string to defend against, so pass it through untouched -- joining it
+        # raises TypeError and crashes the flow.
+        self._pending_mnemonic[index] = "".join(word) if word is not None else None
     
 
     def get_pending_mnemonic_word(self, index: int) -> str:
