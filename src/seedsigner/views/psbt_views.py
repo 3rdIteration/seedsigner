@@ -549,26 +549,10 @@ class PSBTAddressVerificationFailedView(View):
     Reached when a change or self-transfer output fails address verification. Shows a dire
     warning and discards the psbt to the main menu.
     """
-    # Names for why verification failed, fixed here so that the checks which will reach
-    # this view settle on them once rather than one at a time.
-    # TODO: These aren't being used yet. Pass `reason` from each call site and then adjust
-    # the user-facing message in run() accordingly.
-
-    # The output derives from the seed, but at a path the wallet would never scan
-    REASON__UNEXPECTED_DERIVATION_PATH = "unexpected_derivation_path"
-
-    # The multisig descriptor could not be verified, or does not contain this seed
-    REASON__DESCRIPTOR_MISMATCH = "descriptor_mismatch"
-
-    # The claimed derivation path is malformed or too short to be a wallet path
-    REASON__MALFORMED_DERIVATION_PATH = "malformed_derivation_path"
-
-
-    def __init__(self, is_change: bool = True, is_multisig: bool = False, reason: str = None):
+    def __init__(self, is_change: bool = True, is_multisig: bool = False):
         super().__init__()
         self.is_change = is_change
         self.is_multisig = is_multisig
-        self.reason = reason
 
 
     def run(self):
