@@ -220,6 +220,23 @@ class ScanView(View):
             elif self.decoder.is_psbt:
                 from seedsigner.views.psbt_views import PSBTSelectSeedView
                 psbt = self.decoder.get_psbt()
+                if psbt is None:
+                    # The QR announced itself as a psbt (a UR2 `crypto-psbt`
+                    # says so in its type string) but the payload doesn't
+                    # parse. Refuse here: routing on with `controller.psbt =
+                    # None` only produces a bare "No transaction currently
+                    # loaded" exception two Views later.
+                    logger.warning("Scanned psbt could not be parsed")
+                    self.run_screen(
+                        WarningScreen,
+                        title=_("Invalid PSBT"),
+                        status_headline=None,
+                        text=_("This transaction could not be read. It may be corrupted or malformed."),
+                        button_data=[ButtonOption("Done")],
+                        show_back_button=False,
+                    )
+                    return Destination(MainMenuView, clear_history=True)
+
                 self.controller.psbt = psbt
                 self.controller.psbt_parser = None
                 return Destination(PSBTSelectSeedView, skip_current_view=True)

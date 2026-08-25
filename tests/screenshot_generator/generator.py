@@ -40,7 +40,7 @@ from seedsigner.hardware.microsd import MicroSD
 from seedsigner.helpers import embit_utils
 from seedsigner.models.decode_qr import DecodeQR
 from seedsigner.models.encode_qr import BaseQrEncoder
-from seedsigner.models.psbt_parser import OPCODES, PSBTParser
+from seedsigner.models.psbt_parser import OPCODES, PSBTParser, RiskWarning
 from seedsigner.models.qr_type import QRType
 from seedsigner.models.seed import Seed, Slip39Seed
 from seedsigner.models.settings import Settings
@@ -331,6 +331,22 @@ def generate_screenshots(locale):
 
 
         @contextmanager
+        def mock_psbt_with_risk_warnings_loaded():
+            """
+            PSBTRiskWarningView renders whatever PSBTParser flagged, so the
+            interesting screenshot is the crowded one: several advisories at once,
+            longest text first.
+            """
+            with mock_load_psbt(BASE64_SINGLE_SIG_PSBT):
+                controller.psbt_parser.risk_warnings = {
+                    RiskWarning.HIGH_FEE,
+                    RiskWarning.DUST_OUTPUT,
+                    RiskWarning.FUTURE_LOCKTIME,
+                }
+                yield
+
+
+        @contextmanager
         def mock_psbt_with_op_return_raw_bytes_loaded():
             with mock_load_psbt(BASE64_PSBT_WITH_OP_RETURN_RAW_BYTES):
                 yield
@@ -456,6 +472,7 @@ def generate_screenshots(locale):
                 ScreenshotConfig(psbt_views.PSBTOverviewView,   mock_context_manager=mock_multisig_psbt_loaded),
                 ScreenshotConfig(psbt_views.PSBTUnsupportedScriptTypeWarningView),
                 ScreenshotConfig(psbt_views.PSBTNoChangeWarningView),
+                ScreenshotConfig(psbt_views.PSBTRiskWarningView, mock_context_manager=mock_psbt_with_risk_warnings_loaded),
                 ScreenshotConfig(psbt_views.PSBTMathView, mock_context_manager=mock_multisig_psbt_loaded),
                 ScreenshotConfig(psbt_views.PSBTAddressDetailsView, dict(address_num=0), mock_context_manager=mock_multisig_psbt_loaded),
 

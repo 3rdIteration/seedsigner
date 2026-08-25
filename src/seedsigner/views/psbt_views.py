@@ -1,4 +1,5 @@
 from gettext import gettext as _
+from seedsigner.helpers.l10n import mark_for_translation as _mft
 
 from binascii import hexlify
 from binascii import hexlify
@@ -6,7 +7,7 @@ from binascii import hexlify
 from embit import bip32
 import logging
 
-from seedsigner.models.psbt_parser import PSBTParser
+from seedsigner.models.psbt_parser import InvalidPSBTError, PSBTParser, RejectCode, RiskWarning
 from seedsigner.models.settings import SettingsConstants
 from seedsigner.gui.components import FontAwesomeIconConstants, SeedSignerIconConstants
 from seedsigner.gui.screens.screen import (
@@ -433,10 +434,23 @@ class PSBTBIP38PassphraseView(View):
         return Destination(PSBTOverviewView)
 
 class PSBTOverviewView(View):
+    # Refusals that the user can legitimately act on, rather than simply having
+    # to reject the transaction. Appended to the technical reason.
+    #
+    # Budget: the warning screen's text box fits five lines at the body font, and
+    # TextArea renders past the bottom edge rather than raising, so an overlong
+    # message silently draws over the button. Reason + tip must stay within that
+    # for the longest realistic values AND a verbose translation.
+    REJECT_TIPS = {
+        # TRANSLATOR_NOTE: Points the user at the setting that controls this check
+        RejectCode.CHANGE_INDEX_TOO_FAR: _mft("See Change Gap Limit in Settings."),
+    }
+
     def __init__(self):
         super().__init__()
 
         self.loading_screen = None
+        self.parse_error: InvalidPSBTError = None
 
         if not self.controller.psbt_parser or self.controller.psbt_parser.seed != self.controller.psbt_seed:
             # The PSBTParser takes a while to read the PSBT. Run the loading screen while
@@ -451,6 +465,13 @@ class PSBTOverviewView(View):
                     seed=self.controller.psbt_seed,
                     network=self.settings.get_value(SettingsConstants.SETTING__NETWORK)
                 )
+            except InvalidPSBTError as e:
+                # A deliberate refusal, not a crash: the psbt is parseable but
+                # unsafe to present. run() turns this into a warning screen.
+                self.loading_screen.stop()
+                self.loading_screen = None
+                logger.info("Refusing psbt: %s (%s)", e, e.code)
+                self.parse_error = e
             except Exception as e:
                 self.loading_screen.stop()
                 raise e
@@ -458,6 +479,28 @@ class PSBTOverviewView(View):
 
     def run(self):
         from seedsigner.gui.screens.psbt_screens import PSBTOverviewScreen
+
+        if self.parse_error:
+            text = str(self.parse_error)
+            tip = self.REJECT_TIPS.get(self.parse_error.code)
+            if tip:
+                # Single newline, not a blank line: the warning screen's text box
+                # fits about five lines and a blank one costs a whole line.
+                text += "\n" + _(tip)
+
+            self.run_screen(
+                WarningScreen,
+                title=_("Invalid PSBT"),
+                status_headline=None,
+                text=text,
+                button_data=[ButtonOption("Done")],
+                show_back_button=False,
+            )
+            self.controller.psbt = None
+            self.controller.psbt_parser = None
+            self.controller.psbt_seed = None
+            return Destination(MainMenuView, clear_history=True)
+
         psbt_parser = self.controller.psbt_parser
 
         change_data = psbt_parser.change_data
@@ -474,8 +517,10 @@ class PSBTOverviewView(View):
         num_change_outputs = 0
         num_self_transfer_outputs = 0
         for change_output in change_data:
+            # PSBTParser has already rejected any derivation a wallet could not
+            # scan for, so all that's left here is which branch it sits on.
             path_ints = bip32.parse_path(change_output["derivation_path"][0])
-            if len(path_ints) >= 2 and (path_ints[-2] & 0x7FFFFFFF) == 1:
+            if PSBTParser.is_change_branch(path_ints):
                 num_change_outputs += 1
             else:
                 num_self_transfer_outputs += 1
@@ -501,6 +546,9 @@ class PSBTOverviewView(View):
             self.controller.psbt_seed = None
             return Destination(BackStackView)
 
+        if psbt_parser.risk_warnings - RiskWarning.INFORMATIONAL:
+            return Destination(PSBTRiskWarningView)
+
         # expecting p2sh (legacy multisig) and p2pkh to have no policy set
         # skip change warning and psbt math view
         if psbt_parser.policy == None:
@@ -511,6 +559,63 @@ class PSBTOverviewView(View):
 
         else:
             return Destination(PSBTMathView)
+
+
+
+class PSBTRiskWarningView(View):
+    """
+        Everything PSBTParser flagged for review: conditions that don't make the
+        transaction invalid, but that a user would not want to approve without
+        being told.
+    """
+    # Most severe first; iteration order is the display order.
+    RISK_TEXT = {
+        # TRANSLATOR_NOTE: Shown when the miner fee is a large share of what's being spent
+        RiskWarning.HIGH_FEE: _mft("The fee is an unusually large share of this transaction."),
+        RiskWarning.DUST_OUTPUT: _mft("One output is below the dust threshold and may be unspendable."),
+        RiskWarning.FUTURE_LOCKTIME: _mft("This transaction cannot confirm until a future date."),
+        RiskWarning.RBF: _mft("This transaction is marked replaceable (RBF)."),
+    }
+
+    def run(self):
+        psbt_parser: PSBTParser = self.controller.psbt_parser
+        if not psbt_parser:
+            # Should not be able to get here
+            return Destination(MainMenuView)
+
+        messages = []
+        for code in self.RISK_TEXT:
+            if code not in psbt_parser.risk_warnings or code in RiskWarning.INFORMATIONAL:
+                continue
+            messages.append(_(self.RISK_TEXT[code]))
+
+        selected_menu_num = self.run_screen(
+            WarningScreen,
+            # TRANSLATOR_NOTE: Headline above a list of things to check before approving
+            status_headline=_("Review Carefully!"),
+            text="\n\n".join(messages),
+            button_data=[ButtonOption("Continue")],
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if psbt_parser.policy == None:
+            return Destination(
+                PSBTUnsupportedScriptTypeWarningView,
+                skip_current_view=True,  # Prevent going BACK to WarningViews
+            )
+
+        elif psbt_parser.change_amount == 0:
+            return Destination(
+                PSBTNoChangeWarningView,
+                skip_current_view=True,  # Prevent going BACK to WarningViews
+            )
+
+        return Destination(
+            PSBTMathView,
+            skip_current_view=True,  # Prevent going BACK to WarningViews
+        )
 
 
 
@@ -576,7 +681,11 @@ class PSBTMathView(View):
             PSBTMathScreen,
             input_amount=psbt_parser.input_amount,
             num_inputs=psbt_parser.num_inputs,
-            spend_amount=psbt_parser.spend_amount,
+            # An OP_RETURN carrying value is value leaving the wallet with no
+            # recipient. Counting it as spend is what makes
+            # inputs - spend - fee == change hold on screen; left out, the
+            # burned amount silently disappears into the arithmetic.
+            spend_amount=psbt_parser.spend_amount + psbt_parser.op_return_amount,
             num_recipients=psbt_parser.num_destinations,
             fee_amount=psbt_parser.fee_amount,
             change_amount=psbt_parser.change_amount,

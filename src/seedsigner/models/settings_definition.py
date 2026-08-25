@@ -307,6 +307,18 @@ class SettingsConstants:
     ALL_SCARD_PIN_ATTEMPTS = [(i, str(i)) for i in range(SCARD_PIN_ATTEMPTS_MIN, SCARD_PIN_ATTEMPTS_MAX + 1)]
     DEFAULT_SCARD_PIN_ATTEMPTS = 5
 
+    # How far above the highest index seen on any input a change output may sit
+    # before it is flagged for review. Change is normally issued at the next
+    # unused index, so a change address far beyond what the inputs demonstrate
+    # is one the wallet's own scanner may never reach.
+    ALL_CHANGE_INDEX_LOOKAHEADS = [
+        (100, "100"),
+        (1000, "1000"),
+        (10000, "10000"),
+        (0, _mft("Off")),
+    ]
+    DEFAULT_CHANGE_INDEX_LOOKAHEAD = 100
+
     # Satochip signing behavior
     SATOCHIP_TIMEOUT_MIN = 0.25
     SATOCHIP_TIMEOUT_MAX = 1
@@ -476,6 +488,7 @@ class SettingsConstants:
     SETTING__SIG_TYPES = "sig_types"
     SETTING__SCRIPT_TYPES = "script_types"
     SETTING__ACCOUNT_PROMPT = "account_prompt"
+    SETTING__CHANGE_INDEX_LOOKAHEAD = "change_lookahead"
     SETTING__SEED_WORD_LENGTHS = "seed_word_lengths"
     SETTING__XPUB_DETAILS = "xpub_details"
     SETTING__PASSPHRASE = "passphrase"
@@ -868,6 +881,15 @@ class SettingsDefinition:
                     type=SettingsConstants.TYPE__SELECT_1,
                     selection_options=SettingsConstants.ALL_SCARD_PIN_ATTEMPTS,
                     default_value=SettingsConstants.DEFAULT_SCARD_PIN_ATTEMPTS),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__WALLET,
+                    attr_name=SettingsConstants.SETTING__CHANGE_INDEX_LOOKAHEAD,
+                    abbreviated_name="chglook",
+                    display_name=_mft("Change Gap Limit"),
+                    help_text=_mft("Warn when a change address sits this far past the inputs"),
+                    type=SettingsConstants.TYPE__SELECT_1,
+                    selection_options=SettingsConstants.ALL_CHANGE_INDEX_LOOKAHEADS,
+                    default_value=SettingsConstants.DEFAULT_CHANGE_INDEX_LOOKAHEAD),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
                     attr_name=SettingsConstants.SETTING__WIPE_TIMER,
