@@ -14,7 +14,6 @@ import pytest
 
 from PIL import Image, ImageDraw
 
-from seedsigner.gui.renderer import Renderer
 from seedsigner.gui.screens.screen import ButtonOption, WarningScreen
 from seedsigner.models.psbt_parser import MAX_MONEY, PSBTParser
 from seedsigner.views.psbt_views import PSBTOverviewView
@@ -52,15 +51,22 @@ class StubRenderer:
 
 @pytest.fixture(autouse=True)
 def stub_renderer():
-    """Patched per-test so nothing leaks into or out of neighbouring modules."""
-    # Patched by dotted name rather than patch.object: the flow tests install their
-    # own Renderer stand-in, and patch.object binds the class object as it exists at
-    # decoration time, which does not survive that. The module-level
-    # `from seedsigner.gui.renderer import Renderer` above is load-bearing for this
-    # string target -- it guarantees the submodule is imported, which mock needs in
-    # order to resolve the attribute (on Python 3.10 nothing else imports it first).
-    with patch("seedsigner.gui.renderer.Renderer.get_instance",
-               return_value=StubRenderer()):
+    """
+    Swap in the stub for whatever Renderer the GUI will actually resolve.
+
+    tests/base.py replaces sys.modules['seedsigner.gui.renderer'] with a MagicMock
+    at import time, so the class this name refers to depends on whether a FlowTest
+    module has been collected yet. Importing lazily here -- the same way screen.py
+    and components.py do -- guarantees we patch the object they will use, real or
+    mocked. A module-level import binds the pre-mock class and silently stops
+    matching, and a dotted patch target additionally fails to resolve once that
+    sys.modules entry has been swapped.
+
+    This mirrors what tests/test_tools_screens.py does for the same reason.
+    """
+    from seedsigner.gui.renderer import Renderer
+
+    with patch.object(Renderer, "get_instance", return_value=StubRenderer()):
         yield
 
 
