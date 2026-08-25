@@ -14,6 +14,7 @@ import pytest
 
 from PIL import Image, ImageDraw
 
+from seedsigner.gui.renderer import Renderer
 from seedsigner.gui.screens.screen import ButtonOption, WarningScreen
 from seedsigner.models.psbt_parser import MAX_MONEY, PSBTParser
 from seedsigner.views.psbt_views import PSBTOverviewView
@@ -52,8 +53,12 @@ class StubRenderer:
 @pytest.fixture(autouse=True)
 def stub_renderer():
     """Patched per-test so nothing leaks into or out of neighbouring modules."""
-    # Patched by name: screen.py and components.py both import Renderer lazily
-    # inside their methods, so the canonical class is the only reliable target.
+    # Patched by dotted name rather than patch.object: the flow tests install their
+    # own Renderer stand-in, and patch.object binds the class object as it exists at
+    # decoration time, which does not survive that. The module-level
+    # `from seedsigner.gui.renderer import Renderer` above is load-bearing for this
+    # string target -- it guarantees the submodule is imported, which mock needs in
+    # order to resolve the attribute (on Python 3.10 nothing else imports it first).
     with patch("seedsigner.gui.renderer.Renderer.get_instance",
                return_value=StubRenderer()):
         yield

@@ -1033,11 +1033,14 @@ def test_load_bip85_key_selects_seed(monkeypatch):
         tools_views.seed_screens, "SeedBIP85SelectChildIndexScreen", DummyIndexScreen
     )
 
-    def fake_get_seed(idx):
-        captured["idx"] = idx
-        return controller.storage.seeds[idx]
+    # The view now indexes controller.storage.seeds directly rather than going
+    # through a Controller lookup, so capture the selection at the list instead.
+    class CapturingSeedList(list):
+        def __getitem__(self, index):
+            captured["idx"] = index
+            return super().__getitem__(index)
 
-    monkeypatch.setattr(controller, "get_seed", fake_get_seed)
+    controller.storage.seeds = CapturingSeedList(controller.storage.seeds)
 
     view = tools_views.ToolsGPGLoadBIP85KeyView()
     try:
