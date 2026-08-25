@@ -496,7 +496,7 @@ def generate_screenshots(locale):
                 ScreenshotConfig(seed_views.SeedSlip39MoreSharesView, mock_context_manager=mock_slip39_more_shares),
                 ScreenshotConfig(seed_views.SeedAddPassphraseView, screenshot_name="SeedSlip39AddPassphraseView", mock_context_manager=mock_slip39_more_shares),
                 ScreenshotConfig(seed_views.SeedSlip39CreateFromBytesView, dict(secret=bytes.fromhex("11" * 16))),
-                ScreenshotConfig(seed_views.SeedSlip39RegenerateSharesView, dict(seed_num=3)),
+                ScreenshotConfig(seed_views.SeedSlip39RegenerateSharesView, dict(seed=slip39_seed)),
 
                 ScreenshotConfig(seed_views.SeedElectrumMnemonicStartView),
             ],

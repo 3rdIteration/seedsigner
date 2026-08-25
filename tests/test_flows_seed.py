@@ -294,7 +294,7 @@ class TestSeedFlows(FlowTest):
             sequence.append(FlowStep(MainMenuView))
 
             self.run_sequence(
-                initial_destination_view_args=dict(seed_num=0),
+                initial_destination_view_args=dict(seed=self.controller.storage.seeds[0]),
                 sequence=sequence,
             )
             
@@ -340,7 +340,7 @@ class TestSeedFlows(FlowTest):
             view.decoder.add_data("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa")
 
         self.run_sequence(
-            initial_destination_view_args=dict(seed_num=0),
+            initial_destination_view_args=dict(seed=self.controller.storage.seeds[0]),
             sequence=[
                 FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.EXPORT_XPUB),
                 FlowStep(seed_views.SeedExportXpubSigTypeView, button_data_selection=seed_views.SeedExportXpubSigTypeView.SINGLE_SIG),
@@ -371,7 +371,7 @@ class TestSeedFlows(FlowTest):
             view.decoder.add_data("bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kg3g4ty")
 
         self.run_sequence(
-            initial_destination_view_args=dict(seed_num=0),
+            initial_destination_view_args=dict(seed=self.controller.storage.seeds[0]),
             sequence=[
                 FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.EXPORT_XPUB),
                 FlowStep(seed_views.SeedExportXpubSigTypeView, is_redirect=True),
@@ -415,7 +415,7 @@ class TestSeedFlows(FlowTest):
 
         # If multisig isn't an option, then the sig type selection is skipped altogether
         self.run_sequence(
-            initial_destination_view_args=dict(seed_num=0),
+            initial_destination_view_args=dict(seed=self.controller.storage.seeds[0]),
             sequence=[
                 FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.EXPORT_XPUB),
                 FlowStep(seed_views.SeedExportXpubSigTypeView, is_redirect=True),
@@ -426,7 +426,7 @@ class TestSeedFlows(FlowTest):
         # test that taproot is not an option via exception raised when choice is taproot
         with pytest.raises(FlowTestInvalidButtonDataSelectionException) as e:
             self.run_sequence(
-                initial_destination_view_args=dict(seed_num=0),
+                initial_destination_view_args=dict(seed=self.controller.storage.seeds[0]),
                 sequence=[
                     FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.EXPORT_XPUB),
                     FlowStep(seed_views.SeedExportXpubSigTypeView, is_redirect=True),
@@ -437,7 +437,7 @@ class TestSeedFlows(FlowTest):
         # test that nunchuk is not an option via exception raised when choice is nunchuk
         with pytest.raises(FlowTestInvalidButtonDataSelectionException) as e:
             self.run_sequence(
-                initial_destination_view_args=dict(seed_num=0),
+                initial_destination_view_args=dict(seed=self.controller.storage.seeds[0]),
                 sequence=[
                     FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.EXPORT_XPUB),
                     FlowStep(seed_views.SeedExportXpubSigTypeView, is_redirect=True),
@@ -477,7 +477,7 @@ class TestSeedFlows(FlowTest):
         xpub_qr_format = ButtonOption(self.settings.get_multiselect_value_display_names(SettingsConstants.SETTING__XPUB_QR_FORMAT)[2], return_data=specter_legacy)
 
         self.run_sequence(
-            initial_destination_view_args=dict(seed_num=0),
+            initial_destination_view_args=dict(seed=self.controller.storage.seeds[0]),
             sequence=[
                 FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.EXPORT_XPUB),
                 FlowStep(seed_views.SeedExportXpubSigTypeView, button_data_selection=sig_type),
@@ -511,7 +511,7 @@ class TestSeedFlows(FlowTest):
         })
 
         self.run_sequence(
-            initial_destination_view_args=dict(seed_num=0),
+            initial_destination_view_args=dict(seed=self.controller.storage.seeds[0]),
             sequence=[
                 FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.EXPORT_XPUB),
                 FlowStep(seed_views.SeedExportXpubSigTypeView, is_redirect=True),
@@ -540,7 +540,7 @@ class TestSeedFlows(FlowTest):
         self.settings.set_value(SettingsConstants.SETTING__XPUB_QR_FORMAT, [x for x,y in SettingsConstants.ALL_XPUB_QR_FORMATS])
 
         self.run_sequence(
-            initial_destination_view_args=dict(seed_num=0),
+            initial_destination_view_args=dict(seed=self.controller.storage.seeds[0]),
             sequence=[
                 FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.EXPORT_XPUB),
                 FlowStep(seed_views.SeedExportXpubSigTypeView, button_data_selection=seed_views.SeedExportXpubSigTypeView.SINGLE_SIG),
@@ -569,7 +569,7 @@ class TestSeedFlows(FlowTest):
         self.controller.storage.finalize_pending_seed()
 
         self.run_sequence(
-            initial_destination_view_args=dict(seed_num=0),
+            initial_destination_view_args=dict(seed=self.controller.storage.seeds[0]),
             sequence=[
                 FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.DISCARD),
                 FlowStep(seed_views.SeedDiscardView, button_data_selection=seed_views.SeedDiscardView.DISCARD),
@@ -648,7 +648,7 @@ class TestSeedFlows(FlowTest):
         self.controller.storage.finalize_pending_seed()
 
         self.run_sequence(
-            initial_destination_view_args={'num_modules': 21, 'seed_num': 0, 'seedqr_format': 'seed__seedqr'},
+            initial_destination_view_args={'num_modules': 21, 'seed': self.controller.storage.seeds[0], 'seedqr_format': 'seed__seedqr'},
             sequence=[
                 FlowStep(seed_views.SeedTranscribeSeedQRWholeQRView),
                 FlowStep(seed_views.SeedTranscribeSeedQRZoomedInView),
@@ -809,7 +809,7 @@ class TestMessageSigningFlows(FlowTest):
         ])
 
         # Scenario 2: Scan the seed first, then select Sign Message
-        self.controller.discard_seed(0)
+        self.controller.discard_seed(self.controller.storage.seeds[0])
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
             FlowStep(scan_views.ScanView, before_run=self.load_seed_into_decoder),  # simulate read SeedQR; ret val is ignored
@@ -857,7 +857,7 @@ class TestMessageSigningFlows(FlowTest):
         ])
 
         # Scenario 4: Load a long message without whitespace
-        self.controller.discard_seed(0)
+        self.controller.discard_seed(self.controller.storage.seeds[0])
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
             FlowStep(scan_views.ScanView, before_run=self.load_seed_into_decoder),  # simulate read SeedQR; ret val is ignored
@@ -1012,7 +1012,7 @@ class TestSatochipDescriptorVerification(BaseTest):
             derivation_path="m/84'/0'/0'",
         )
 
-        view = seed_views.SeedAddressVerificationView(seed_num=None, export_for_xpub=True)
+        view = seed_views.SeedAddressVerificationView(seed=None, export_for_xpub=True)
 
         def mock_start(self):
             self.verified_index.set_value(0)

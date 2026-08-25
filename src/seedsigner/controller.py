@@ -362,18 +362,8 @@ class Controller(Singleton):
         return self.hardware_rng_monitor.failure_reason()
 
 
-    def get_seed(self, seed_num: int) -> Seed:
-        if seed_num < len(self.storage.seeds):
-            return self.storage.seeds[seed_num]
-        else:
-            raise Exception(f"There is no seed_num {seed_num}; only {len(self.storage.seeds)} in memory.")
-
-
-    def discard_seed(self, seed_num: int):
-        if seed_num < len(self.storage.seeds):
-            del self.storage.seeds[seed_num]
-        else:
-            raise Exception(f"There is no seed_num {seed_num}; only {len(self.storage.seeds)} in memory.")
+    def discard_seed(self, seed: Seed):
+        self.storage.seeds.remove(seed)
 
 
     def pop_prev_from_back_stack(self):

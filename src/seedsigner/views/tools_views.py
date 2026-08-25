@@ -788,7 +788,7 @@ class ToolsImageEntropyMnemonicLengthView(View):
         else:
             seed = Seed(mnemonic, wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE))
             self.controller.storage.set_pending_seed(seed)
-            return Destination(SeedWordsWarningView, view_args={"seed_num": None}, clear_history=True)
+            return Destination(SeedWordsWarningView, view_args={"seed": None}, clear_history=True)
 
 
 
@@ -889,7 +889,7 @@ class ToolsDiceEntropyEntryView(View):
             seed = Seed(dice_seed_phrase, wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE))
             self.controller.storage.set_pending_seed(seed)
             loading_screen.stop()
-            return Destination(SeedWordsWarningView, view_args={"seed_num": None}, clear_history=True)
+            return Destination(SeedWordsWarningView, view_args={"seed": None}, clear_history=True)
 
 
 
@@ -1182,7 +1182,7 @@ class ToolsAddressExplorerSelectSourceView(View):
             return Destination(
                 SeedExportXpubScriptTypeView,
                 view_args=dict(
-                    seed_num=selected_menu_num,
+                    seed=seeds[selected_menu_num],
                     sig_type=SettingsConstants.SINGLE_SIG,
                 )
             )
@@ -1223,16 +1223,16 @@ class ToolsAddressExplorerAddressTypeView(View):
     CHANGE = ButtonOption("Change addresses")
 
 
-    def __init__(self, seed_num: int = None, script_type: str = None, custom_derivation: str = None, account: int = 0):
+    def __init__(self, seed: Seed = None, script_type: str = None, custom_derivation: str = None, account: int = 0):
         """
-            If the explorer source is a seed, `seed_num` and `script_type` must be
+            If the explorer source is a seed, `seed` and `script_type` must be
             specified. `custom_derivation` can be specified as needed.
 
-            If the source is a multisig or single sig wallet descriptor, `seed_num`,
+            If the source is a multisig or single sig wallet descriptor, `seed`,
             `script_type`, and `custom_derivation` should be `None`.
         """
         super().__init__()
-        self.seed_num = seed_num
+        self.seed = seed
         self.script_type = script_type
         self.custom_derivation = custom_derivation
         self.account = account
@@ -1242,15 +1242,14 @@ class ToolsAddressExplorerAddressTypeView(View):
         # Store everything in the Controller's `address_explorer_data` so we don't have
         # to keep passing vals around from View to View and recalculating.
         data = dict(
-            seed_num=seed_num,
+            seed=seed,
             network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
             embit_network=SettingsConstants.map_network_to_embit(network),
             script_type=script_type,
             account=account,
         )
-        if self.seed_num is not None:
-            self.seed = self.controller.storage.seeds[seed_num]
-            data["seed_num"] = self.seed
+        if self.seed is not None:
+            data["seed"] = self.seed
             seed_derivation_override = self.seed.derivation_override(sig_type=SettingsConstants.SINGLE_SIG)
 
             if self.script_type == SettingsConstants.CUSTOM_DERIVATION:
@@ -1300,7 +1299,7 @@ class ToolsAddressExplorerAddressTypeView(View):
         selected_menu_num = self.run_screen(
             ToolsAddressExplorerAddressTypeScreen,
             button_data=button_data,
-            fingerprint=self.seed.get_fingerprint() if self.seed_num is not None else None,
+            fingerprint=self.seed.get_fingerprint() if self.seed is not None else None,
             wallet_descriptor_display_name=wallet_descriptor_display_name,
             script_type=script_type,
             custom_derivation_path=self.custom_derivation,

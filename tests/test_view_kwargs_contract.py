@@ -134,6 +134,72 @@ def _collect_findings():
     return findings
 
 
+def _collect_screenshot_findings():
+    """
+    The screenshot generator instantiates Views directly via ScreenshotConfig, so it
+    breaks the same way the View layer does -- but it cannot run on every dev machine
+    (it needs libraqm, which Pillow's Windows wheels do not bundle), so a mismatch there
+    reaches CI unnoticed. Check it statically alongside the views.
+    """
+    import importlib
+
+    generator = os.path.join(os.path.dirname(__file__), "screenshot_generator", "generator.py")
+    with open(generator, encoding="utf-8") as fh:
+        tree = ast.parse(fh.read())
+
+    modules = {}
+    for name in ("seed_views", "psbt_views", "tools_views", "settings_views",
+                 "scan_views", "smartcard_views", "gpg_views", "view"):
+        try:
+            modules[name] = importlib.import_module(f"seedsigner.views.{name}")
+        except Exception:
+            pass
+
+    findings = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and getattr(node.func, "id", None) == "ScreenshotConfig"):
+            continue
+        if not node.args:
+            continue
+        target = node.args[0]
+        cls_name = target.attr if isinstance(target, ast.Attribute) else getattr(target, "id", None)
+        mod_name = getattr(target.value, "id", None) if isinstance(target, ast.Attribute) else None
+        if not cls_name:
+            continue
+
+        # view_args is passed positionally or by keyword, as a {...} literal or a
+        # dict(...) call; _static_dict_keys handles both forms.
+        keys = _static_dict_keys(node.args[1]) if len(node.args) > 1 else None
+        for kw in node.keywords:
+            if kw.arg == "view_args":
+                keys = _static_dict_keys(kw.value)
+        if not keys:
+            continue
+
+        search = ([modules[mod_name]] if mod_name in modules else []) + list(modules.values())
+        view_cls = next((getattr(m, cls_name) for m in search if hasattr(m, cls_name)), None)
+        if view_cls is None:
+            continue
+        names, var_kw = _accepted_params(view_cls)
+        if names is None or var_kw:
+            continue
+        bad = keys - names
+        if bad:
+            findings.append(
+                f"screenshot_generator/generator.py:{node.lineno}  "
+                f"ScreenshotConfig({cls_name})  unexpected view_args: {sorted(bad)}"
+            )
+    return findings
+
+
+def test_screenshot_generator_kwargs_match_targets():
+    findings = _collect_screenshot_findings()
+    assert not findings, (
+        "The screenshot generator passes keyword args its target View does not accept "
+        "(would raise TypeError when CI generates screenshots):\n  " + "\n  ".join(findings)
+    )
+
+
 def test_run_screen_and_destination_kwargs_match_targets():
     findings = _collect_findings()
     assert not findings, (

@@ -182,7 +182,7 @@ class TestToolsFlows(FlowTest):
 
         # Scenario 4: No seed onboard, one script type enabled, started from Tools, BACK
         # can only go to MainMenu because of mid-flow seed load.
-        controller.discard_seed(0)
+        controller.discard_seed(controller.storage.seeds[0])
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
             FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.ADDRESS_EXPLORER),
@@ -369,7 +369,7 @@ class TestToolsFlows(FlowTest):
             derivation_path="m/84'/1'/0'",
         )
 
-        view = seed_views.SeedAddressVerificationView(seed_num=0)
+        view = seed_views.SeedAddressVerificationView(seed=self.controller.storage.seeds[0])
 
         def fake_run_screen(*args, **kwargs):
             return RET_CODE__BACK_BUTTON
@@ -454,7 +454,7 @@ class TestToolsFlows(FlowTest):
             verified_index_is_change=False,
         )
 
-        view = seed_views.SeedAddressVerificationSuccessView(seed_num=0)
+        view = seed_views.SeedAddressVerificationSuccessView(seed=self.controller.storage.seeds[0])
 
         def fake_run_screen(*args, **kwargs):
             return 0
@@ -489,7 +489,7 @@ class TestToolsFlows(FlowTest):
             verified_index_is_change=False,
         )
 
-        view = seed_views.SeedAddressVerificationSuccessView(seed_num=0)
+        view = seed_views.SeedAddressVerificationSuccessView(seed=self.controller.storage.seeds[0])
 
         def fake_run_screen(*args, **kwargs):
             return 0
@@ -564,7 +564,7 @@ class TestToolsFlows(FlowTest):
             derivation_path="m/44'/0'/0'",
         )
 
-        view = seed_views.SeedAddressVerificationView(seed_num=0)
+        view = seed_views.SeedAddressVerificationView(seed=self.controller.storage.seeds[0])
 
         def fake_run_screen(*args, **kwargs):
             return None
@@ -573,7 +573,7 @@ class TestToolsFlows(FlowTest):
             destination = view.run()
 
         assert destination.View_cls == seed_views.SeedAddressVerificationSimpleNotFoundView
-        assert destination.view_args["seed_num"] == 0
+        assert destination.view_args["seed"] is self.controller.storage.seeds[0]
         assert destination.view_args["addrs_checked"] >= 10
         assert destination.view_args["next_start_index"] >= 10
 
@@ -598,7 +598,7 @@ class TestToolsFlows(FlowTest):
             derivation_path="m/44'/0'/0'",
         )
 
-        view = seed_views.SeedAddressVerificationView(seed_num=0, use_expanded=True)
+        view = seed_views.SeedAddressVerificationView(seed=self.controller.storage.seeds[0], use_expanded=True)
 
         def fake_run_screen(*args, **kwargs):
             return None
@@ -607,7 +607,7 @@ class TestToolsFlows(FlowTest):
             destination = view.run()
 
         assert destination.View_cls == seed_views.SeedAddressVerificationNotFoundView
-        assert destination.view_args["seed_num"] == 0
+        assert destination.view_args["seed"] is self.controller.storage.seeds[0]
         assert destination.view_args["addrs_per_path_checked"] == 2
         assert destination.view_args["next_start_index"] == 2
 
@@ -632,7 +632,7 @@ class TestToolsFlows(FlowTest):
         )
 
         view = seed_views.SeedAddressVerificationNotFoundView(
-            seed_num=0, addrs_per_path_checked=10, next_start_index=10,
+            seed=self.controller.storage.seeds[0], addrs_per_path_checked=10, next_start_index=10,
         )
 
         def fake_run_screen(*args, **kwargs):
@@ -643,7 +643,7 @@ class TestToolsFlows(FlowTest):
             destination = view.run()
 
         assert destination.View_cls == seed_views.SeedAddressVerificationView
-        assert destination.view_args["seed_num"] == 0
+        assert destination.view_args["seed"] is self.controller.storage.seeds[0]
         assert destination.view_args["expanded_start_index"] == 10
         assert destination.view_args["use_expanded"] is True
 
@@ -666,7 +666,7 @@ class TestToolsFlows(FlowTest):
         )
 
         view = seed_views.SeedAddressVerificationNotFoundView(
-            seed_num=0, addrs_per_path_checked=100, next_start_index=100,
+            seed=self.controller.storage.seeds[0], addrs_per_path_checked=100, next_start_index=100,
         )
 
         def fake_run_screen(*args, **kwargs):

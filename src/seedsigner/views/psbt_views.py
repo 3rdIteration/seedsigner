@@ -135,7 +135,7 @@ class PSBTSelectSeedView(View):
             # User selected one of the n seeds
             if not ensure_microsd_seed_warning():
                 return Destination(PSBTSelectSeedView)
-            self.controller.psbt_seed = self.controller.get_seed(selected_menu_num)
+            self.controller.psbt_seed = seeds[selected_menu_num]
             return Destination(PSBTOverviewView)
 
         # The remaining flows are a sub-flow; resume PSBT flow once the seed is loaded.

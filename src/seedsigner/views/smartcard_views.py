@@ -4182,7 +4182,7 @@ class SatochipExportXpubQRDisplayView(View):
             return Destination(
                 SeedExportXpubVerifyAddressView,
                 view_args=dict(
-                    seed_num=None,
+                    seed=None,
                     derivation_path=self.derivation_path,
                     script_type=self.script_type,
                     sig_type=self.sig_type,

@@ -513,9 +513,9 @@ class ScanAddressView(ScanView):
 
 
 class ScanXpubAddressView(ScanAddressView):
-    def __init__(self, seed_num: int, derivation_path: str, script_type: str, sig_type: str, coordinator_label: str):
+    def __init__(self, seed: Seed, derivation_path: str, script_type: str, sig_type: str, coordinator_label: str):
         super().__init__()
-        self.seed_num = seed_num
+        self.seed = seed
         self.derivation_path = derivation_path
         self.script_type = script_type
         self.sig_type = sig_type
@@ -543,7 +543,7 @@ class ScanXpubAddressView(ScanAddressView):
             )
             return Destination(
                 SeedAddressVerificationView,
-                view_args=dict(seed_num=self.seed_num, export_for_xpub=True),
+                view_args=dict(seed=self.seed, export_for_xpub=True),
                 skip_current_view=True,
             )
 
