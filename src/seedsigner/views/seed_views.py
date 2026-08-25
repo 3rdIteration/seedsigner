@@ -369,13 +369,19 @@ class LoadSeedView(View):
 
 class SeedKeeperSelectView(View):
     def entropy_to_mnemonic(self, entropy_bytes, wordlist):
-        from mnemonic import Mnemonic
-        print(f"Worldlist: {wordlist}")
+        # embit is already a hard dependency and handles BIP-39 entropy both
+        # ways; `mnemonic` was imported here but never declared in
+        # requirements.txt, so this path raised ModuleNotFoundError on a clean
+        # install. embit ships the English wordlist only, which matches the
+        # project-wide English-only policy -- but a SeedKeeper secret carries
+        # its own wordlist byte, so refuse anything else rather than decode
+        # foreign entropy into English words and hand back a wrong mnemonic.
+        from embit import bip39
 
-        mnemonic_obj = Mnemonic(wordlist)
-        mnemonic = mnemonic_obj.to_mnemonic(entropy_bytes)
+        if wordlist not in (None, "english"):
+            raise ValueError(f"Unsupported BIP-39 wordlist: {wordlist}. Only English is supported.")
 
-        return mnemonic # str
+        return bip39.mnemonic_from_bytes(bytes(entropy_bytes))  # str
 
     @staticmethod
     def _decode_seedkeeper_text(secret_hex: str) -> str:
@@ -5096,13 +5102,16 @@ class SeedExportPlaintextQRView(View):
 ****************************************************************************"""
 class SaveToSeedkeeperView(View):
     def mnemonic_to_entropy(self, bip39_mnemonic, wordlist):
-        from mnemonic import Mnemonic
-        print(f"Worldlist: {wordlist}")
+        # See SeedKeeperSelectView.entropy_to_mnemonic: `mnemonic` was imported
+        # but never declared as a dependency, so saving a BIP-39 seed to a
+        # SeedKeeper v2 card failed with "No module named 'mnemonic'". embit is
+        # already required and is English-only, matching project policy.
+        from embit import bip39
 
-        mnemonic_obj = Mnemonic(wordlist)
-        entropy = mnemonic_obj.to_entropy(bip39_mnemonic)
+        if wordlist not in (None, "english"):
+            raise ValueError(f"Unsupported BIP-39 wordlist: {wordlist}. Only English is supported.")
 
-        return entropy  # bytearray
+        return bip39.mnemonic_to_bytes(bip39_mnemonic)  # bytes
     def __init__(self, seed: Seed, bip85_data: dict = None, share_index: int | None = None):
         super().__init__()
         self.seed = seed

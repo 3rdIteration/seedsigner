@@ -342,8 +342,21 @@ class TestSeedKeeperSaveFlows(SmartcardFlowTest):
 
     def test_saved_secret_round_trips_through_the_card(self):
         """
-        Save a seed through the UI, then read it back off the card and confirm
-        the mnemonic survived intact -- the property a backup actually needs.
+        Save a seed through the UI, then read it back off the card and rebuild
+        the mnemonic -- the property a backup actually needs.
+
+        A SeedKeeper v2 Masterseed secret does not store the words. It stores
+        the master seed bytes plus the BIP-39 *entropy*, which is why the save
+        path converts the mnemonic to entropy on the way in and the restore
+        path converts it back on the way out. Asserting on the rebuilt mnemonic
+        therefore exercises both halves of that conversion, not just the
+        transport.
+
+        Layout (stype "Masterseed", subtype 0x01), mirroring
+        SeedKeeperSelectView's decoder:
+
+            masterseed_size | masterseed | wordlist_byte |
+            entropy_size    | entropy    | passphrase_size | passphrase
         """
         self.prime_controller_for_card()
         seed = self.store_bip39_seed()
@@ -368,7 +381,27 @@ class TestSeedKeeperSaveFlows(SmartcardFlowTest):
         self._disconnect()
 
         raw = bytes.fromhex(exported["secret"])
-        assert " ".join(BIP39_MNEMONIC).encode("utf-8") in raw
+
+        offset = 0
+        masterseed_size = raw[offset]; offset += 1
+        masterseed = raw[offset:offset + masterseed_size]; offset += masterseed_size
+        wordlist_byte = raw[offset]; offset += 1
+        entropy_size = raw[offset]; offset += 1
+        entropy = raw[offset:offset + entropy_size]; offset += entropy_size
+
+        from embit import bip39
+        from pysatochip.JCconstants import BIP39_WORDLIST_DIC
+
+        # English-only, project wide -- the save path must not have written
+        # anything else.
+        assert BIP39_WORDLIST_DIC.get(wordlist_byte) == "english"
+
+        # The entropy on the card must rebuild the exact mnemonic we saved...
+        assert bip39.mnemonic_from_bytes(entropy) == " ".join(BIP39_MNEMONIC)
+
+        # ...and the stored master seed must match what that mnemonic derives,
+        # which is what any restoring wallet will actually use.
+        assert masterseed == Seed(mnemonic=BIP39_MNEMONIC).seed_bytes
 
 
 # ======================================================================

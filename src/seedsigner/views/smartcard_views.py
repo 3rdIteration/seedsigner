@@ -1905,13 +1905,16 @@ class ToolsSeedkeeperCloneSecretsView(View):
 class ToolsSeedkeeperViewSecretsView(View):
 
     def entropy_to_mnemonic(self, entropy_bytes, wordlist):
-        from mnemonic import Mnemonic
-        logger.info(f"Worldlist: {wordlist}")
+        # See SeedKeeperSelectView.entropy_to_mnemonic: `mnemonic` was imported
+        # but never declared as a dependency. embit is already required and is
+        # English-only, matching project policy; a SeedKeeper secret declaring
+        # any other wordlist is refused rather than mis-decoded.
+        from embit import bip39
 
-        mnemonic_obj = Mnemonic(wordlist)
-        mnemonic = mnemonic_obj.to_mnemonic(entropy_bytes)
+        if wordlist not in (None, "english"):
+            raise ValueError(f"Unsupported BIP-39 wordlist: {wordlist}. Only English is supported.")
 
-        return mnemonic # str
+        return bip39.mnemonic_from_bytes(bytes(entropy_bytes))  # str
 
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
