@@ -9,6 +9,7 @@ from PIL import Image
 
 from seedsigner.gui.components import Fonts, GUIConstants, load_image
 from seedsigner.gui.screens.screen import BaseScreen
+from seedsigner.helpers.version import Version
 from seedsigner.models.settings import Settings
 from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.views.view import View
@@ -140,7 +141,11 @@ class OpeningSplashScreen(LogoScreen):
         logo_height = 70
         version_x = int(self.renderer.canvas_width/2)
         version_y = int(self.canvas_height/2) + int(logo_height/2) + logo_offset_y + GUIConstants.COMPONENT_PADDING
-        self.renderer.draw.text(xy=(version_x, version_y), text=version, font=font, fill=GUIConstants.ACCENT_COLOR, anchor="mt")
+        version_max_chars = 20
+        self.renderer.draw.text(xy=(version_x, version_y), text=version[:version_max_chars], font=font, fill=GUIConstants.ACCENT_COLOR, anchor="mt")
+        if len(version) > version_max_chars:
+            # Squeeze a second version display line in if needed
+            self.renderer.draw.text(xy=(version_x, version_y + GUIConstants.get_top_nav_title_font_size()), text=version[version_max_chars:], font=font, fill=GUIConstants.ACCENT_COLOR, anchor="mt")
 
         if not self.renderer.is_screenshot_generator:
             self.renderer.show_image()

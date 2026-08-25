@@ -255,7 +255,21 @@ def _derive_camera_entropy_bytes(preview_images, final_image) -> bytes | None:
     millis_hash = hashlib.sha256(hash_bytes + str(time.time()).encode("utf-8"))
     hash_bytes = millis_hash.digest()
 
-    # Mix in entropy from hardware RNG or os.urandom fallback
+    # Mix in entropy from hardware RNG or os.urandom fallback.
+    # Re-checked here as well as at flow entry: the monitor runs continuously and can
+    # turn unhealthy while the user is framing the shot, and this is the moment that
+    # source is actually folded in. Bailing out costs nothing -- the sha256 chain would
+    # still be sound -- but a seed should not be minted while a source it relies on is
+    # known to be failing.
+    from seedsigner.controller import Controller
+    controller = Controller.get_instance()
+    if not controller.hardware_rng_is_healthy:
+        logger.error(
+            "Refusing to derive camera entropy: %s",
+            controller.hardware_rng_failure_reason,
+        )
+        return None
+
     rng_entropy = _read_secure_rng_bytes(32)
 
     rng_hash = hashlib.sha256(hash_bytes + rng_entropy)
@@ -585,6 +599,28 @@ class ToolsImageEntropyLivePreviewView(View):
 
     def run(self):
         from seedsigner.gui.screens.tools_screens import ToolsImageEntropyLivePreviewScreen
+
+        # _derive_camera_entropy_bytes chains the camera frames onto a system-RNG
+        # contribution with sha256. That mixing is entropy-preserving, so a degraded
+        # RNG cannot subtract from what the frames supply -- this gate is not there to
+        # stop the result being weakened.
+        #
+        # It is there because a failed health check means a source the design counts on
+        # is not delivering. Continuing would mint a seed whose real entropy budget is
+        # smaller than intended, with nothing recorded to say so. Fail closed and tell
+        # the user instead.
+        if not self.controller.hardware_rng_is_healthy:
+            # Same gate the password generator applies before it will produce a secret.
+            self.run_screen(
+                WarningScreen,
+                title=_("System RNG Error"),
+                status_headline=None,
+                text=self.controller.hardware_rng_failure_reason or _("System RNG health check failed."),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
         self.controller.image_entropy_preview_frames = None
         self.controller.image_entropy_final_image = None
         ret = self.run_screen(ToolsImageEntropyLivePreviewScreen)
@@ -596,6 +632,18 @@ class ToolsImageEntropyLivePreviewView(View):
             self.controller.image_entropy_preview_frames, self.controller.image_entropy_final_image = ret
         else:
             self.controller.image_entropy_preview_frames = ret
+
+        # The live preview screen must return the required number of preview pool
+        # frames. A short pool means the camera stalled, repeated a frame, or was
+        # covered -- the frames that survive the screen's variation and de-duplication
+        # rules are the only ones that carry entropy, so a mismatch must not proceed.
+        # (Adopted from upstream; the mixing below is unchanged.)
+        frames = self.controller.image_entropy_preview_frames
+        if frames is None or len(frames) != ToolsImageEntropyLivePreviewScreen.PREVIEW_POOL_SIZE:
+            num_frames = 0 if frames is None else len(frames)
+            # TRANSLATOR_NOTE: Shown when the camera fails to collect enough frames for a new seed. "expected" and "actual" are the number of frames.
+            raise Exception(_("Entropy collection failed. Expected {expected} preview frames, got {actual}").format(
+                expected=ToolsImageEntropyLivePreviewScreen.PREVIEW_POOL_SIZE, actual=num_frames))
         return Destination(
             ToolsImageEntropyFinalImageView,
             view_args=dict(next_view=self.next_view, next_view_args=self.next_view_args),

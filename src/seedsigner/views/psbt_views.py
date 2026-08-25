@@ -193,7 +193,7 @@ class PSBTSelectSeedView(View):
                         script_pubkey = None
 
                     if script_pubkey is not None:
-                        policy = PSBTParser._get_policy(first_input, script_pubkey, psbt.xpubs)
+                        policy = PSBTParser._get_policy(first_input, script_pubkey, psbt.xpubs, None)
                         is_multisig_psbt = isinstance(policy, dict) and "m" in policy
             except Exception as exc:
                 logger.debug("Unable to determine PSBT policy", exc_info=exc)

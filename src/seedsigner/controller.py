@@ -1,3 +1,4 @@
+from datetime import datetime
 import logging
 import os
 import sys
@@ -733,7 +734,7 @@ class Controller(Singleton):
             if ", line " in traceback_line:
                 line_info = traceback_line.split("/")[-1].replace("\"", "").replace("line ", "")
                 break
-        
+
         error = [
             exception_type,
             line_info,
