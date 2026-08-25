@@ -481,7 +481,7 @@ def generate_screenshots(locale):
                 ScreenshotConfig(seed_views.SeedSelectSeedView, dict(flow=Controller.FLOW__VERIFY_SINGLESIG_ADDR), screenshot_name="SeedSelectSeedView_address_verification"),
                 ScreenshotConfig(seed_views.AddressVerificationSigTypeView),
                 ScreenshotConfig(seed_views.SeedAddressVerificationView, dict(seed=seed_12), mock_context_manager=mock_address_verification_data_loaded),
-                ScreenshotConfig(seed_views.SeedAddressVerificationSuccessView,              mock_context_manager=mock_address_verification_data_loaded),
+                ScreenshotConfig(seed_views.SeedAddressVerificationSuccessView, dict(seed=seed_12), mock_context_manager=mock_address_verification_data_loaded),
 
                 ScreenshotConfig(seed_views.LoadMultisigWalletDescriptorView),
                 ScreenshotConfig(seed_views.MultisigWalletDescriptorView, mock_context_manager=mock_multisig_wallet_descriptor_loaded),
