@@ -73,18 +73,45 @@ def readiness():
     # exception when the reader is empty, which faulthandler dumps as a wall of
     # traceback even though we catch it -- checking for a card the quiet way
     # keeps a no-card run readable.
+    #
+    # Everything here must be inside the guard, `readers()` included: on a
+    # machine with no PC/SC daemon at all -- every CI runner -- enumerating
+    # readers raises EstablishContextException("Access denied") rather than
+    # returning an empty list. Absence of the whole subsystem is a reason to
+    # skip, exactly like absence of a card.
     try:
         from smartcard.System import readers
+
+        physical = [r for r in readers() if not _is_virtual_reader(r)]
+        has_card = any(_reader_has_card(r) for r in physical)
     except ImportError:
         pytest.skip("pyscard not installed")
-    if not any(_reader_has_card(r) for r in readers() if not _is_virtual_reader(r)):
+    except Exception as exc:
+        pytest.skip(f"PC/SC unavailable: {_describe(exc)}")
+
+    if not has_card:
         pytest.skip("No smartcard inserted in any physical PC/SC reader")
 
     try:
         pygp.terminal()
         pygp.card()
     except BaseException as exc:
-        pytest.skip(f"No GlobalPlatform-capable card detected: {exc}")
+        pytest.skip(f"No GlobalPlatform-capable card detected: {_describe(exc)}")
+
+
+def _describe(exc) -> str:
+    """
+    Render an exception for a skip message without trusting its __str__.
+
+    pyscard's PC/SC exceptions format themselves by calling back into the
+    native SCardGetErrorMessage, which can itself raise -- so interpolating
+    one into an f-string can replace a clean skip with a spurious error. Fall
+    back to the class name, which is the diagnostic part anyway.
+    """
+    try:
+        return f"{type(exc).__name__}: {exc}"
+    except BaseException:
+        return type(exc).__name__
 
 
 def _is_virtual_reader(reader) -> bool:
