@@ -574,6 +574,9 @@ class PSBTRiskWarningView(View):
         RiskWarning.HIGH_FEE: _mft("The fee is an unusually large share of this transaction."),
         RiskWarning.DUST_OUTPUT: _mft("One output is below the dust threshold and may be unspendable."),
         RiskWarning.FUTURE_LOCKTIME: _mft("This transaction cannot confirm until a future date."),
+        # TRANSLATOR_NOTE: BIP-68 relative timelock; the delay runs from when the
+        # input confirmed, so no fixed date can be shown.
+        RiskWarning.RELATIVE_TIMELOCK: _mft("An input is time-locked and cannot be spent yet."),
         RiskWarning.RBF: _mft("This transaction is marked replaceable (RBF)."),
     }
 
@@ -1057,7 +1060,11 @@ class PSBTFinalizeView(View):
 
         selected_menu_num = self.run_screen(
             PSBTFinalizeScreen,
-            button_data=[self.APPROVE_PSBT]
+            button_data=[self.APPROVE_PSBT],
+            # Informational, so it never blocked the flow and was therefore never
+            # shown at all. State it on the approval screen instead.
+            is_rbf=(psbt_parser is not None
+                    and RiskWarning.RBF in psbt_parser.risk_warnings),
         )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:

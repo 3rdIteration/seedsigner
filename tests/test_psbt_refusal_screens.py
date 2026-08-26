@@ -141,3 +141,19 @@ class TestRefusalScreensFit:
             "This transaction could not be read. It may be corrupted or malformed.",
             "scan rejection",
         )
+
+
+class TestSyntheticRefusalMessagesFit:
+    """
+    Refusal messages with no corpus vector to produce them, so
+    TestRefusalScreensFit's parametrization cannot reach them.
+    """
+
+    def test_undisplayable_output_message_fits(self):
+        # Worst case is a large output index; the message is otherwise fixed.
+        assert_fits("Output 999 script cannot be shown as an address.",
+                    "UNDISPLAYABLE_OUTPUT")
+
+    def test_unsupported_psbt_version_message_fits(self):
+        assert_fits("PSBT version 4294967295 is not supported.",
+                    "UNSUPPORTED_PSBT_VERSION")

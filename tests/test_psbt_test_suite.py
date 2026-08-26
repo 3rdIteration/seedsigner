@@ -15,7 +15,7 @@ import pytest
 
 from embit.base import EmbitError
 
-from seedsigner.models.psbt_parser import InvalidPSBTError, PSBTParser
+from seedsigner.models.psbt_parser import InvalidPSBTError, PSBTParser, RejectCode
 from seedsigner.models.settings_definition import SettingsConstants
 
 from embit import bip32
@@ -461,3 +461,141 @@ class TestAdvisories:
         off = PSBTParser(p=load_psbt(vector.name), seed=suite_seed(),
                          network=SUITE_NETWORK, change_index_lookahead=0)
         assert off.num_change_outputs == 1
+
+
+class TestPSBTVersion:
+    """
+    SeedSigner implements BIP-174 (v0) only. A psbt declaring BIP-370 (v2) is
+    refused rather than read as v0.
+
+    A v2 psbt has no PSBT_GLOBAL_UNSIGNED_TX -- inputs and outputs carry their own
+    fields, and PSBT_GLOBAL_TX_MODIFIABLE says whether a coordinator may still add
+    or remove them. Anything declaring v2 while also carrying a v0 unsigned tx is
+    internally inconsistent, and reading either half means ignoring the other.
+    """
+
+    def test_v2_psbt_is_refused(self):
+        with pytest.raises(InvalidPSBTError) as excinfo:
+            parse_vector(VECTORS_BY_NAME["TX-12"])
+        assert excinfo.value.code == RejectCode.UNSUPPORTED_PSBT_VERSION
+
+    def test_v0_psbts_are_unaffected(self):
+        """The check must not catch the ordinary case: absent or explicit 0."""
+        for name in ("NORMAL-1_p2wpkh", "NORMAL-3_legacy", "NORMAL-4_multi_input"):
+            psbt = load_psbt(name)
+            assert getattr(psbt, "version", None) in (None, 0)
+            PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK)
+
+    def test_amount_bound_still_fires_on_a_v0_psbt(self):
+        """
+        XTRAS.NEGATIVE_AMOUNT happens to also declare v2, so the version check
+        refuses it first and its stated trap -- an output past MAX_MONEY -- stops
+        being exercised by that vector. Strip the version declaration and confirm
+        the amount bound is still what catches it.
+        """
+        psbt = load_psbt("XTRAS.NEGATIVE_AMOUNT")
+        psbt.version = 0
+
+        with pytest.raises(InvalidPSBTError) as excinfo:
+            PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK)
+        assert excinfo.value.code == RejectCode.AMOUNT_OUT_OF_RANGE
+
+
+class TestTimelocks:
+    """
+    Both ways a transaction can be prevented from confirming until later.
+
+    nLockTime is absolute and lives on the transaction; BIP-68 relative timelocks
+    are per-input and live in nSequence, where they are easy to mistake for a
+    plain RBF signal -- every relative-timelock sequence is also below the RBF
+    ceiling, so a signer that only checks for RBF reports "replaceable" on a
+    transaction that cannot confirm for a year.
+    """
+
+    def _rbf_vector_with(self, tx_version: int, sequence: int) -> PSBTParser:
+        # PSBT.tx is a property that rebuilds a fresh Tx on every access, so
+        # mutating psbt.tx.vin[i] writes to a throwaway. The real fields are
+        # psbt.tx_version and psbt.inputs[i].sequence.
+        psbt = load_psbt("XTRAS.RBF_SIGNAL")
+        psbt.tx_version = tx_version
+        psbt.inputs[0].sequence = sequence
+        return PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK)
+
+    @pytest.mark.parametrize("sequence,label", [
+        (0x0000FFFF, "65535 blocks (~15 months)"),
+        (0x00400001, "512-second units (time-based)"),
+    ])
+    def test_relative_timelock_is_flagged(self, sequence, label):
+        parser = self._rbf_vector_with(tx_version=2, sequence=sequence)
+        assert Advisory.RELATIVE_TIMELOCK in parser.risk_warnings, label
+
+    def test_relative_timelock_interrupts_rather_than_being_informational(self):
+        """
+        It must not be filed alongside RBF as informational: the whole point is
+        that "replaceable" massively understates a year-long lock.
+        """
+        from seedsigner.models.psbt_parser import RiskWarning
+        assert RiskWarning.RELATIVE_TIMELOCK not in RiskWarning.INFORMATIONAL
+
+    @pytest.mark.parametrize("tx_version,sequence,reason", [
+        (2, 0xFFFFFFFD, "disable bit set -- plain RBF, not a timelock"),
+        (2, 0xFFFFFFFF, "final sequence"),
+        (1, 0x0000FFFF, "BIP-68 is inactive below tx version 2"),
+    ])
+    def test_relative_timelock_not_flagged(self, tx_version, sequence, reason):
+        parser = self._rbf_vector_with(tx_version, sequence)
+        assert Advisory.RELATIVE_TIMELOCK not in parser.risk_warnings, reason
+
+    def test_locktime_needs_a_non_final_input_to_be_enforced(self):
+        """
+        Consensus ignores nLockTime when every input is final, so warning about
+        it then would be a false alarm.
+        """
+        psbt = load_psbt("XTRAS.LOCKTIME_FUTURE")
+        psbt.inputs[0].sequence = 0xFFFFFFFF
+        parser = PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK)
+        assert Advisory.FUTURE_LOCKTIME not in parser.risk_warnings
+        assert parser.locktime_is_enforced is False
+
+    def test_locktime_is_flagged_when_enforced(self):
+        psbt = load_psbt("XTRAS.LOCKTIME_FUTURE")
+        psbt.inputs[0].sequence = 0xFFFFFFFE
+        parser = PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK)
+        assert Advisory.FUTURE_LOCKTIME in parser.risk_warnings
+        assert parser.locktime_is_enforced is True
+
+
+class TestUndisplayableOutputs:
+    """
+    The signing model is that the user authorises what the screen shows, so an
+    output whose script has no address representation cannot be authorised.
+
+    The case that matters is witness versions 2-16: reserved for future soft
+    forks and currently anyone-can-spend, so value sent there is takeable by
+    anyone who notices. These used to escape `_parse_outputs` as a bare
+    ValueError -- a crash screen rather than a decision.
+    """
+
+    def _psbt_with_output_script(self, raw_script: bytes):
+        from embit.script import Script
+        psbt = load_psbt("NORMAL-1_p2wpkh")
+        psbt.outputs[0].script_pubkey = Script(raw_script)
+        return psbt
+
+    @pytest.mark.parametrize("witness_version,opcode", [(2, 0x52), (5, 0x55), (16, 0x60)])
+    def test_unknown_witness_version_is_refused(self, witness_version, opcode):
+        psbt = self._psbt_with_output_script(bytes([opcode, 32]) + bytes(32))
+        with pytest.raises(InvalidPSBTError) as excinfo:
+            PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK)
+        assert excinfo.value.code == RejectCode.UNDISPLAYABLE_OUTPUT
+
+    def test_refusal_is_a_decision_not_a_crash(self):
+        """A bare ValueError here would reach the user as an unhandled exception."""
+        psbt = self._psbt_with_output_script(bytes([0x52, 32]) + bytes(32))
+        with pytest.raises(InvalidPSBTError):
+            PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK)
+
+    def test_known_witness_versions_still_parse(self):
+        """v0 and v1 (taproot) must be unaffected."""
+        for name in ("NORMAL-1_p2wpkh", "NORMAL-4_multi_input"):
+            PSBTParser(p=load_psbt(name), seed=suite_seed(), network=SUITE_NETWORK)

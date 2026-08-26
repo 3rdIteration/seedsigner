@@ -46,6 +46,15 @@ LOCKTIME_TIMESTAMP_THRESHOLD = 500_000_000
 # nSequence below this signals opt-in RBF (BIP-125).
 RBF_SEQUENCE_CEILING = 0xFFFFFFFE
 
+# A sequence of 0xffffffff is "final": it opts the input out of both BIP-125
+# replaceability and BIP-68 relative timelocks, and leaves nLockTime unenforced.
+SEQUENCE_FINAL = 0xFFFFFFFF
+
+# BIP-68: bit 31 set disables the relative timelock; the low 16 bits carry the
+# delay, in blocks or in 512-second units depending on bit 22.
+SEQUENCE_LOCKTIME_DISABLE_FLAG = 1 << 31
+SEQUENCE_LOCKTIME_MASK = 0x0000FFFF
+
 # The only sighash flags that commit to the whole transaction. SIGHASH_DEFAULT
 # (0x00) is taproot's spelling of SIGHASH_ALL (BIP-341) and is valid only there.
 SIGHASH_DEFAULT = 0x00
@@ -61,11 +70,13 @@ class RiskWarning:
     HIGH_FEE = "HIGH_FEE"
     DUST_OUTPUT = "DUST_OUTPUT"
     FUTURE_LOCKTIME = "FUTURE_LOCKTIME"
+    RELATIVE_TIMELOCK = "RELATIVE_TIMELOCK"
     RBF = "RBF"
 
     # Recorded, but not worth interrupting the user for. Opt-in RBF is the
     # default in every modern coordinator; an interstitial on every ordinary
     # transaction just teaches people to click past the ones that matter.
+    # Shown on the approval screen instead -- see PSBTFinalizeScreen.
     INFORMATIONAL = frozenset({RBF})
 
 
@@ -92,6 +103,8 @@ class RejectCode:
     NONZERO_OP_RETURN = "NONZERO_OP_RETURN"
     UNSUPPORTED_SIGHASH = "UNSUPPORTED_SIGHASH"
     CHANGE_INDEX_TOO_FAR = "CHANGE_INDEX_TOO_FAR"
+    UNSUPPORTED_PSBT_VERSION = "UNSUPPORTED_PSBT_VERSION"
+    UNDISPLAYABLE_OUTPUT = "UNDISPLAYABLE_OUTPUT"
 
 
 class InvalidPSBTError(Exception):
@@ -195,6 +208,8 @@ class PSBTParser():
         self.op_return_data: bytes = None
         self.op_return_amount: int = 0
         self.risk_warnings: set[str] = set()
+        # Whether nLockTime is actually enforced (needs a non-final input).
+        self.locktime_is_enforced: bool = False
 
         if self.seed is not None or self.root is not None:
             self.parse()
@@ -275,6 +290,8 @@ class PSBTParser():
             logger.info(f"self.psbt is None!!")
             return False
 
+        self._validate_psbt_version()
+
         if self.seed is not None and self.root is None:
             self._set_root()
 
@@ -314,6 +331,38 @@ class PSBTParser():
             return False
         push_len = data[1]
         return 2 <= push_len <= 40 and push_len == len(data) - 2
+
+
+    def _validate_psbt_version(self):
+        """
+        Refuse a psbt that declares a format we do not implement.
+
+        BIP-174 defines version 0 (the field may be absent, which means 0);
+        BIP-370 defines version 2. SeedSigner implements v0 only.
+
+        A v2 psbt has no PSBT_GLOBAL_UNSIGNED_TX -- inputs and outputs are
+        described by their own fields (PSBT_IN_PREVIOUS_TXID, PSBT_OUT_AMOUNT,
+        and so on), and PSBT_GLOBAL_TX_MODIFIABLE says whether a coordinator may
+        still add or remove them. Something declaring v2 while also carrying a v0
+        unsigned tx is internally inconsistent: whichever half we read, we are
+        ignoring the other. Reading it as v0 means silently discarding every v2
+        field, including the ones that describe what may change after we sign.
+
+        There is no honest reason to build that, and no safe way to display it,
+        so it is a refusal rather than a warning. Supporting v2 properly would
+        mean implementing BIP-370, not relaxing this check.
+        """
+        version = getattr(self.psbt, "version", None)
+
+        # Absent is v0 by definition. embit surfaces that as either None or 0
+        # depending on whether the field was written out explicitly.
+        if version in (None, 0):
+            return
+
+        raise InvalidPSBTError(
+            f"PSBT version {version} is not supported.",
+            code=RejectCode.UNSUPPORTED_PSBT_VERSION,
+        )
 
 
     @staticmethod
@@ -783,7 +832,25 @@ class PSBTParser():
                 self.change_amount += vout[i].value
 
             else:
-                addr = vout[i].script_pubkey.address(NETWORKS[SettingsConstants.map_network_to_embit(self.network)])
+                try:
+                    addr = vout[i].script_pubkey.address(NETWORKS[SettingsConstants.map_network_to_embit(self.network)])
+                except (ValueError, EmbitError) as e:
+                    # No address representation. The signing model here is that the
+                    # user authorises what the screen shows, so a destination that
+                    # cannot be displayed cannot be authorised -- and this used to
+                    # escape as a bare ValueError, i.e. a crash screen rather than a
+                    # decision.
+                    #
+                    # The case that matters is an output to witness version 2-16.
+                    # Those versions are reserved for future soft forks and are
+                    # currently anyone-can-spend, so value sent there is not merely
+                    # unaddressable, it is takeable by anyone who notices. Bare
+                    # multisig and other non-standard scripts land here too and are
+                    # equally unreviewable.
+                    raise InvalidPSBTError(
+                        f"Output {i} script cannot be shown as an address.",
+                        code=RejectCode.UNDISPLAYABLE_OUTPUT,
+                    ) from e
                 self.destination_addresses.append(addr)
                 self.destination_amounts.append(vout[i].value)
                 self.spend_amount += vout[i].value
@@ -827,8 +894,17 @@ class PSBTParser():
                 self.risk_warnings.add(RiskWarning.DUST_OUTPUT)
                 break
 
+        # nLockTime is only enforced by consensus if at least one input is
+        # non-final; with every sequence at 0xffffffff the field is inert and
+        # warning about it would be a false alarm.
+        self.locktime_is_enforced = any(
+            vin.sequence != SEQUENCE_FINAL for vin in self.psbt.tx.vin
+        )
+
         locktime = self.psbt.tx.locktime or 0
-        if locktime >= LOCKTIME_TIMESTAMP_THRESHOLD and locktime > time.time():
+        if (self.locktime_is_enforced
+                and locktime >= LOCKTIME_TIMESTAMP_THRESHOLD
+                and locktime > time.time()):
             # Block-height locktimes are left alone: anti-fee-sniping sets one on
             # every ordinary transaction, and we have no chain tip to compare to.
             self.risk_warnings.add(RiskWarning.FUTURE_LOCKTIME)
@@ -837,6 +913,24 @@ class PSBTParser():
             if vin.sequence < RBF_SEQUENCE_CEILING:
                 self.risk_warnings.add(RiskWarning.RBF)
                 break
+
+        # BIP-68 relative timelocks. For a version 2+ transaction, an input whose
+        # sequence has the disable bit clear cannot be spent until a delay has
+        # elapsed since the *input* confirmed -- up to 65535 blocks (~15 months)
+        # or 65535*512 seconds (~1 year).
+        #
+        # This has to be called out separately rather than folded into RBF. Any
+        # such sequence is below RBF_SEQUENCE_CEILING, so it already trips the RBF
+        # check -- and a user told only "replaceable" would have no idea the
+        # transaction cannot confirm for a year. Same harm as a future nLockTime,
+        # so it interrupts for the same reason.
+        if (self.psbt.tx.version or 0) >= 2:
+            for vin in self.psbt.tx.vin:
+                if vin.sequence & SEQUENCE_LOCKTIME_DISABLE_FLAG:
+                    continue
+                if vin.sequence & SEQUENCE_LOCKTIME_MASK:
+                    self.risk_warnings.add(RiskWarning.RELATIVE_TIMELOCK)
+                    break
 
 
 

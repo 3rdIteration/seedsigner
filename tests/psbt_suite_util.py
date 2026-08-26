@@ -75,6 +75,8 @@ class RejectCode:
     NONZERO_OP_RETURN = "NONZERO_OP_RETURN"
     UNSUPPORTED_SIGHASH = "UNSUPPORTED_SIGHASH"
     CHANGE_INDEX_TOO_FAR = "CHANGE_INDEX_TOO_FAR"
+    UNSUPPORTED_PSBT_VERSION = "UNSUPPORTED_PSBT_VERSION"
+    UNDISPLAYABLE_OUTPUT = "UNDISPLAYABLE_OUTPUT"
 
 
 class Advisory:
@@ -86,6 +88,7 @@ class Advisory:
     HIGH_FEE = "HIGH_FEE"
     DUST_OUTPUT = "DUST_OUTPUT"
     FUTURE_LOCKTIME = "FUTURE_LOCKTIME"
+    RELATIVE_TIMELOCK = "RELATIVE_TIMELOCK"
     RBF = "RBF"
 
 
@@ -225,10 +228,13 @@ VECTORS = [
     ),
     Vector(
         "TX-12", "binding",
-        "PSBT_GLOBAL_TX_MODIFIABLE left set. SeedSigner ignores unknown globals "
-        "and re-derives everything, so this is informational.",
-        Expect.PARSES,
-        input_amount=200_000, output_amount=199_000, num_outputs=2, owned_outputs=1,
+        "Declares PSBT_GLOBAL_VERSION 2 (BIP-370) while still carrying a v0 "
+        "unsigned tx, and leaves PSBT_GLOBAL_TX_MODIFIABLE set. Reading it as v0 "
+        "means silently discarding every v2 field, including the one saying what "
+        "a coordinator may still change after we sign.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.UNSUPPORTED_PSBT_VERSION,
     ),
     Vector(
         "TX-14.cross_net", "binding",
@@ -358,7 +364,12 @@ VECTORS = [
         "the display as a real amount.",
         Expect.REJECT_PARSER,
         input_amount=200_000, output_amount=18446744073709651615, num_outputs=2,
-        reject_code=RejectCode.AMOUNT_OUT_OF_RANGE,
+        # This vector also happens to declare PSBT_GLOBAL_VERSION 2, which is
+        # refused before any amount is read -- an unsupported container format
+        # means every value inside it is being misread, so there is nothing to
+        # say about the amount yet. The AMOUNT_OUT_OF_RANGE path is still covered:
+        # see test_amount_bound_still_fires_on_a_v0_psbt.
+        reject_code=RejectCode.UNSUPPORTED_PSBT_VERSION,
     ),
     Vector(
         "XTRAS.NEGATIVE_FEE", "extras",
