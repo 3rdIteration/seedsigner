@@ -599,3 +599,84 @@ class TestUndisplayableOutputs:
         """v0 and v1 (taproot) must be unaffected."""
         for name in ("NORMAL-1_p2wpkh", "NORMAL-4_multi_input"):
             PSBTParser(p=load_psbt(name), seed=suite_seed(), network=SUITE_NETWORK)
+
+
+class TestFarFutureLocktime:
+    """
+    A locktime years beyond when the psbt was written.
+
+    The device has no RTC, so it cannot ask what today is. A psbt loaded from
+    microSD carries one usable hint -- the file's mtime, written by a machine
+    that did have a clock.
+
+    The security property that makes this safe to use: a file mtime is
+    attacker-influenceable, so it may only ever *raise* a warning, never suppress
+    one. Forging the mtime buys back the previous behaviour (the locktime is
+    still stated on the approval screen) and nothing more.
+    """
+
+    ANCHOR = (963_408, 1_787_616_000)
+    NOW = 1_787_616_000
+    BLOCKS_PER_YEAR = 52_560
+
+    def _parse(self, locktime, reference_time=NOW, anchor=ANCHOR, sequence=0xFFFFFFFE):
+        psbt = load_psbt("NORMAL-1_p2wpkh")
+        psbt.locktime = locktime
+        psbt.inputs[0].sequence = sequence
+        return PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK,
+                          reference_time=reference_time, block_anchor=anchor)
+
+    @pytest.mark.parametrize("years,expected", [
+        (0.5, False),
+        (1, False),
+        (2, True),
+        (5, True),
+    ])
+    def test_block_height_locktime_threshold(self, years, expected):
+        height = self.ANCHOR[0] + int(self.BLOCKS_PER_YEAR * years)
+        parser = self._parse(height)
+        fired = Advisory.LOCKTIME_FAR_FUTURE in parser.risk_warnings
+        assert fired is expected, f"{years} years out"
+
+    def test_timestamp_locktime_threshold(self):
+        near = self._parse(self.NOW + 30 * 86_400)
+        far = self._parse(self.NOW + 3 * 365 * 86_400)
+        assert Advisory.LOCKTIME_FAR_FUTURE not in near.risk_warnings
+        assert Advisory.LOCKTIME_FAR_FUTURE in far.risk_warnings
+
+    def test_it_interrupts_rather_than_being_informational(self):
+        from seedsigner.models.psbt_parser import RiskWarning
+        assert RiskWarning.LOCKTIME_FAR_FUTURE not in RiskWarning.INFORMATIONAL
+
+    @pytest.mark.parametrize("reference_time,anchor,reason", [
+        (None, ANCHOR, "QR-delivered psbt has no file and so no mtime"),
+        (0, ANCHOR, "implausible reference is discarded, not trusted"),
+        (NOW, None, "no anchor means a height cannot be dated"),
+    ])
+    def test_degrades_to_display_only(self, reference_time, anchor, reason):
+        """
+        Missing inputs must silently disable the check, never crash and never
+        guess. The locktime is still shown on the approval screen either way.
+        """
+        far = self.ANCHOR[0] + self.BLOCKS_PER_YEAR * 5
+        parser = self._parse(far, reference_time=reference_time, anchor=anchor)
+        assert Advisory.LOCKTIME_FAR_FUTURE not in parser.risk_warnings, reason
+
+    def test_inert_locktime_never_warns(self):
+        """All inputs final means consensus ignores nLockTime entirely."""
+        far = self.ANCHOR[0] + self.BLOCKS_PER_YEAR * 5
+        parser = self._parse(far, sequence=0xFFFFFFFF)
+        assert Advisory.LOCKTIME_FAR_FUTURE not in parser.risk_warnings
+
+    def test_a_forged_mtime_is_no_worse_than_no_mtime(self):
+        """
+        The failure mode has to be bounded: an attacker who backdates the file so
+        the lock looks near gets the same outcome as supplying no file at all.
+        """
+        far = self.ANCHOR[0] + self.BLOCKS_PER_YEAR * 5
+        forged = self._parse(far, reference_time=self.NOW + 10 * 365 * 86_400)
+        absent = self._parse(far, reference_time=None)
+        assert Advisory.LOCKTIME_FAR_FUTURE not in forged.risk_warnings
+        assert forged.risk_warnings == absent.risk_warnings
+        # ...and in both cases the locktime is still recorded for display.
+        assert forged.locktime == far and forged.locktime_is_enforced

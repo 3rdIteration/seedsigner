@@ -239,6 +239,10 @@ class ScanView(View):
 
                 self.controller.psbt = psbt
                 self.controller.psbt_parser = None
+                # Delivered by QR: there is no file, so no mtime to date it by.
+                # Clear rather than leave, or a previous microSD transaction's
+                # timestamp would be applied to this one.
+                self.controller.psbt_source_time = None
                 return Destination(PSBTSelectSeedView, skip_current_view=True)
 
             elif self.decoder.is_settings:

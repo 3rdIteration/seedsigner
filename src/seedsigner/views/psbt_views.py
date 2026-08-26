@@ -6,6 +6,7 @@ from binascii import hexlify
 
 from embit import bip32
 import logging
+import time
 
 from seedsigner.models.psbt_parser import InvalidPSBTError, PSBTParser, RejectCode, RiskWarning
 from seedsigner.models.settings import SettingsConstants
@@ -460,10 +461,13 @@ class PSBTOverviewView(View):
             self.loading_screen.start()
                 
             try:
+                from seedsigner.controller import Controller as _Controller
                 self.controller.psbt_parser = PSBTParser(
                     self.controller.psbt,
                     seed=self.controller.psbt_seed,
-                    network=self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+                    network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
+                    reference_time=getattr(self.controller, "psbt_source_time", None),
+                    block_anchor=(_Controller.RELEASE_BLOCK_HEIGHT, _Controller.RELEASE_BLOCK_TIME),
                 )
             except InvalidPSBTError as e:
                 # A deliberate refusal, not a crash: the psbt is parseable but
@@ -574,6 +578,8 @@ class PSBTRiskWarningView(View):
         RiskWarning.HIGH_FEE: _mft("The fee is an unusually large share of this transaction."),
         RiskWarning.DUST_OUTPUT: _mft("One output is below the dust threshold and may be unspendable."),
         RiskWarning.FUTURE_LOCKTIME: _mft("This transaction cannot confirm until a future date."),
+        # TRANSLATOR_NOTE: The transaction is locked years beyond when it was created.
+        RiskWarning.LOCKTIME_FAR_FUTURE: _mft("This transaction is locked for years and cannot confirm until then."),
         # TRANSLATOR_NOTE: BIP-68 relative timelock; the delay runs from when the
         # input confirmed, so no fixed date can be shown.
         RiskWarning.RELATIVE_TIMELOCK: _mft("An input is time-locked and cannot be spent yet."),
@@ -1041,7 +1047,63 @@ class PSBTFinalizeView(View):
     """
     APPROVE_PSBT = ButtonOption("Approve transaction")
 
-    
+
+    @staticmethod
+    def _locktime_text(psbt_parser: PSBTParser) -> str:
+        """
+        A one-line, human-readable nLockTime for the approval screen, or None
+        when no locktime is actually in force.
+
+        nLockTime comes in two encodings and only one of them was ever visible.
+        A timestamp locktime is compared against the clock and warned about; a
+        block-height locktime was not checked at all, so an attacker who wanted a
+        long lock simply used the height form and nothing was shown. Both forms
+        delay confirmation identically, so both are stated here.
+
+        Heights are converted to an approximate date rather than displayed raw:
+        "locked until block 1,000,000" is not something a user can act on without
+        knowing the current tip, which the device does not have. The conversion
+        anchors on Controller.RELEASE_BLOCK_HEIGHT and assumes 10-minute blocks.
+
+        This states rather than judges. The device has no RTC, so it cannot tell
+        whether a date is in the future, and a stale anchor means the estimate can
+        drift. A user making a payment today can tell that "~Mar 2031" is wrong;
+        a heuristic with no trustworthy clock cannot.
+        """
+        from seedsigner.controller import Controller
+        from seedsigner.models.psbt_parser import LOCKTIME_TIMESTAMP_THRESHOLD
+
+        if psbt_parser is None or not psbt_parser.locktime_is_enforced:
+            # Consensus ignores nLockTime unless some input is non-final.
+            return None
+
+        locktime = psbt_parser.locktime
+        if not locktime:
+            return None
+
+        if locktime >= LOCKTIME_TIMESTAMP_THRESHOLD:
+            # Already a unix timestamp; no estimation needed.
+            when = time.gmtime(locktime)
+            exact = True
+        else:
+            estimated = (
+                Controller.RELEASE_BLOCK_TIME
+                + (locktime - Controller.RELEASE_BLOCK_HEIGHT) * Controller.SECONDS_PER_BLOCK
+            )
+            if estimated <= 0:
+                return None
+            when = time.gmtime(estimated)
+            exact = False
+
+        stamp = time.strftime("%b %Y", when)
+        if exact:
+            # TRANSLATOR_NOTE: Inserts a month and year, e.g. "Locked until Mar 2031"
+            return _("Locked until {}").format(stamp)
+        # TRANSLATOR_NOTE: Inserts an approximate month and year derived from a
+        # block height, e.g. "Locked until ~Mar 2031"
+        return _("Locked until ~{}").format(stamp)
+
+
     def run(self):
         from embit.psbt import PSBT
         from seedsigner.gui.screens.psbt_screens import PSBTFinalizeScreen
@@ -1065,6 +1127,7 @@ class PSBTFinalizeView(View):
             # shown at all. State it on the approval screen instead.
             is_rbf=(psbt_parser is not None
                     and RiskWarning.RBF in psbt_parser.risk_warnings),
+            locktime_text=self._locktime_text(psbt_parser),
         )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:

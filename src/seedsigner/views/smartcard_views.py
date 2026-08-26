@@ -3397,6 +3397,16 @@ class ToolsSatochipLoadPsbtView(View):
         self.controller.psbt_from_microsd = True
         self.controller.psbt_microsd_save_path = selected_path
 
+        # The device has no RTC, so it cannot ask what today is. The file's mtime
+        # was written by a machine that did have a clock, which makes it a usable
+        # stand-in for "roughly now" when judging how far out an nLockTime sits.
+        # Only ever used to raise a warning, never to suppress one -- see
+        # PSBTParser._check_far_future_locktime.
+        try:
+            self.controller.psbt_source_time = int(selected_path.stat().st_mtime)
+        except Exception:
+            self.controller.psbt_source_time = None
+
         return Destination(PSBTSelectSeedView, skip_current_view=True)
 
 class ToolsSatochipAdvancedView(View):

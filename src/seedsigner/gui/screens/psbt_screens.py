@@ -772,6 +772,12 @@ class PSBTFinalizeScreen(ButtonListScreen):
     # approval, rather than only recorded on the parser.
     is_rbf: bool = False
 
+    # Human-readable nLockTime, when one is actually enforced. Stated rather than
+    # judged: the device has no RTC, and a block-height locktime cannot be
+    # compared to anything without a chain tip. A user who did not ask for a
+    # timelock is the one who can tell that this transaction should not have one.
+    locktime_text: str = None
+
     def __post_init__(self):
         # Customize defaults
         self.title = _("Sign Transaction")
@@ -793,12 +799,24 @@ class PSBTFinalizeScreen(ButtonListScreen):
         )
         self.components.append(approve_text)
 
+        next_y = approve_text.screen_y + approve_text.height + GUIConstants.COMPONENT_PADDING
+
         if self.is_rbf:
-            self.components.append(TextArea(
+            rbf_text = TextArea(
                 # TRANSLATOR_NOTE: BIP-125 replace-by-fee; the sender can replace
                 # this transaction with a different one until it confirms.
                 text=_("Replaceable (RBF)"),
                 font_size=GUIConstants.get_body_font_size() - 2,
                 font_color=GUIConstants.INFO_COLOR,
-                screen_y=approve_text.screen_y + approve_text.height + GUIConstants.COMPONENT_PADDING,
+                screen_y=next_y,
+            )
+            self.components.append(rbf_text)
+            next_y = rbf_text.screen_y + rbf_text.height
+
+        if self.locktime_text:
+            self.components.append(TextArea(
+                text=self.locktime_text,
+                font_size=GUIConstants.get_body_font_size() - 2,
+                font_color=GUIConstants.WARNING_COLOR,
+                screen_y=next_y,
             ))

@@ -157,3 +157,110 @@ class TestSyntheticRefusalMessagesFit:
     def test_unsupported_psbt_version_message_fits(self):
         assert_fits("PSBT version 4294967295 is not supported.",
                     "UNSUPPORTED_PSBT_VERSION")
+
+
+class TestLocktimeDisplay:
+    """
+    nLockTime comes in two encodings and only one of them was ever visible.
+
+    A timestamp locktime is compared against the clock and warned about; a
+    block-height locktime was not checked at all, so an attacker wanting a long
+    lock simply used the height form and the review screens said nothing. Both
+    delay confirmation identically, so both are now stated on the approval
+    screen.
+
+    Heights are rendered as an approximate date rather than raw, because
+    "block 1,000,000" is not actionable without a chain tip the device does not
+    have. See Controller.RELEASE_BLOCK_HEIGHT.
+    """
+
+    def _parser_with(self, locktime: int, sequence: int = 0xFFFFFFFE) -> PSBTParser:
+        psbt = load_psbt("NORMAL-1_p2wpkh")
+        psbt.locktime = locktime
+        psbt.inputs[0].sequence = sequence
+        return PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK)
+
+    def test_block_height_locktime_is_rendered_as_a_date(self):
+        from seedsigner.controller import Controller
+        from seedsigner.views.psbt_views import PSBTFinalizeView
+
+        # A year past the anchor should read as roughly a year past its date.
+        blocks_per_year = 52_560
+        parser = self._parser_with(Controller.RELEASE_BLOCK_HEIGHT + blocks_per_year)
+        text = PSBTFinalizeView._locktime_text(parser)
+
+        assert text is not None
+        assert "~" in text, "a height-derived date must be marked approximate"
+
+        import time
+        expected_year = time.strftime(
+            "%Y", time.gmtime(Controller.RELEASE_BLOCK_TIME + blocks_per_year * 600)
+        )
+        assert expected_year in text
+
+    def test_timestamp_locktime_is_rendered_exactly(self):
+        from seedsigner.views.psbt_views import PSBTFinalizeView
+
+        parser = self._parser_with(2_000_000_000)  # 2033-05
+        text = PSBTFinalizeView._locktime_text(parser)
+        assert text is not None
+        assert "~" not in text, "a real timestamp needs no estimation"
+        assert "2033" in text
+
+    def test_nothing_shown_when_locktime_is_inert(self):
+        """Consensus ignores nLockTime when every input is final."""
+        from seedsigner.views.psbt_views import PSBTFinalizeView
+
+        parser = self._parser_with(2_000_000_000, sequence=0xFFFFFFFF)
+        assert PSBTFinalizeView._locktime_text(parser) is None
+
+    def test_nothing_shown_without_a_locktime(self):
+        from seedsigner.views.psbt_views import PSBTFinalizeView
+
+        parser = self._parser_with(0)
+        assert PSBTFinalizeView._locktime_text(parser) is None
+
+    def test_both_notices_fit_on_the_approval_screen(self):
+        """
+        RBF and a locktime can both apply. Neither may push the body past the
+        button -- TextArea renders over it rather than raising.
+        """
+        from seedsigner.gui.screens.psbt_screens import PSBTFinalizeScreen
+
+        screen = PSBTFinalizeScreen(
+            button_data=[ButtonOption("Approve transaction")],
+            is_rbf=True,
+            locktime_text="Locked until ~Feb 2031",
+        )
+        content_bottom = max(
+            getattr(c, "screen_y", 0) + getattr(c, "height", 0) for c in screen.components
+        )
+        assert content_bottom <= screen.buttons[0].screen_y, (
+            f"approval screen body ({content_bottom}px) overruns the button "
+            f"({screen.buttons[0].screen_y}px)"
+        )
+
+
+class TestBlockAnchor:
+    """The anchor is advisory, so a bad file must degrade the estimate, not boot."""
+
+    def test_falls_back_when_json_is_unreadable(self, tmp_path, monkeypatch):
+        from seedsigner.controller import Controller
+
+        before = Controller.RELEASE_BLOCK_HEIGHT
+        try:
+            monkeypatch.setattr(
+                "seedsigner.controller.Path",
+                lambda *a, **k: (_ for _ in ()).throw(OSError("nope")),
+            )
+            Controller._load_block_anchor()  # must not raise
+        finally:
+            Controller.RELEASE_BLOCK_HEIGHT = before
+
+    def test_shipped_json_is_plausible(self):
+        import json, pathlib
+
+        path = (pathlib.Path("src/seedsigner/resources/latest-block.json"))
+        data = json.loads(path.read_text(encoding="utf-8"))
+        assert data["height"] > 900_000
+        assert data["timestamp"] > 1_700_000_000

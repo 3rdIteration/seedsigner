@@ -55,6 +55,11 @@ SEQUENCE_FINAL = 0xFFFFFFFF
 SEQUENCE_LOCKTIME_DISABLE_FLAG = 1 << 31
 SEQUENCE_LOCKTIME_MASK = 0x0000FFFF
 
+# How far past the reference time a locktime must sit before it is treated as
+# abusive rather than merely unusual. Legitimate long timelocks exist (vaults,
+# inheritance), but the user who set one up knows about it.
+FAR_FUTURE_LOCKTIME_SECONDS = 2 * 365 * 24 * 60 * 60
+
 # The only sighash flags that commit to the whole transaction. SIGHASH_DEFAULT
 # (0x00) is taproot's spelling of SIGHASH_ALL (BIP-341) and is valid only there.
 SIGHASH_DEFAULT = 0x00
@@ -70,6 +75,7 @@ class RiskWarning:
     HIGH_FEE = "HIGH_FEE"
     DUST_OUTPUT = "DUST_OUTPUT"
     FUTURE_LOCKTIME = "FUTURE_LOCKTIME"
+    LOCKTIME_FAR_FUTURE = "LOCKTIME_FAR_FUTURE"
     RELATIVE_TIMELOCK = "RELATIVE_TIMELOCK"
     RBF = "RBF"
 
@@ -179,6 +185,8 @@ class PSBTParser():
         master_fingerprint: bytes | None = None,
         network: str = SettingsConstants.MAINNET,
         change_index_lookahead: int | None = None,
+        reference_time: int | None = None,
+        block_anchor: tuple[int, int] | None = None,
     ):
         self.psbt: PSBT = p
         self.seed = seed
@@ -187,6 +195,12 @@ class PSBTParser():
         self.root_path = root_path or []
         self.root_path_str = bip32.path_to_str(self.root_path) if self.root_path else "m"
         self.master_fingerprint = master_fingerprint
+        # Best available estimate of "now", and the (height, unix_time) pair used
+        # to date a block-height locktime. Both are optional; without them the
+        # far-future check simply does not run. See _check_far_future_locktime.
+        self.reference_time = reference_time
+        self.block_anchor = block_anchor
+
         self.change_index_lookahead = (
             change_index_lookahead
             if change_index_lookahead is not None
@@ -208,8 +222,13 @@ class PSBTParser():
         self.op_return_data: bytes = None
         self.op_return_amount: int = 0
         self.risk_warnings: set[str] = set()
-        # Whether nLockTime is actually enforced (needs a non-final input).
+        # Whether nLockTime is actually enforced (needs a non-final input), and
+        # its raw value. Shown on the approval screen: the device has no RTC, so
+        # the wall-clock comparison below cannot be relied on to judge whether a
+        # locktime is "far" in the future, and a block-height locktime cannot be
+        # judged at all without a chain tip. Stating it lets the user decide.
         self.locktime_is_enforced: bool = False
+        self.locktime: int = 0
 
         if self.seed is not None or self.root is not None:
             self.parse()
@@ -331,6 +350,45 @@ class PSBTParser():
             return False
         push_len = data[1]
         return 2 <= push_len <= 40 and push_len == len(data) - 2
+
+
+    def _check_far_future_locktime(self, locktime: int):
+        """
+        Flag a locktime sitting years beyond when this psbt was created.
+
+        The device has no RTC, so it cannot ask what today is. When a psbt is
+        loaded from microSD its file mtime is a usable stand-in: it was written by
+        a machine that did have a clock. `reference_time` carries that; it is None
+        for QR-delivered psbts, where no such hint exists.
+
+        SECURITY PROPERTY: this may only ever *raise* a warning, never suppress
+        one. A file mtime is attacker-influenceable -- whoever wrote the file
+        chose it -- so a forged mtime can hide a long lock. That is acceptable
+        precisely because the fallback is the existing behaviour: the locktime is
+        still stated on the approval screen either way. An attacker who forges the
+        mtime buys back the status quo and nothing more. What they must never be
+        able to do is use it to turn a warning off, which is why nothing here
+        clears a warning and why an implausible reference is discarded rather than
+        trusted.
+        """
+        if not self.locktime_is_enforced or not locktime:
+            return
+        if not self.reference_time or self.reference_time <= 0:
+            return
+
+        if locktime >= LOCKTIME_TIMESTAMP_THRESHOLD:
+            locktime_as_time = locktime
+        else:
+            # A block height means nothing without something to date it against.
+            if not self.block_anchor:
+                return
+            anchor_height, anchor_time = self.block_anchor
+            if anchor_height <= 0 or anchor_time <= 0:
+                return
+            locktime_as_time = anchor_time + (locktime - anchor_height) * 600
+
+        if locktime_as_time - self.reference_time >= FAR_FUTURE_LOCKTIME_SECONDS:
+            self.risk_warnings.add(RiskWarning.LOCKTIME_FAR_FUTURE)
 
 
     def _validate_psbt_version(self):
@@ -902,6 +960,7 @@ class PSBTParser():
         )
 
         locktime = self.psbt.tx.locktime or 0
+        self.locktime = locktime
         if (self.locktime_is_enforced
                 and locktime >= LOCKTIME_TIMESTAMP_THRESHOLD
                 and locktime > time.time()):
@@ -913,6 +972,8 @@ class PSBTParser():
             if vin.sequence < RBF_SEQUENCE_CEILING:
                 self.risk_warnings.add(RiskWarning.RBF)
                 break
+
+        self._check_far_future_locktime(locktime)
 
         # BIP-68 relative timelocks. For a version 2+ transaction, an input whose
         # sequence has the disable bit clear cannot be spent until a delay has
