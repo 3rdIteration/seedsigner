@@ -5852,51 +5852,249 @@ class ToolsJavacardClearKeysView(View):
         return Destination(BackStackView)
 
 
+# --- JavaCard applet build (generated from trusted constants) -----------------
+# A user-supplied `javacard-build.xml` on the microSD is NEVER executed: ANT
+# build files are effectively arbitrary code (they can run <exec>, <script>,
+# <delete>, etc.), and the old flow even ran them with `sudo`. Customization is
+# now limited to a strictly-validated `javacard-build.json` parameter file; the
+# actual build XML is always generated here from hard-coded toolchain paths.
+_JAVACARD_BUILD_CONF_FILENAME = "javacard-build.json"
+
+_JAVACARD_TASKDEF_CLASSPATH = {
+    "seedsigner_os": "/mnt/diy/Satochip-DIY/lib/ant-javacard.jar",
+    "dev_board": "/home/pi/Satochip-DIY/lib/ant-javacard.jar",
+    "other": str(Path.home() / "Satochip-DIY" / "lib" / "ant-javacard.jar"),
+}
+
+_JAVACARD_JCKIT = {
+    "seedsigner_os": "/mnt/diy/Satochip-DIY/sdks/jc304_kit",
+    "dev_board": "/home/pi/Satochip-DIY/sdks/jc304_kit",
+    "other": str(Path.home() / "Satochip-DIY" / "sdks" / "jc304_kit"),
+}
+
+# Per-platform root of the Satochip-DIY toolchain (sources/jckit are relative).
+_JAVACARD_TOOLCHAIN_ROOT = {
+    "seedsigner_os": "/mnt/diy/Satochip-DIY",
+    "dev_board": "/home/pi/Satochip-DIY",
+    "other": str(Path.home() / "Satochip-DIY"),
+}
+
+# Allowed applets and their trusted defaults. `sources_rel` and `applet_class`
+# are fixed; only `aid`/`version` can be overridden via the validated config.
+_JAVACARD_APPLETS = {
+    "satochip": {
+        "sources_rel": "applets/satochip/src/org/satochip/applet",
+        "applet_class": "org.satochip.applet.CardEdge",
+        "aid": "5361746F43686970",
+        "version": "0.1",
+        "out": "SatoChip-built-0.12.cap",
+    },
+    "seedkeeper": {
+        "sources_rel": "applets/seedkeeper/src/main/java/org/seedkeeper/applet",
+        "applet_class": "org.seedkeeper.applet.SeedKeeper",
+        "aid": "536565644b6565706572",
+        "version": "0.2",
+        "out": "SeedKeeper-built-0.2.cap",
+    },
+    "satodime": {
+        "sources_rel": "applets/satodime/src/org/satodime/applet",
+        "applet_class": "org.satodime.applet.Satodime",
+        "aid": "5361746f44696d65",
+        "version": "0.1",
+        "out": "SatoDime-built-0.1.2.cap",
+    },
+    "satochip-thd89": {
+        "sources_rel": "applets/satochip-thd89/src/org/satochip/applet",
+        "applet_class": "org.satochip.applet.CardEdge",
+        "aid": "5361746F43686970",
+        "version": "0.1",
+        "out": "SatoChip-THD89-built-0.12.cap",
+    },
+    "seedkeeper-thd89": {
+        "sources_rel": "applets/seedkeeper-thd89/src/main/java/org/seedkeeper/applet",
+        "applet_class": "org.seedkeeper.applet.SeedKeeper",
+        "aid": "536565644b6565706572",
+        "version": "0.2",
+        "out": "SeedKeeper-THD89-built-0.2.cap",
+    },
+    "satodime-thd89": {
+        "sources_rel": "applets/satodime-thd89/src/org/satodime/applet",
+        "applet_class": "org.satodime.applet.Satodime",
+        "aid": "5361746f44696d65",
+        "version": "0.1",
+        "out": "SatoDime-THD89-built-0.1.2.cap",
+    },
+}
+
+
+def _javacard_platform_key() -> str:
+    from seedsigner.models.settings import Settings
+
+    if Settings.is_seedsigner_os():
+        return "seedsigner_os"
+    if Settings.is_dev_board():
+        return "dev_board"
+    return "other"
+
+
+def _validate_javacard_aid(value) -> str | None:
+    if not isinstance(value, str):
+        return None
+    cleaned = value.strip()
+    if cleaned.lower().startswith("0x"):
+        cleaned = cleaned[2:]
+    if len(cleaned) != 32:
+        return None
+    if not re.fullmatch(r"[0-9a-fA-F]+", cleaned):
+        return None
+    return cleaned.upper()
+
+
+def _validate_javacard_version(value) -> str | None:
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    if re.fullmatch(r"\d+\.\d+", value):
+        return value
+    return None
+
+
+def _load_javacard_build_config(microsd_dir: Path) -> dict:
+    """Return a safe build config from an allowlisted microSD parameter file.
+
+    Only the keys ``applets`` (a list of known applet names) and ``overrides``
+    (per-applet ``aid``/``version``) are honored. Everything else is ignored,
+    and a missing or malformed file falls back to building every applet with its
+    trusted defaults. The returned dict maps applet name -> spec dict and never
+    contains user-controlled paths or tasks.
+    """
+    config = {name: dict(spec) for name, spec in _JAVACARD_APPLETS.items()}
+
+    conf_path = microsd_dir / _JAVACARD_BUILD_CONF_FILENAME
+    if not conf_path.is_file():
+        return config
+
+    try:
+        with open(conf_path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except Exception as e:
+        logger.warning("Ignoring invalid %s: %s", conf_path.name, e)
+        return config
+
+    if isinstance(data, dict) and isinstance(data.get("applets"), list):
+        wanted = {str(a).strip() for a in data["applets"]}
+        selected = {name for name in _JAVACARD_APPLETS if name in wanted}
+    else:
+        selected = set(_JAVACARD_APPLETS.keys())
+
+    overrides = data.get("overrides") if isinstance(data, dict) else None
+    if isinstance(overrides, dict):
+        for name, ov in overrides.items():
+            if name not in _JAVACARD_APPLETS or not isinstance(ov, dict):
+                continue
+            spec = config[name]
+            aid = _validate_javacard_aid(ov.get("aid"))
+            if aid is not None:
+                spec["aid"] = aid
+            version = _validate_javacard_version(ov.get("version"))
+            if version is not None:
+                spec["version"] = version
+
+    return {name: spec for name, spec in config.items() if name in selected}
+
+
+def _generate_javacard_build_xml(config: dict, platform_key: str, output_dir: Path) -> str:
+    """Generate a trusted ANT build file.
+
+    The output is built only from the validated ``config`` and hard-coded
+    toolchain paths. It can never contain arbitrary tasks such as ``<exec>`` or
+    ``<script>``; the only ``taskdef`` points at the trusted ``ant-javacard.jar``.
+    """
+    classpath = _JAVACARD_TASKDEF_CLASSPATH[platform_key]
+    root = _JAVACARD_TOOLCHAIN_ROOT[platform_key]
+    jckit = _JAVACARD_JCKIT[platform_key]
+
+    caps = []
+    for spec in config.values():
+        sources = f"{root}/{spec['sources_rel']}"
+        output = f"{output_dir}/{spec['out']}"
+        # Applet instance AID = package AID + "00" (matches the original templates).
+        applet_aid = spec["aid"] + "00"
+        caps.append(
+            "    <javacard>\n"
+            f'      <cap jckit="{jckit}" aid="{spec["aid"]}" version="{spec["version"]}" '
+            f'output="{output}" sources="{sources}">\n'
+            f'        <applet class="{spec["applet_class"]}" aid="{applet_aid}"/>\n'
+            "      </cap>\n"
+            "    </javacard>"
+        )
+    caps_xml = "\n".join(caps)
+
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<project name="Satochip-DIY" default="build" basedir=".">\n'
+        "  <description>SeedSigner-generated JavaCard build (trusted template).</description>\n"
+        f'  <taskdef name="javacard" classname="pro.javacard.ant.JavaCard" classpath="{classpath}"/>\n'
+        '  <target name="build">\n'
+        f"{caps_xml}\n"
+        "  </target>\n"
+        "</project>\n"
+    )
+
+
 class ToolsDIYBuildAppletsView(View):
     def run(self):
         from subprocess import run
         import os
-        import shutil
-        from pathlib import Path
         from seedsigner.gui.screens.screen import LoadingScreenThread
         from seedsigner.hardware.microsd import MicroSD
-        from seedsigner.models.settings import Settings
 
         self.loading_screen = LoadingScreenThread(text="Building Applets\n\n\n\n\n\n(This takes a while)")
         self.loading_screen.start()
 
         microsd_dir = MicroSD.get_microsd_dir()
-        repo_root = Path(__file__).resolve().parents[3]
 
-        if Settings.is_seedsigner_os():
-            if not os.path.exists(microsd_dir / "javacard-build.xml"):
-                os.system(f"cp /opt/tools/javacard-build.xml.seedsigneros {microsd_dir}/javacard-build.xml")
+        # Output goes to the microSD javacard-cap dir (user-writable, no sudo).
+        cap_dir = microsd_dir / "javacard-cap"
+        try:
+            os.makedirs(cap_dir, exist_ok=True)
+        except OSError:
+            pass
 
-            if not os.path.exists(microsd_dir / "javacard-cap/"):
-                os.makedirs(microsd_dir / "javacard-cap/", exist_ok=True)
+        platform_key = _javacard_platform_key()
+        config = _load_javacard_build_config(microsd_dir)
+        build_xml = _generate_javacard_build_xml(config, platform_key, cap_dir)
 
-            os.environ["JAVA_HOME"] = "/mnt/diy/jdk"
-            commandString = ["/mnt/diy/ant/bin/ant", "-f", str(microsd_dir / "javacard-build.xml")]
-        elif Settings.is_dev_board():
-            if not os.path.exists(microsd_dir / "javacard-build.xml"):
-                run(["sudo", "cp", str(repo_root / "tools" / "javacard-build.xml.manual"), str(microsd_dir / "javacard-build.xml")], check=False)
+        # Write the generated (trusted) build file to a TEMP location. We never
+        # read or execute a user-supplied javacard-build.xml from the microSD.
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".xml", delete=False, encoding="utf-8"
+        ) as tmp:
+            tmp.write(build_xml)
+            tmp_path = tmp.name
 
-            if not os.path.exists(microsd_dir / "javacard-cap/"):
-                run(["sudo", "mkdir", "-p", str(microsd_dir / "javacard-cap/")], check=False)
+        try:
+            if platform_key == "seedsigner_os":
+                # Preserve the prior JAVA_HOME used by the SeedSigner OS image.
+                os.environ["JAVA_HOME"] = "/mnt/diy/jdk"
 
-            commandString = ["sudo", "ant", "-f", str(microsd_dir / "javacard-build.xml")]
-        else:
-            build_xml = microsd_dir / "javacard-build.xml"
-            if not build_xml.exists():
-                shutil.copy(repo_root / "tools" / "javacard-build.xml.manual", build_xml)
+            if platform_key == "seedsigner_os":
+                ant_path = "/mnt/diy/ant/bin/ant"
+            elif platform_key == "dev_board":
+                ant_path = "/home/pi/Satochip-DIY/ant/bin/ant"
+            else:
+                ant_path = str(Path.home() / "Satochip-DIY" / "ant" / "bin" / "ant")
 
-            cap_dir = microsd_dir / "javacard-cap"
-            if not cap_dir.exists():
-                os.makedirs(cap_dir)
+            # No `sudo`: building applets requires no root privileges, and
+            # running as root would let a build file (or a bug) touch the OS.
+            commandString = [ant_path, "-f", tmp_path]
 
-            commandString = ["ant", "-f", str(build_xml)]
-
-        data = run(commandString, capture_output=True, text=True)
+            data = run(commandString, capture_output=True, text=True)
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
 
         logger.info(data)
 
@@ -5918,7 +6116,6 @@ class ToolsDIYBuildAppletsView(View):
                 text=data.stderr.replace("\n", " "),
                 show_back_button=False,
             )
-
 
         return Destination(MainMenuView)
 

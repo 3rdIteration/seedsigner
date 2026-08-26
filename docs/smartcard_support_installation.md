@@ -204,6 +204,36 @@ _The applet management (install/uninstall) in the SeedSigner menu assume that th
 
 Follow the guide here: https://github.com/3rdIteration/Satochip-DIY
 
+### Building Applets from the SeedSigner Menu (Javacard DIY → Build Applets)
+
+The **Build Applets** menu generates the JavaCard applet `.cap` files and writes
+them to `javacard-cap/` on the microSD, where **Install Applet** can then flash
+them to a card.
+
+The build XML is generated inside SeedSigner from trusted, hard-coded toolchain
+paths. A `javacard-build.xml` placed on the microSD is **never executed** — ANT
+build files are effectively arbitrary code, so allowing one from the card would be
+a security risk (and the old flow even ran it with `sudo`).
+
+To customize the build, place a strictly-validated `javacard-build.json` file at
+the root of the microSD. Only the following keys are honored; everything else is
+ignored and a missing/malformed file builds every applet with its defaults:
+
+```json
+{
+  "applets": ["satochip", "seedkeeper", "satodime",
+              "satochip-thd89", "seedkeeper-thd89", "satodime-thd89"],
+  "overrides": {
+    "seedkeeper": { "aid": "536565644B6565706572", "version": "0.2" }
+  }
+}
+```
+
+- `applets`: a list of known applet names to build (unknown names are dropped).
+- `overrides`: per-applet `aid` (32 hex chars) and `version` (`N.N`) only.
+  Paths such as `sources`/`jckit` cannot be overridden and are always the trusted
+  values from the SeedSigner image.
+
 ### OpenCT and Generic/Old Blue "Sim Readers" (Optional: Get a more modern Smart Card reader if possible... )
 **Included only for Reference/Education/Backup, as these can be built from Scratch...**
 
