@@ -33,6 +33,7 @@ from psbt_suite_util import (
     REJECT_EMBIT_VECTORS,
     REJECT_PARSER_VECTORS,
     SUITE_FINGERPRINT,
+    SUITE_MAX_FEE_RATE,
     SUITE_NETWORK,
     VECTORS,
     VECTORS_BY_NAME,
@@ -51,7 +52,8 @@ def ids(vectors):
 
 def parse_vector(vector: Vector) -> PSBTParser:
     """embit-parse then PSBTParser a vector with the corpus seed."""
-    return PSBTParser(p=load_psbt(vector.name), seed=suite_seed(), network=SUITE_NETWORK)
+    return PSBTParser(p=load_psbt(vector.name), seed=suite_seed(), network=SUITE_NETWORK,
+                      max_fee_rate=SUITE_MAX_FEE_RATE)
 
 
 class TestCorpusIntegrity:
@@ -680,3 +682,68 @@ class TestFarFutureLocktime:
         assert forged.risk_warnings == absent.risk_warnings
         # ...and in both cases the locktime is still recorded for display.
         assert forged.locktime == far and forged.locktime_is_enforced
+
+
+class TestFeeRate:
+    """
+    A fee is only interpretable as a rate.
+
+    The share-of-inputs check and the per-byte check miss opposite things: a
+    9%-of-inputs fee on a large consolidation stays under the relative threshold
+    while burning a fortune, and a modest absolute fee on a tiny transaction can
+    still be a wild rate. Both are checked.
+    """
+
+    # Reference vsizes from the standard size tables, for the estimator.
+    @pytest.mark.parametrize("name,expected,tolerance", [
+        ("NORMAL-1_p2wpkh", 141, 0.05),    # 1-in 2-out P2WPKH
+        ("NORMAL-3_legacy", 226, 0.05),    # 1-in 2-out P2PKH
+        ("NORMAL-2_wrapped", 167, 0.05),   # 1-in 2-out P2SH-P2WPKH
+    ])
+    def test_vsize_estimate_matches_known_sizes(self, name, expected, tolerance):
+        """
+        The psbt is unsigned, so the signature has to be estimated. Anchor that
+        estimate against transaction sizes that are publicly documented.
+        """
+        parser = PSBTParser(p=load_psbt(name), seed=suite_seed(), network=SUITE_NETWORK)
+        estimate = parser.estimate_vsize()
+        error = abs(estimate - expected) / expected
+        assert error <= tolerance, f"{name}: estimated {estimate:.1f} vB, expected ~{expected}"
+
+    def test_normal_transactions_are_below_the_threshold(self):
+        """The default must leave headroom for ordinary transactions."""
+        for vector in NORMAL_VECTORS:
+            parser = parse_vector(vector)
+            assert Advisory.HIGH_FEE_RATE not in parser.risk_warnings, (
+                f"{vector.name} at {parser.fee_rate:.1f} sat/vB trips a "
+                f"{SUITE_MAX_FEE_RATE} sat/vB threshold"
+            )
+
+    def test_extreme_rate_is_flagged(self):
+        parser = PSBTParser(p=load_psbt("XTRAS.HUGE_FEE"), seed=suite_seed(),
+                            network=SUITE_NETWORK, max_fee_rate=SUITE_MAX_FEE_RATE)
+        assert Advisory.HIGH_FEE_RATE in parser.risk_warnings
+        assert parser.fee_rate > 1000
+
+    def test_threshold_is_configurable(self):
+        """The same transaction must flip verdict with the setting."""
+        psbt_name = "NORMAL-1_p2wpkh"
+        strict = PSBTParser(p=load_psbt(psbt_name), seed=suite_seed(),
+                            network=SUITE_NETWORK, max_fee_rate=10)
+        lenient = PSBTParser(p=load_psbt(psbt_name), seed=suite_seed(),
+                             network=SUITE_NETWORK, max_fee_rate=10_000)
+        assert Advisory.HIGH_FEE_RATE in strict.risk_warnings
+        assert Advisory.HIGH_FEE_RATE not in lenient.risk_warnings
+
+    def test_zero_disables_the_check(self):
+        parser = PSBTParser(p=load_psbt("XTRAS.HUGE_FEE"), seed=suite_seed(),
+                            network=SUITE_NETWORK, max_fee_rate=0)
+        assert Advisory.HIGH_FEE_RATE not in parser.risk_warnings
+
+    def test_it_warns_rather_than_refuses(self):
+        """Paying a high rate is sometimes exactly what the user intends."""
+        from seedsigner.models.psbt_parser import RiskWarning
+        parser = PSBTParser(p=load_psbt("XTRAS.HUGE_FEE"), seed=suite_seed(),
+                            network=SUITE_NETWORK, max_fee_rate=1)
+        assert parser.fee_amount > 0          # parsed fine, was not refused
+        assert RiskWarning.HIGH_FEE_RATE not in RiskWarning.INFORMATIONAL  # but interrupts

@@ -73,6 +73,7 @@ class RiskWarning:
     """
 
     HIGH_FEE = "HIGH_FEE"
+    HIGH_FEE_RATE = "HIGH_FEE_RATE"
     DUST_OUTPUT = "DUST_OUTPUT"
     FUTURE_LOCKTIME = "FUTURE_LOCKTIME"
     LOCKTIME_FAR_FUTURE = "LOCKTIME_FAR_FUTURE"
@@ -186,6 +187,7 @@ class PSBTParser():
         network: str = SettingsConstants.MAINNET,
         change_index_lookahead: int | None = None,
         reference_time: int | None = None,
+        max_fee_rate: float | None = None,
         block_anchor: tuple[int, int] | None = None,
     ):
         self.psbt: PSBT = p
@@ -222,6 +224,12 @@ class PSBTParser():
         self.op_return_data: bytes = None
         self.op_return_amount: int = 0
         self.risk_warnings: set[str] = set()
+        # Fee rate in sat/vB, computed during the parse from an estimated vsize.
+        self.fee_rate: float = 0.0
+        self.max_fee_rate = (
+            max_fee_rate if max_fee_rate is not None
+            else PSBTParser._configured_max_fee_rate()
+        )
         # Whether nLockTime is actually enforced (needs a non-final input), and
         # its raw value. Shown on the approval screen: the device has no RTC, so
         # the wall-clock comparison below cannot be relied on to judge whether a
@@ -352,6 +360,73 @@ class PSBTParser():
         return 2 <= push_len <= 40 and push_len == len(data) - 2
 
 
+    def _check_fee_rate(self):
+        """
+        Flag a fee that is extortionate *per byte*, which the share-of-inputs
+        check cannot see.
+
+        The two miss opposite things. A 9%-of-inputs fee on a large consolidation
+        stays under the relative threshold while burning a fortune; a modest
+        absolute fee on a tiny transaction can be a wild rate. Both are worth a
+        look, so both are checked.
+
+        The threshold is a setting because fee rates move by orders of magnitude
+        between quiet periods and congestion -- see
+        SettingsConstants.ALL_MAX_FEE_RATES. Warning only: paying a high rate is
+        sometimes exactly what the user intends.
+        """
+        if self.fee_amount <= 0:
+            return
+
+        threshold = self.max_fee_rate
+        if not threshold or threshold <= 0:
+            # 0 means the user turned the check off.
+            return
+
+        try:
+            vsize = self.estimate_vsize()
+        except Exception as e:
+            # An estimate we cannot compute must not take the parse down with it.
+            logger.debug("Could not estimate vsize: %s", e)
+            return
+
+        if vsize <= 0:
+            return
+
+        self.fee_rate = self.fee_amount / vsize
+        if self.fee_rate >= threshold:
+            self.risk_warnings.add(RiskWarning.HIGH_FEE_RATE)
+
+
+    @staticmethod
+    def _configured_max_fee_rate() -> float:
+        """
+        The user's Max Fee Rate in sat/vB, resolving AUTO against
+        resources/latest-block.json. 0 means the check is off.
+        """
+        from seedsigner.models.settings_definition import SettingsConstants as SC
+
+        try:
+            from seedsigner.models.settings import Settings
+            configured = Settings.get_instance().get_value(SC.SETTING__MAX_FEE_RATE)
+        except Exception as e:
+            logger.debug("Falling back to the default max fee rate: %s", e)
+            configured = SC.DEFAULT_MAX_FEE_RATE
+
+        if configured != SC.MAX_FEE_RATE__AUTO:
+            return configured
+
+        try:
+            from seedsigner.controller import Controller
+            rate = Controller.RECENT_MAX_FEE_RATE
+            if rate and rate > 0:
+                return rate
+        except Exception as e:
+            logger.debug("No recent fee-rate anchor available: %s", e)
+
+        return SC.FALLBACK_MAX_FEE_RATE
+
+
     def _check_far_future_locktime(self, locktime: int):
         """
         Flag a locktime sitting years beyond when this psbt was created.
@@ -389,6 +464,141 @@ class PSBTParser():
 
         if locktime_as_time - self.reference_time >= FAR_FUTURE_LOCKTIME_SECONDS:
             self.risk_warnings.add(RiskWarning.LOCKTIME_FAR_FUTURE)
+
+
+    @staticmethod
+    def _estimate_input_vsize(inp: InputScope) -> float:
+        """
+        Virtual size this input will occupy once signed, in vbytes.
+
+        The psbt is unsigned, so the signature is not there to measure. Its size
+        is however almost entirely determined by the script type, and the parts
+        that vary (low-S DER encoding is 71 or 72 bytes) vary by a byte or two --
+        irrelevant at the resolution a "is this fee rate absurd" check needs.
+
+        Witness data is quarter-weight, hence the /4 terms.
+        """
+        # outpoint (36) + scriptSig length varint (1) + sequence (4)
+        vsize = 41.0
+
+        utxo = inp.witness_utxo
+        if utxo is None and inp.non_witness_utxo is not None:
+            utxo = inp.non_witness_utxo.vout[inp.vout]
+        if utxo is None:
+            return vsize
+
+        script_type = utxo.script_pubkey.script_type()
+
+        # A signature is 71-72 bytes DER + 1 sighash byte; assume the larger.
+        SIG = 72
+        PUBKEY = 33
+
+        if script_type == "p2wpkh":
+            # witness: count + sig + pubkey
+            return vsize + (1 + (1 + SIG) + (1 + PUBKEY)) / 4
+
+        if script_type == "p2tr":
+            # BIP-341 key-path: count + 64-byte schnorr signature
+            return vsize + (1 + (1 + 64)) / 4
+
+        if script_type == "p2wsh":
+            m, n = PSBTParser._multisig_m_n(inp.witness_script)
+            if m is None:
+                # Unknown script: assume a single signature plus the script.
+                script_len = len(inp.witness_script.data) if inp.witness_script else 34
+                return vsize + (1 + (1 + SIG) + (1 + script_len)) / 4
+            script_len = len(inp.witness_script.data)
+            # count + OP_0 dummy + m signatures + the witness script
+            witness = 1 + 1 + m * (1 + SIG) + (1 + script_len)
+            return vsize + witness / 4
+
+        if script_type == "p2sh":
+            redeem = inp.redeem_script
+            if redeem is not None and PSBTParser._is_witness_program(redeem):
+                # p2sh-wrapped segwit: the redeem script sits in scriptSig at
+                # full weight, the signature stays in the witness.
+                vsize += 1 + len(redeem.data)
+                if len(redeem.data) == 22:  # p2sh-p2wpkh
+                    return vsize + (1 + (1 + SIG) + (1 + PUBKEY)) / 4
+                m, _n = PSBTParser._multisig_m_n(inp.witness_script)
+                m = m or 1
+                script_len = len(inp.witness_script.data) if inp.witness_script else 34
+                return vsize + (1 + 1 + m * (1 + SIG) + (1 + script_len)) / 4
+
+            # Legacy p2sh multisig: everything is in scriptSig, full weight.
+            m, _n = PSBTParser._multisig_m_n(redeem)
+            m = m or 1
+            script_len = len(redeem.data) if redeem else 34
+            return vsize + 1 + m * (1 + SIG) + (1 + script_len)
+
+        if script_type == "p2pkh":
+            # scriptSig: sig + pubkey, all at full weight
+            return vsize + (1 + SIG) + (1 + PUBKEY)
+
+        # Unknown: a single-signature spend is the least-bad guess.
+        return vsize + (1 + SIG) + (1 + PUBKEY)
+
+
+    @staticmethod
+    def _multisig_m_n(script) -> tuple:
+        """(m, n) for a bare multisig script, or (None, None)."""
+        if script is None:
+            return (None, None)
+        try:
+            m, n, _pubkeys = PSBTParser._parse_multisig(script)
+            return (m, n)
+        except Exception:
+            return (None, None)
+
+
+    def estimate_vsize(self) -> float:
+        """
+        Virtual size of the finished transaction, in vbytes.
+
+        Needed because a fee is only interpretable as a rate. 50,000 sats is
+        nothing on a 200-input consolidation and extortionate on a 1-in 2-out
+        payment, and the absolute-fee check (fee as a share of inputs) cannot
+        tell those apart.
+        """
+        tx = self.psbt.tx
+
+        # version (4) + locktime (4) + the two count varints
+        vsize = 8.0
+        vsize += PSBTParser._varint_size(len(tx.vin))
+        vsize += PSBTParser._varint_size(len(tx.vout))
+
+        has_witness = any(
+            PSBTParser._is_witness_program(
+                (inp.witness_utxo or (inp.non_witness_utxo.vout[inp.vout]
+                                      if inp.non_witness_utxo else None)).script_pubkey
+            )
+            if (inp.witness_utxo or inp.non_witness_utxo) else False
+            for inp in self.psbt.inputs
+        )
+        if has_witness:
+            # segwit marker + flag, 2 weight units
+            vsize += 0.5
+
+        for inp in self.psbt.inputs:
+            vsize += PSBTParser._estimate_input_vsize(inp)
+
+        for vout in tx.vout:
+            # amount (8) + scriptPubKey length varint + the script
+            script_len = len(vout.script_pubkey.data)
+            vsize += 8 + PSBTParser._varint_size(script_len) + script_len
+
+        return vsize
+
+
+    @staticmethod
+    def _varint_size(n: int) -> int:
+        if n < 0xFD:
+            return 1
+        if n <= 0xFFFF:
+            return 3
+        if n <= 0xFFFFFFFF:
+            return 5
+        return 9
 
 
     def _validate_psbt_version(self):
@@ -944,6 +1154,8 @@ class PSBTParser():
             self.fee_amount * HIGH_FEE_DENOMINATOR >= self.input_amount * HIGH_FEE_NUMERATOR
         ):
             self.risk_warnings.add(RiskWarning.HIGH_FEE)
+
+        self._check_fee_rate()
 
         for vout in self.psbt.tx.vout:
             if vout.script_pubkey.data and vout.script_pubkey.data[0] == OPCODES.OP_RETURN:

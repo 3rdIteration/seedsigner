@@ -576,6 +576,8 @@ class PSBTRiskWarningView(View):
     RISK_TEXT = {
         # TRANSLATOR_NOTE: Shown when the miner fee is a large share of what's being spent
         RiskWarning.HIGH_FEE: _mft("The fee is an unusually large share of this transaction."),
+        # TRANSLATOR_NOTE: The fee per byte is high compared to recent blocks.
+        RiskWarning.HIGH_FEE_RATE: _mft("The fee rate is high compared to recent blocks."),
         RiskWarning.DUST_OUTPUT: _mft("One output is below the dust threshold and may be unspendable."),
         RiskWarning.FUTURE_LOCKTIME: _mft("This transaction cannot confirm until a future date."),
         # TRANSLATOR_NOTE: The transaction is locked years beyond when it was created.

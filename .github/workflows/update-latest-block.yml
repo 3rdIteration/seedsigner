@@ -47,6 +47,21 @@ jobs:
           echo "timestamp=$timestamp" >> "$GITHUB_OUTPUT"
           echo "updated=$(date -u -d "@$timestamp" +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
 
+          # Mean of the highest fee rate paid in each of the last 10 blocks.
+          # This is the "nobody sane pays more than this" line: the max is
+          # already an outlier within its block, so averaging ten of them gives a
+          # ceiling that ordinary transactions sit well under while still moving
+          # with congestion.
+          max_fee_rate=$(curl -fsS --retry 3 --max-time 30 https://mempool.space/api/v1/blocks \
+            | jq '[.[0:10][] | .extras.feeRange[-1]] | add / length | floor')
+
+          case "$max_fee_rate" in ''|*[!0-9]*) echo "bad fee rate: $max_fee_rate" >&2; exit 1;; esac
+          # Never let a quiet-mempool reading drive the threshold to something
+          # that would warn on ordinary traffic.
+          if [ "$max_fee_rate" -lt 20 ]; then max_fee_rate=20; fi
+
+          echo "max_fee_rate=$max_fee_rate" >> "$GITHUB_OUTPUT"
+
       - name: Write latest-block.json
         run: |
           set -euo pipefail
@@ -60,6 +75,7 @@ jobs:
           data["height"] = int(os.environ["HEIGHT"])
           data["timestamp"] = int(os.environ["TIMESTAMP"])
           data["updated"] = os.environ["UPDATED"]
+          data["max_fee_rate"] = int(os.environ["MAX_FEE_RATE"])
 
           with open(path, "w", encoding="utf-8", newline="\n") as fh:
               json.dump(data, fh, indent=2)
@@ -69,6 +85,7 @@ jobs:
           HEIGHT: ${{ steps.tip.outputs.height }}
           TIMESTAMP: ${{ steps.tip.outputs.timestamp }}
           UPDATED: ${{ steps.tip.outputs.updated }}
+          MAX_FEE_RATE: ${{ steps.tip.outputs.max_fee_rate }}
 
       - name: Open a PR if anything changed
         uses: peter-evans/create-pull-request@v6
@@ -85,8 +102,12 @@ jobs:
 
             - height: `${{ steps.tip.outputs.height }}`
             - timestamp: `${{ steps.tip.outputs.timestamp }}` (${{ steps.tip.outputs.updated }})
+            - max fee rate: `${{ steps.tip.outputs.max_fee_rate }}` sat/vB (mean of the top fee rate in each of the last 10 blocks)
 
-            The anchor lets the approval screen render a block-height nLockTime as
-            an approximate date. It only affects a displayed estimate and never a
-            signing decision, so this is safe to merge or ignore.
+            The height/timestamp anchor lets the approval screen render a
+            block-height nLockTime as an approximate date. The fee rate backs the
+            "Auto" option of the Max Fee Rate setting.
+
+            Both are advisory: they move a displayed estimate and a warning
+            threshold, never a signing decision, so this is safe to merge or ignore.
           delete-branch: true

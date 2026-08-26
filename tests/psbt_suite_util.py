@@ -86,12 +86,19 @@ class Advisory:
     """
 
     HIGH_FEE = "HIGH_FEE"
+    HIGH_FEE_RATE = "HIGH_FEE_RATE"
     DUST_OUTPUT = "DUST_OUTPUT"
     FUTURE_LOCKTIME = "FUTURE_LOCKTIME"
     RELATIVE_TIMELOCK = "RELATIVE_TIMELOCK"
     LOCKTIME_FAR_FUTURE = "LOCKTIME_FAR_FUTURE"
     RBF = "RBF"
 
+
+# Fee-rate threshold the corpus expectations are written against. Pinned rather
+# than read from settings: the shipped default tracks recent blocks via
+# resources/latest-block.json, which a scheduled job rewrites, and the corpus
+# must not change verdict because mempool conditions moved.
+SUITE_MAX_FEE_RATE = 120
 
 # Fee at or above this fraction of the input total is flagged HIGH_FEE.
 HIGH_FEE_NUMERATOR = 1
@@ -340,7 +347,7 @@ VECTORS = [
         "coordinator would display. Fee must be recomputed on-device and flagged.",
         Expect.PARSES,
         input_amount=10_000_000, output_amount=9_000_000, num_outputs=2, owned_outputs=1,
-        advisories=frozenset({Advisory.HIGH_FEE}),
+        advisories=frozenset({Advisory.HIGH_FEE, Advisory.HIGH_FEE_RATE}),
     ),
 
     # --------------------------------------------------------------- catalogue
@@ -407,14 +414,14 @@ VECTORS = [
         "90% of the input value goes to the miner fee.",
         Expect.PARSES,
         input_amount=1_000_000, output_amount=100_000, num_outputs=2, owned_outputs=1,
-        advisories=frozenset({Advisory.HIGH_FEE}),
+        advisories=frozenset({Advisory.HIGH_FEE, Advisory.HIGH_FEE_RATE}),
     ),
     Vector(
         "XTRAS.DUST_OUTPUT", "extras",
         "A 100-sat output, below the dust threshold (and 50% of the value to fee).",
         Expect.PARSES,
         input_amount=200_000, output_amount=100_100, num_outputs=2, owned_outputs=1,
-        advisories=frozenset({Advisory.DUST_OUTPUT, Advisory.HIGH_FEE}),
+        advisories=frozenset({Advisory.DUST_OUTPUT, Advisory.HIGH_FEE, Advisory.HIGH_FEE_RATE}),
     ),
     Vector(
         "XTRAS.LOCKTIME_FUTURE", "extras",

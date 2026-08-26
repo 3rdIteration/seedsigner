@@ -185,6 +185,12 @@ class Controller(Singleton):
     RELEASE_BLOCK_TIME = 1_787_616_000  # 2026-08-25
     SECONDS_PER_BLOCK = 600
 
+    # Mean of the highest fee rate in each of the last 10 blocks, sat/vB.
+    # Backs the "Auto" option of the Max Fee Rate setting: fee rates move by
+    # orders of magnitude between quiet periods and congestion, so a fixed
+    # threshold either cries wolf or never fires.
+    RECENT_MAX_FEE_RATE = 120
+
 
     @classmethod
     def _load_block_anchor(cls):
@@ -214,6 +220,14 @@ class Controller(Singleton):
 
         cls.RELEASE_BLOCK_HEIGHT = height
         cls.RELEASE_BLOCK_TIME = timestamp
+
+        # Optional: older files may not carry it.
+        try:
+            rate = float(data["max_fee_rate"])
+            if rate > 0:
+                cls.RECENT_MAX_FEE_RATE = rate
+        except Exception:
+            pass
 
     # Declare class member vars with type hints to enable richer IDE support throughout
     # the code.
