@@ -111,6 +111,7 @@ class RejectCode:
     UNSUPPORTED_SIGHASH = "UNSUPPORTED_SIGHASH"
     CHANGE_INDEX_TOO_FAR = "CHANGE_INDEX_TOO_FAR"
     UNSUPPORTED_PSBT_VERSION = "UNSUPPORTED_PSBT_VERSION"
+    TX_MODIFIABLE = "TX_MODIFIABLE"
     UNDISPLAYABLE_OUTPUT = "UNDISPLAYABLE_OUTPUT"
 
 
@@ -318,6 +319,8 @@ class PSBTParser():
             return False
 
         self._validate_psbt_version()
+        self._check_tx_modifiable()
+        self._assert_v2_complete()
 
         if self.seed is not None and self.root is None:
             self._set_root()
@@ -605,32 +608,107 @@ class PSBTParser():
         """
         Refuse a psbt that declares a format we do not implement.
 
-        BIP-174 defines version 0 (the field may be absent, which means 0);
-        BIP-370 defines version 2. SeedSigner implements v0 only.
+        BIP-174 defines version 0 (the field may be absent, which means 0) and
+        BIP-370 defines version 2; both are supported here. Any other value is a
+        future or unknown format whose fields we would misread, so it is refused
+        rather than guessed at.
 
-        A v2 psbt has no PSBT_GLOBAL_UNSIGNED_TX -- inputs and outputs are
-        described by their own fields (PSBT_IN_PREVIOUS_TXID, PSBT_OUT_AMOUNT,
-        and so on), and PSBT_GLOBAL_TX_MODIFIABLE says whether a coordinator may
-        still add or remove them. Something declaring v2 while also carrying a v0
-        unsigned tx is internally inconsistent: whichever half we read, we are
-        ignoring the other. Reading it as v0 means silently discarding every v2
-        field, including the ones that describe what may change after we sign.
-
-        There is no honest reason to build that, and no safe way to display it,
-        so it is a refusal rather than a warning. Supporting v2 properly would
-        mean implementing BIP-370, not relaxing this check.
+        A v2 psbt has no PSBT_GLOBAL_UNSIGNED_TX -- inputs and outputs carry their
+        own fields (PSBT_IN_PREVIOUS_TXID, PSBT_OUT_AMOUNT, ...). Two further checks
+        apply to v2 specifically: _check_tx_modifiable refuses a transaction a
+        coordinator may still change after we sign, and _assert_v2_complete refuses
+        one whose mandatory per-input/per-output fields are missing.
         """
         version = getattr(self.psbt, "version", None)
 
         # Absent is v0 by definition. embit surfaces that as either None or 0
         # depending on whether the field was written out explicitly.
-        if version in (None, 0):
+        if version in (None, 0, 2):
             return
 
         raise InvalidPSBTError(
             f"PSBT version {version} is not supported.",
             code=RejectCode.UNSUPPORTED_PSBT_VERSION,
         )
+
+
+    def _check_tx_modifiable(self):
+        """
+        Refuse a v2 psbt whose transaction may still be modified after signing.
+
+        BIP-370 PSBT_GLOBAL_TX_MODIFIABLE (key 0x06) is a one-byte flag field: bit 0
+        allows adding or removing inputs, bit 1 outputs. A nonzero value means the
+        coordinator can change what we are about to sign -- add an output that steals
+        our coins, drop the destination, and so on -- after we have approved exactly
+        what the screen showed. That voids the review entirely, so it is a refusal
+        rather than a warning.
+
+        embit does not parse this key into a named field (it lands in psbt.unknown),
+        so it must be inspected explicitly. Absent means final: BIP-370 treats a
+        missing TX_MODIFIABLE as 0x00, and the valid corpus vectors omit it.
+
+        Only meaningful for v2 -- on a v0 psbt key 0x06 is just an unknown field with
+        no modifiability semantics, so it must not trigger this refusal there.
+        """
+        if getattr(self.psbt, "version", None) != 2:
+            return
+
+        value = self.psbt.unknown.get(b"\x06")
+        if value is None:
+            return
+
+        # The field is a single byte; the low two bits are the flags. Anything set
+        # there means the transaction is not final.
+        if int.from_bytes(value, "little") & 0x03:
+            raise InvalidPSBTError(
+                "Modifiable (TX_MODIFIABLE): inputs or outputs can change after you sign.",
+                code=RejectCode.TX_MODIFIABLE,
+            )
+
+
+    def _assert_v2_complete(self):
+        """
+        Refuse a v2 psbt that omits fields BIP-370 makes mandatory per input and
+        output, before any of its values are trusted for display or signing.
+
+        embit parses a v2 record even when required fields are missing -- it simply
+        leaves the slot empty: an output's amount becomes None (which would later die
+        on `0 <= None`, a crash screen rather than a decision), an output's script
+        becomes blank, and an input can lose its previous txid/vout while keeping a
+        witness_utxo. Each of those is refused here instead of reaching the
+        accounting or signing code half-described:
+
+          * every input must name the utxo it spends (previous txid + vout) as well
+            as carry utxo data -- the latter already trips MISSING_UTXO in
+            _validate_input, exactly as for v0;
+          * every output must carry an amount and a script.
+        """
+        if getattr(self.psbt, "version", None) != 2:
+            return
+
+        for i, inp in enumerate(self.psbt.inputs):
+            if inp.txid is None or inp.vout is None:
+                raise InvalidPSBTError(
+                    f"Input {i} has no previous output (txid/vout).",
+                    code=RejectCode.MISSING_UTXO,
+                )
+
+        vout = self.psbt.tx.vout
+        for i, out in enumerate(vout):
+            value = out.value
+            if value is None or not (0 <= value <= MAX_MONEY):
+                raise InvalidPSBTError(
+                    f"Output {i} has no valid amount.",
+                    code=RejectCode.AMOUNT_OUT_OF_RANGE,
+                )
+            script = out.script_pubkey
+            if script is None or len(script.data) == 0:
+                # An empty script has no address to show the user, so it cannot be
+                # authorised -- the same reason an unknown witness version is refused.
+                raise InvalidPSBTError(
+                    f"Output {i} has no script.",
+                    code=RejectCode.UNDISPLAYABLE_OUTPUT,
+                )
 
 
     @staticmethod

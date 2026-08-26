@@ -465,42 +465,137 @@ class TestAdvisories:
         assert off.num_change_outputs == 1
 
 
-class TestPSBTVersion:
+class TestPSBTv2:
     """
-    SeedSigner implements BIP-174 (v0) only. A psbt declaring BIP-370 (v2) is
-    refused rather than read as v0.
+    BIP-370 (v2) support. A v2 psbt describes its inputs and outputs with their own
+    fields instead of an embedded unsigned tx, and carries PSBT_GLOBAL_TX_MODIFIABLE
+    saying whether a coordinator may still change them after we sign.
 
-    A v2 psbt has no PSBT_GLOBAL_UNSIGNED_TX -- inputs and outputs carry their own
-    fields, and PSBT_GLOBAL_TX_MODIFIABLE says whether a coordinator may still add
-    or remove them. Anything declaring v2 while also carrying a v0 unsigned tx is
-    internally inconsistent, and reading either half means ignoring the other.
+    The version itself is not a reason to refuse: valid v2 transactions parse and
+    sign exactly like their v0 twins (see TestNormalVectors), while the traps that
+    matter -- a modifiable transaction, an out-of-range amount, a structurally
+    incomplete record -- are caught by the same checks as for v0.
     """
 
-    def test_v2_psbt_is_refused(self):
+    # A block anchor far enough in the past that TX-19.height_far_V2's locktime
+    # (height 1,110,000) sits years ahead of it. Mirrors TestFarFutureLocktime.
+    ANCHOR = (963_408, 1_787_616_000)
+
+    def _v2(self, name="NORMAL-1_p2wpkh_V2"):
+        """A fresh embit parse of a v2 fixture."""
+        return load_psbt(name)
+
+    @staticmethod
+    def _reparse(psbt):
+        """Round-trip through the wire format: what an attacker's bytes actually yield."""
+        from embit.psbt import PSBT
+        return PSBT.parse(psbt.serialize())
+
+    # ------------------------------------------------------------- version gate
+
+    def test_v0_and_v2_are_both_accepted(self):
+        """Absent (None), explicit 0, and 2 all pass the version gate."""
+        for name in ("NORMAL-1_p2wpkh", "NORMAL-3_legacy", "NORMAL-4_multi_input"):
+            assert getattr(load_psbt(name), "version", None) in (None, 0)
+            PSBTParser(p=load_psbt(name), seed=suite_seed(), network=SUITE_NETWORK)
+        for name in ("NORMAL-1_p2wpkh_V2", "NORMAL-4_multi_input_V2"):
+            assert load_psbt(name).version == 2
+            PSBTParser(p=load_psbt(name), seed=suite_seed(), network=SUITE_NETWORK)
+
+    @pytest.mark.parametrize("bad_version", [1, 3, 7])
+    def test_unknown_future_version_is_refused(self, bad_version):
+        """Anything other than None/0/2 is a format we would misread."""
+        psbt = self._v2()
+        psbt.version = bad_version
         with pytest.raises(InvalidPSBTError) as excinfo:
-            parse_vector(VECTORS_BY_NAME["TX-12"])
+            PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK)
         assert excinfo.value.code == RejectCode.UNSUPPORTED_PSBT_VERSION
 
-    def test_v0_psbts_are_unaffected(self):
-        """The check must not catch the ordinary case: absent or explicit 0."""
-        for name in ("NORMAL-1_p2wpkh", "NORMAL-3_legacy", "NORMAL-4_multi_input"):
-            psbt = load_psbt(name)
-            assert getattr(psbt, "version", None) in (None, 0)
-            PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK)
+    # ------------------------------------------------------- TX_MODIFIABLE
 
-    def test_amount_bound_still_fires_on_a_v0_psbt(self):
-        """
-        XTRAS.NEGATIVE_AMOUNT happens to also declare v2, so the version check
-        refuses it first and its stated trap -- an output past MAX_MONEY -- stops
-        being exercised by that vector. Strip the version declaration and confirm
-        the amount bound is still what catches it.
-        """
-        psbt = load_psbt("XTRAS.NEGATIVE_AMOUNT")
-        psbt.version = 0
+    def test_modifiable_v2_is_refused(self):
+        """TX-12 leaves TX_MODIFIABLE = 0x03: a coordinator could change it after we sign."""
+        with pytest.raises(InvalidPSBTError) as excinfo:
+            parse_vector(VECTORS_BY_NAME["TX-12"])
+        assert excinfo.value.code == RejectCode.TX_MODIFIABLE
 
+    @pytest.mark.parametrize("flags", [b"\x01", b"\x02", b"\x03"])
+    def test_any_modifiable_flag_is_refused(self, flags):
+        """Inputs-only (bit 0), outputs-only (bit 1), or both -- all void the review."""
+        psbt = self._v2()
+        psbt.unknown[b"\x06"] = flags
         with pytest.raises(InvalidPSBTError) as excinfo:
             PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK)
+        assert excinfo.value.code == RejectCode.TX_MODIFIABLE
+
+    def test_explicit_zero_modifiable_is_final(self):
+        """TX_MODIFIABLE = 0x00 is the same as omitting it: the transaction is final."""
+        psbt = self._v2()
+        psbt.unknown[b"\x06"] = b"\x00"
+        parser = PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK)
+        assert parser.input_amount == 100_000_000
+
+    def test_v0_unknown_0x06_is_not_treated_as_modifiable(self):
+        """On a v0 psbt key 0x06 is just an unknown field, not BIP-370 modifiability."""
+        psbt = load_psbt("NORMAL-1_p2wpkh")
+        assert getattr(psbt, "version", None) in (None, 0)
+        psbt.unknown[b"\x06"] = b"\x03"
+        parser = PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK)
+        assert parser.input_amount == 100_000_000
+
+    # ------------------------------------------------- structural completeness
+
+    def test_missing_output_amount_is_refused_not_crashed(self):
+        """A v2 output with no amount would otherwise die on `0 <= None`."""
+        psbt = self._v2()
+        psbt.outputs[0].value = None
+        with pytest.raises(InvalidPSBTError) as excinfo:
+            PSBTParser(p=self._reparse(psbt), seed=suite_seed(), network=SUITE_NETWORK)
         assert excinfo.value.code == RejectCode.AMOUNT_OUT_OF_RANGE
+
+    def test_empty_output_script_is_refused(self):
+        """A v2 output with no script has no address to show, so it cannot be authorised."""
+        from embit.script import Script
+        psbt = self._v2()
+        psbt.outputs[0].script_pubkey = Script(b"")
+        with pytest.raises(InvalidPSBTError) as excinfo:
+            PSBTParser(p=self._reparse(psbt), seed=suite_seed(), network=SUITE_NETWORK)
+        assert excinfo.value.code == RejectCode.UNDISPLAYABLE_OUTPUT
+
+    def test_missing_input_prevout_is_refused(self):
+        """A v2 input must name the utxo it spends; a witness_utxo alone is not enough."""
+        psbt = self._v2()
+        psbt.inputs[0].txid = None
+        psbt.inputs[0].vout = None
+        with pytest.raises(InvalidPSBTError) as excinfo:
+            PSBTParser(p=self._reparse(psbt), seed=suite_seed(), network=SUITE_NETWORK)
+        assert excinfo.value.code == RejectCode.MISSING_UTXO
+
+    # ------------------------------------------------- parse and sign end-to-end
+
+    def test_valid_v2_vectors_parse_and_sign(self):
+        """The benign v2 twins are genuinely version 2, and they parse and sign."""
+        for name in ("NORMAL-1_p2wpkh_V2", "NORMAL-2_wrapped_V2",
+                     "NORMAL-3_legacy_V2", "NORMAL-4_multi_input_V2"):
+            psbt = load_psbt(name)
+            assert psbt.version == 2, f"{name} is not a v2 psbt"
+
+            vector = VECTORS_BY_NAME[name]
+            parser = parse_vector(vector)
+            assert parser.input_amount == vector.input_amount
+
+            seed = suite_seed()
+            sigs_added = psbt.sign_with(seed.get_root(SUITE_NETWORK))
+            assert sigs_added == len(psbt.inputs), name
+
+    # ------------------------------------------------- far-future height locktime
+
+    def test_height_far_v2_is_flagged_against_an_anchor(self):
+        """TX-19.height_far_V2 carries a block-height locktime years out; dated, it warns."""
+        psbt = load_psbt("TX-19.height_far_V2")
+        parser = PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK,
+                            reference_time=self.ANCHOR[1], block_anchor=self.ANCHOR)
+        assert Advisory.LOCKTIME_FAR_FUTURE in parser.risk_warnings
 
 
 class TestTimelocks:

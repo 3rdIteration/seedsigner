@@ -76,6 +76,7 @@ class RejectCode:
     UNSUPPORTED_SIGHASH = "UNSUPPORTED_SIGHASH"
     CHANGE_INDEX_TOO_FAR = "CHANGE_INDEX_TOO_FAR"
     UNSUPPORTED_PSBT_VERSION = "UNSUPPORTED_PSBT_VERSION"
+    TX_MODIFIABLE = "TX_MODIFIABLE"
     UNDISPLAYABLE_OUTPUT = "UNDISPLAYABLE_OUTPUT"
 
 
@@ -236,13 +237,13 @@ VECTORS = [
     ),
     Vector(
         "TX-12", "binding",
-        "Declares PSBT_GLOBAL_VERSION 2 (BIP-370) while still carrying a v0 "
-        "unsigned tx, and leaves PSBT_GLOBAL_TX_MODIFIABLE set. Reading it as v0 "
-        "means silently discarding every v2 field, including the one saying what "
-        "a coordinator may still change after we sign.",
+        "A spec-valid BIP-370 v2 psbt that leaves PSBT_GLOBAL_TX_MODIFIABLE = 0x03, "
+        "so a coordinator may still add or remove inputs and outputs after we sign. "
+        "The review screens would show one transaction while the signature authorises "
+        "a different one -- refused as not final rather than merely warned about.",
         Expect.REJECT_PARSER,
         input_amount=200_000, output_amount=199_000, num_outputs=2,
-        reject_code=RejectCode.UNSUPPORTED_PSBT_VERSION,
+        reject_code=RejectCode.TX_MODIFIABLE,
     ),
     Vector(
         "TX-14.cross_net", "binding",
@@ -372,12 +373,11 @@ VECTORS = [
         "the display as a real amount.",
         Expect.REJECT_PARSER,
         input_amount=200_000, output_amount=18446744073709651615, num_outputs=2,
-        # This vector also happens to declare PSBT_GLOBAL_VERSION 2, which is
-        # refused before any amount is read -- an unsupported container format
-        # means every value inside it is being misread, so there is nothing to
-        # say about the amount yet. The AMOUNT_OUT_OF_RANGE path is still covered:
-        # see test_amount_bound_still_fires_on_a_v0_psbt.
-        reject_code=RejectCode.UNSUPPORTED_PSBT_VERSION,
+        # This vector is a spec-valid BIP-370 v2 psbt (version 2), so it now passes
+        # the version gate and is refused at the amount bound instead: an output past
+        # MAX_MONEY cannot be displayed or signed. See _assert_v2_complete, which
+        # catches it before any value is trusted for display.
+        reject_code=RejectCode.AMOUNT_OUT_OF_RANGE,
     ),
     Vector(
         "XTRAS.NEGATIVE_FEE", "extras",
@@ -448,6 +448,89 @@ VECTORS = [
         "XTRAS.TRUNCATED_PSBT", "parser",
         "PSBT cut off mid-record.",
         Expect.REJECT_EMBIT,
+    ),
+
+    # ------------------------------------------------- BIP-370 (v2) twins
+    # The v2 counterparts of the vectors above: same traps, carried in a spec-valid
+    # BIP-370 container whose inputs/outputs are described by their own fields rather
+    # than an embedded unsigned tx. They must be accepted and judged exactly like
+    # their v0 twins -- the version is not a reason to refuse or to misread them.
+
+    Vector(
+        "NORMAL-1_p2wpkh_V2", "normal",
+        "BIP-370 v2 twin of NORMAL-1: standard 1-in/2-out native segwit at m/84h/0h/0h, "
+        "described by per-input/per-output fields. Must parse and sign cleanly.",
+        Expect.PARSES,
+        input_amount=100_000_000, output_amount=99_990_000, num_outputs=2, owned_outputs=1,
+    ),
+    Vector(
+        "NORMAL-2_wrapped_V2", "normal",
+        "BIP-370 v2 twin of NORMAL-2: wrapped segwit (P2SH-P2WPKH) at m/49h/0h/0h. "
+        "Must parse and sign cleanly.",
+        Expect.PARSES,
+        input_amount=100_000_000, output_amount=99_990_000, num_outputs=2, owned_outputs=1,
+    ),
+    Vector(
+        "NORMAL-3_legacy_V2", "normal",
+        "BIP-370 v2 twin of NORMAL-3: legacy P2PKH at m/44h/0h/0h, carrying a full "
+        "non_witness_utxo. Must parse and sign cleanly.",
+        Expect.PARSES,
+        input_amount=100_000_000, output_amount=99_990_000, num_outputs=2, owned_outputs=1,
+    ),
+    Vector(
+        "NORMAL-4_multi_input_V2", "normal",
+        "BIP-370 v2 twin of NORMAL-4: 3-in/2-out native segwit. Must parse and sign "
+        "cleanly, all three inputs.",
+        Expect.PARSES,
+        input_amount=300_000_000, output_amount=299_990_000, num_outputs=2, owned_outputs=1,
+    ),
+
+    Vector(
+        "TX-03.fee_inflate_V2", "binding",
+        "BIP-370 v2 twin of TX-03.fee_inflate: witness_utxo amount lowered to 20,000 "
+        "while outputs still total 199,000. Implied fee is negative -- impossible.",
+        Expect.REJECT_PARSER,
+        input_amount=20_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.NEGATIVE_FEE,
+    ),
+    Vector(
+        "XTRAS.NEGATIVE_FEE_V2", "extras",
+        "BIP-370 v2 twin of XTRAS.NEGATIVE_FEE: sum(outputs) > sum(inputs).",
+        Expect.REJECT_PARSER,
+        input_amount=100_000, output_amount=299_000, num_outputs=2,
+        reject_code=RejectCode.NEGATIVE_FEE,
+    ),
+    Vector(
+        "XTRAS.OP_RETURN_BURN_V2", "coverage",
+        "BIP-370 v2 twin of XTRAS.OP_RETURN_BURN: meaningful value sent to a "
+        "value-bearing OP_RETURN.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=249_000, op_return_amount=50_000, num_outputs=3,
+        reject_code=RejectCode.NONZERO_OP_RETURN,
+    ),
+    Vector(
+        "XTRAS.HUGE_FEE_V2", "extras",
+        "BIP-370 v2 twin of XTRAS.HUGE_FEE: 90% of the input value goes to the miner fee.",
+        Expect.PARSES,
+        input_amount=1_000_000, output_amount=100_000, num_outputs=2, owned_outputs=1,
+        advisories=frozenset({Advisory.HIGH_FEE, Advisory.HIGH_FEE_RATE}),
+    ),
+    Vector(
+        "TX-19.relative_time_V2", "extras",
+        "BIP-370 v2 transaction with a BIP-68 relative timelock in nSequence. The "
+        "sequence is also below the RBF ceiling, so both must be surfaced -- "
+        "'replaceable' alone understates a long lock.",
+        Expect.PARSES,
+        input_amount=100_000, output_amount=99_000, num_outputs=2, owned_outputs=1,
+        advisories=frozenset({Advisory.RBF, Advisory.RELATIVE_TIMELOCK}),
+    ),
+    Vector(
+        "TX-19.height_far_V2", "extras",
+        "BIP-370 v2 transaction with a block-height nLockTime far in the future. With "
+        "no block anchor it parses as an ordinary spend; dated against an anchor it is "
+        "flagged LOCKTIME_FAR_FUTURE (see TestPSBTv2).",
+        Expect.PARSES,
+        input_amount=100_000, output_amount=99_000, num_outputs=2, owned_outputs=1,
     ),
 ]
 
