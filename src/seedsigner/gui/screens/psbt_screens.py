@@ -764,6 +764,20 @@ class PSBTOpReturnScreen(ButtonListScreen):
 
 @dataclass
 class PSBTFinalizeScreen(ButtonListScreen):
+    # Replace-by-fee is signalled by nSequence < 0xfffffffe. It is the default in
+    # every modern coordinator, so it must not gate the flow -- an interstitial on
+    # essentially every transaction is the fastest way to teach people to click
+    # past the warnings that matter. It is still a property of the transaction the
+    # user is about to authorise, so it is stated here, on the last screen before
+    # approval, rather than only recorded on the parser.
+    is_rbf: bool = False
+
+    # Human-readable nLockTime, when one is actually enforced. Stated rather than
+    # judged: the device has no RTC, and a block-height locktime cannot be
+    # compared to anything without a chain tip. A user who did not ask for a
+    # timelock is the one who can tell that this transaction should not have one.
+    locktime_text: str = None
+
     def __post_init__(self):
         # Customize defaults
         self.title = _("Sign Transaction")
@@ -779,7 +793,30 @@ class PSBTFinalizeScreen(ButtonListScreen):
         icon.screen_x = int((self.canvas_width - icon.width)/2)
         self.components.append(icon)
 
-        self.components.append(TextArea(
+        approve_text = TextArea(
             text=_("Click to approve this transaction"),
             screen_y=icon.screen_y + icon.height + 2*GUIConstants.COMPONENT_PADDING
-        ))
+        )
+        self.components.append(approve_text)
+
+        next_y = approve_text.screen_y + approve_text.height + GUIConstants.COMPONENT_PADDING
+
+        if self.is_rbf:
+            rbf_text = TextArea(
+                # TRANSLATOR_NOTE: BIP-125 replace-by-fee; the sender can replace
+                # this transaction with a different one until it confirms.
+                text=_("Replaceable (RBF)"),
+                font_size=GUIConstants.get_body_font_size() - 2,
+                font_color=GUIConstants.INFO_COLOR,
+                screen_y=next_y,
+            )
+            self.components.append(rbf_text)
+            next_y = rbf_text.screen_y + rbf_text.height
+
+        if self.locktime_text:
+            self.components.append(TextArea(
+                text=self.locktime_text,
+                font_size=GUIConstants.get_body_font_size() - 2,
+                font_color=GUIConstants.WARNING_COLOR,
+                screen_y=next_y,
+            ))

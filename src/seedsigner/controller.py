@@ -1,3 +1,4 @@
+from datetime import datetime
 import logging
 import os
 import sys
@@ -164,6 +165,70 @@ class Controller(Singleton):
 
     VERSION = "SeSi-0.8.7+ShSi-B12"
 
+    # Chain-tip anchor, loaded from resources/latest-block.json and refreshed by
+    # .github/workflows/update-latest-block.yml.
+    #
+    # Why it exists: the device has no RTC and no chain tip, so a block-height
+    # nLockTime is an uninterpretable number -- there is nothing on board to
+    # compare it against. A malicious coordinator could lock a transaction for
+    # years and the review screens had nothing to say about it, while the
+    # equivalent timestamp-encoded locktime *was* flagged. One anchored
+    # (height, time) pair turns a height into an approximate calendar date by
+    # assuming 10-minute blocks: height compared to height, never to a runtime
+    # clock the device does not have.
+    #
+    # These class attributes are the fallback, used only if the json is missing
+    # or unreadable. The values are advisory -- they affect a displayed estimate,
+    # never a signing decision -- so a stale or absent anchor degrades the
+    # estimate rather than the safety of anything.
+    RELEASE_BLOCK_HEIGHT = 963_408
+    RELEASE_BLOCK_TIME = 1_787_616_000  # 2026-08-25
+    SECONDS_PER_BLOCK = 600
+
+    # Mean of the highest fee rate in each of the last 10 blocks, sat/vB.
+    # Backs the "Auto" option of the Max Fee Rate setting: fee rates move by
+    # orders of magnitude between quiet periods and congestion, so a fixed
+    # threshold either cries wolf or never fires.
+    RECENT_MAX_FEE_RATE = 120
+
+
+    @classmethod
+    def _load_block_anchor(cls):
+        """
+        Replace the fallback anchor with resources/latest-block.json, if it reads.
+
+        Deliberately forgiving: a missing, truncated, or nonsense file leaves the
+        compiled-in fallback in place rather than raising. The anchor only feeds a
+        displayed date estimate, so the failure mode of ignoring it is a slightly
+        wrong estimate -- never a failure to boot, and never a signing decision.
+        """
+        import json
+
+        try:
+            path = Path(__file__).parent.resolve() / "resources" / "latest-block.json"
+            with open(path, encoding="utf-8") as fh:
+                data = json.load(fh)
+            height = int(data["height"])
+            timestamp = int(data["timestamp"])
+        except Exception as e:
+            logger.info(f"latest-block.json unavailable ({e}); using built-in anchor")
+            return
+
+        if height <= 0 or timestamp <= 0:
+            logger.info("latest-block.json values are not plausible; using built-in anchor")
+            return
+
+        cls.RELEASE_BLOCK_HEIGHT = height
+        cls.RELEASE_BLOCK_TIME = timestamp
+
+        # Optional: older files may not carry it.
+        try:
+            rate = float(data["max_fee_rate"])
+            if rate > 0:
+                cls.RECENT_MAX_FEE_RATE = rate
+        except Exception:
+            pass
+
     # Declare class member vars with type hints to enable richer IDE support throughout
     # the code.
     _storage: SeedStorage = None   # TODO: Rename "storage" to something more indicative of its temp, in-memory state
@@ -179,6 +244,11 @@ class Controller(Singleton):
     psbt_from_microsd: bool = False
     psbt_microsd_save_path: Path | None = None
     psbt_microsd_seed_warning_shown: bool = False
+    # Best available stand-in for "now" for the *current* psbt: the mtime of
+    # the file it was loaded from. None for QR-delivered psbts, which carry no
+    # such hint. Must be cleared whenever a new psbt is loaded so a value from
+    # a previous transaction cannot be applied to this one.
+    psbt_source_time: int | None = None
     sign_message_with_satochip: bool = False
 
     unverified_address = None
@@ -258,6 +328,8 @@ class Controller(Singleton):
         controller = cls.__new__(cls)
         cls._instance = controller
 
+        cls._load_block_anchor()
+
         # Check for libraqm support and log the status if not supported
         from PIL import features
         if not features.check('raqm'):
@@ -302,6 +374,7 @@ class Controller(Singleton):
         controller.psbt_from_microsd = False
         controller.psbt_microsd_save_path = None
         controller.psbt_microsd_seed_warning_shown = False
+        controller.psbt_source_time = None
         controller.sign_message_with_satochip = False
 
         # Configure the Renderer
@@ -361,18 +434,8 @@ class Controller(Singleton):
         return self.hardware_rng_monitor.failure_reason()
 
 
-    def get_seed(self, seed_num: int) -> Seed:
-        if seed_num < len(self.storage.seeds):
-            return self.storage.seeds[seed_num]
-        else:
-            raise Exception(f"There is no seed_num {seed_num}; only {len(self.storage.seeds)} in memory.")
-
-
-    def discard_seed(self, seed_num: int):
-        if seed_num < len(self.storage.seeds):
-            del self.storage.seeds[seed_num]
-        else:
-            raise Exception(f"There is no seed_num {seed_num}; only {len(self.storage.seeds)} in memory.")
+    def discard_seed(self, seed: Seed):
+        self.storage.seeds.remove(seed)
 
 
     def pop_prev_from_back_stack(self):
@@ -733,7 +796,7 @@ class Controller(Singleton):
             if ", line " in traceback_line:
                 line_info = traceback_line.split("/")[-1].replace("\"", "").replace("line ", "")
                 break
-        
+
         error = [
             exception_type,
             line_info,

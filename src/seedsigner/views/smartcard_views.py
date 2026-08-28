@@ -1906,13 +1906,16 @@ class ToolsSeedkeeperCloneSecretsView(View):
 class ToolsSeedkeeperViewSecretsView(View):
 
     def entropy_to_mnemonic(self, entropy_bytes, wordlist):
-        from mnemonic import Mnemonic
-        logger.info(f"Worldlist: {wordlist}")
+        # See SeedKeeperSelectView.entropy_to_mnemonic: `mnemonic` was imported
+        # but never declared as a dependency. embit is already required and is
+        # English-only, matching project policy; a SeedKeeper secret declaring
+        # any other wordlist is refused rather than mis-decoded.
+        from embit import bip39
 
-        mnemonic_obj = Mnemonic(wordlist)
-        mnemonic = mnemonic_obj.to_mnemonic(entropy_bytes)
+        if wordlist not in (None, "english"):
+            raise ValueError(f"Unsupported BIP-39 wordlist: {wordlist}. Only English is supported.")
 
-        return mnemonic # str
+        return bip39.mnemonic_from_bytes(bytes(entropy_bytes))  # str
 
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
@@ -3395,6 +3398,16 @@ class ToolsSatochipLoadPsbtView(View):
         self.controller.psbt_from_microsd = True
         self.controller.psbt_microsd_save_path = selected_path
 
+        # The device has no RTC, so it cannot ask what today is. The file's mtime
+        # was written by a machine that did have a clock, which makes it a usable
+        # stand-in for "roughly now" when judging how far out an nLockTime sits.
+        # Only ever used to raise a warning, never to suppress one -- see
+        # PSBTParser._check_far_future_locktime.
+        try:
+            self.controller.psbt_source_time = int(selected_path.stat().st_mtime)
+        except Exception:
+            self.controller.psbt_source_time = None
+
         return Destination(PSBTSelectSeedView, skip_current_view=True)
 
 class ToolsSatochipAdvancedView(View):
@@ -4183,7 +4196,7 @@ class SatochipExportXpubQRDisplayView(View):
             return Destination(
                 SeedExportXpubVerifyAddressView,
                 view_args=dict(
-                    seed_num=None,
+                    seed=None,
                     derivation_path=self.derivation_path,
                     script_type=self.script_type,
                     sig_type=self.sig_type,

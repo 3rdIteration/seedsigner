@@ -1,3 +1,4 @@
+import hashlib
 import math
 import time
 
@@ -196,6 +197,23 @@ class ToolsBatteryCalibrationRunningScreen(BaseScreen):
 
 @dataclass
 class ToolsImageEntropyLivePreviewScreen(BaseScreen):
+    # How many distinct preview frames must be collected before the final capture is
+    # allowed. Named to match upstream (SeedSigner/seedsigner) so the two stay
+    # comparable, but deliberately 5 here where upstream uses 50.
+    #
+    # Do not raise this to match upstream without measuring. Upstream retains 50 frames
+    # at full 240x240 RGBA (~11 MB); this fork keeps 5 downsampled 96x96 greyscale
+    # samples (~45 KB). That 250x difference is not academic: this fork also targets the
+    # Luckfox Pico Zero, which has 64 MB of RAM in total, so upstream's pool alone would
+    # claim roughly a sixth of the device's memory to hold preview frames.
+    #
+    # The pool supplies frame VOLUME, not assessed entropy quality (see the rules
+    # below, which only reject gross sensor failure). Because
+    # _derive_camera_entropy_bytes chains that volume onto a hardware-RNG contribution
+    # and the flow refuses to run at all when the RNG monitor reports unhealthy, the
+    # raw frame count is not what the seed's entropy rests on.
+    PREVIEW_POOL_SIZE = 5
+
     def __post_init__(self):
         super().__post_init__()
 
@@ -217,7 +235,14 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
         # Save compact preview samples for entropy below. Storing full-resolution
         # frames causes avoidable memory/CPU pressure on constrained devices.
         preview_images = []
-        max_entropy_frames = 5
+        # Hashes of every frame already counted, so a frozen camera cannot fill the
+        # pool by repeating one frame. Adopted from upstream (SeedSigner/seedsigner);
+        # it guards frame *acquisition* and leaves the entropy mixing below untouched.
+        preview_frame_hashes = set()
+        # A button may already be held down from whatever brought the user here. Until
+        # we have seen every ANYCLICK button released at least once, a press cannot be
+        # distinguished from that carry-over hold, so it must not trigger the capture.
+        is_maybe_still_holding = True
         preview_sample_size = (96, 96)
         instructions_font = Fonts.get_font(GUIConstants.get_body_font_name(), GUIConstants.get_button_font_size())
         last_entropy_check = 0
@@ -298,29 +323,39 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
                         anchor="lt",
                     )
 
-            # Check for ANYCLICK to take final entropy image
-            if self.hw_inputs.check_for_low(keys=HardwareButtonsConstants.KEYS__ANYCLICK):
-                # Have to manually update last input time since we're not in a wait_for loop
-                self.hw_inputs.update_last_input_time()
-                final_image = self.camera.read_video_stream(as_image=True)
-                self.camera.stop_video_stream_mode()
+            # The final image cannot be taken until the entropy pool is full: the pool
+            # is the frame volume the seed is designed around, and a short pool would
+            # only be caught later, after the user has already framed and captured.
+            if len(preview_images) == self.PREVIEW_POOL_SIZE:
+                if not self.hw_inputs.check_for_low(keys=HardwareButtonsConstants.KEYS__ANYCLICK):
+                    # Every ANYCLICK button is released, so the button that brought the
+                    # user into this flow is no longer down. The next press is a real one.
+                    is_maybe_still_holding = False
 
-                with self.renderer.lock:
-                    self.renderer.draw.text(
-                        xy=(
-                            int(self.renderer.canvas_width/2),
-                            self.renderer.canvas_height - GUIConstants.EDGE_PADDING
-                        ),
-                        text=_("Capturing image..."),
-                        fill=GUIConstants.ACCENT_COLOR,
-                        font=instructions_font,
-                        stroke_width=4,
-                        stroke_fill=GUIConstants.BACKGROUND_COLOR,
-                        anchor="ms"
-                    )
-                    self.renderer.show_image()
+                elif not is_maybe_still_holding:
+                    # The above check already established a button is down, and it is not
+                    # the carry-over hold, so this is a deliberate press: capture.
+                    # Have to manually update last input time since we're not in a wait_for loop
+                    self.hw_inputs.update_last_input_time()
+                    final_image = self.camera.read_video_stream(as_image=True)
+                    self.camera.stop_video_stream_mode()
 
-                return (preview_images, final_image)
+                    with self.renderer.lock:
+                        self.renderer.draw.text(
+                            xy=(
+                                int(self.renderer.canvas_width/2),
+                                self.renderer.canvas_height - GUIConstants.EDGE_PADDING
+                            ),
+                            text=_("Capturing image..."),
+                            fill=GUIConstants.ACCENT_COLOR,
+                            font=instructions_font,
+                            stroke_width=4,
+                            stroke_fill=GUIConstants.BACKGROUND_COLOR,
+                            anchor="ms"
+                        )
+                        self.renderer.show_image()
+
+                    return (preview_images, final_image)
 
             # If we're still here, it's just another preview frame loop
             with self.renderer.lock:
@@ -338,13 +373,32 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
                 )
                 self.renderer.show_image()
 
-            if len(preview_images) == max_entropy_frames:
+            # Decide whether this frame may enter the entropy pool at all.
+            # Rule 1: it must not be a single flat colour -- an all-black frame from a
+            # covered lens, or an overexposed all-white one, carries no entropy.
+            # getextrema() reports the lowest and highest value per channel; equal
+            # bounds in every channel means every pixel is identical.
+            frame_has_variation = any(
+                lowest != highest for lowest, highest in entropy_frame.getextrema()
+            )
+            if not frame_has_variation:
+                continue
+
+            # Rule 2: it must be a frame we have never counted before, so a frozen
+            # camera repeating one image cannot fill the pool.
+            entropy_sample_image = entropy_frame.convert("L").resize(
+                preview_sample_size, Image.Resampling.BILINEAR
+            )
+            frame_hash = hashlib.sha256(entropy_sample_image.tobytes()).digest()
+            if frame_hash in preview_frame_hashes:
+                continue
+            preview_frame_hashes.add(frame_hash)
+
+            if len(preview_images) == self.PREVIEW_POOL_SIZE:
                 # Keep a moving window of the last n preview frames; pop the oldest
                 # before we add the currest frame.
                 preview_images.pop(0)
-            preview_images.append(
-                entropy_frame.convert("L").resize(preview_sample_size, Image.Resampling.BILINEAR)
-            )
+            preview_images.append(entropy_sample_image)
 
 
 
@@ -377,6 +431,13 @@ class ToolsImageEntropyFinalImageScreen(BaseScreen):
             )
             self.renderer.show_image()
 
+        # The button click that triggered the final image might still be held down as this
+        # screen appears. We can't let that held button auto-dismiss the final image
+        # review here. Wait until every button has been released before listening for the
+        # accept/reshoot decision, so one long press can never accept a photo sight unseen.
+        while self.hw_inputs.check_for_low(keys=[HardwareButtonsConstants.KEY_LEFT, HardwareButtonsConstants.KEY_RIGHT] + HardwareButtonsConstants.KEYS__ANYCLICK):
+            time.sleep(0.01)
+
         # LEFT = reshoot, RIGHT / ANYCLICK = accept
         input = self.hw_inputs.wait_for([HardwareButtonsConstants.KEY_LEFT, HardwareButtonsConstants.KEY_RIGHT] + HardwareButtonsConstants.KEYS__ANYCLICK)
         if input == HardwareButtonsConstants.KEY_LEFT:
@@ -390,6 +451,11 @@ class ToolsDiceEntropyEntryScreen(KeyboardScreen):
     def __post_init__(self):
         # TRANSLATOR_NOTE: current roll number vs total rolls (e.g. roll 7 of 50)
         self.title = _("Dice Roll {}/{}").format(1, self.return_after_n_chars)
+
+        # A list, not KeyboardScreen's default ADDITIONAL_KEYS dict: Keyboard sums
+        # each entry's "size" to check the layout fits, so it needs the key dicts
+        # themselves rather than their codes.
+        self.custom_additional_keys = [Keyboard.KEY_BACKSPACE]
 
         # Specify the keys in the keyboard
         self.rows = 3
@@ -453,6 +519,10 @@ class ToolsCoinFlipEntryScreen(KeyboardScreen):
         # Override values set by the parent class
         # TRANSLATOR_NOTE: current coin-flip number vs total flips (e.g. flip 3 of 4)
         self.title = _("Coin Flip {}/{}").format(1, self.return_after_n_chars)
+        # A list, not KeyboardScreen's default ADDITIONAL_KEYS dict: Keyboard sums
+        # each entry's "size" to check the layout fits, so it needs the key dicts
+        # themselves rather than their codes.
+        self.custom_additional_keys = [Keyboard.KEY_BACKSPACE_2]
 
         # Specify the keys in the keyboard
         self.rows = 1

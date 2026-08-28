@@ -220,8 +220,29 @@ class ScanView(View):
             elif self.decoder.is_psbt:
                 from seedsigner.views.psbt_views import PSBTSelectSeedView
                 psbt = self.decoder.get_psbt()
+                if psbt is None:
+                    # The QR announced itself as a psbt (a UR2 `crypto-psbt`
+                    # says so in its type string) but the payload doesn't
+                    # parse. Refuse here: routing on with `controller.psbt =
+                    # None` only produces a bare "No transaction currently
+                    # loaded" exception two Views later.
+                    logger.warning("Scanned psbt could not be parsed")
+                    self.run_screen(
+                        WarningScreen,
+                        title=_("Invalid PSBT"),
+                        status_headline=None,
+                        text=_("This transaction could not be read. It may be corrupted or malformed."),
+                        button_data=[ButtonOption("Done")],
+                        show_back_button=False,
+                    )
+                    return Destination(MainMenuView, clear_history=True)
+
                 self.controller.psbt = psbt
                 self.controller.psbt_parser = None
+                # Delivered by QR: there is no file, so no mtime to date it by.
+                # Clear rather than leave, or a previous microSD transaction's
+                # timestamp would be applied to this one.
+                self.controller.psbt_source_time = None
                 return Destination(PSBTSelectSeedView, skip_current_view=True)
 
             elif self.decoder.is_settings:
@@ -496,9 +517,9 @@ class ScanAddressView(ScanView):
 
 
 class ScanXpubAddressView(ScanAddressView):
-    def __init__(self, seed_num: int, derivation_path: str, script_type: str, sig_type: str, coordinator_label: str):
+    def __init__(self, seed: Seed, derivation_path: str, script_type: str, sig_type: str, coordinator_label: str):
         super().__init__()
-        self.seed_num = seed_num
+        self.seed = seed
         self.derivation_path = derivation_path
         self.script_type = script_type
         self.sig_type = sig_type
@@ -526,7 +547,7 @@ class ScanXpubAddressView(ScanAddressView):
             )
             return Destination(
                 SeedAddressVerificationView,
-                view_args=dict(seed_num=self.seed_num, export_for_xpub=True),
+                view_args=dict(seed=self.seed, export_for_xpub=True),
                 skip_current_view=True,
             )
 

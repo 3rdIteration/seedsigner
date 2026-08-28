@@ -307,6 +307,41 @@ class SettingsConstants:
     ALL_SCARD_PIN_ATTEMPTS = [(i, str(i)) for i in range(SCARD_PIN_ATTEMPTS_MIN, SCARD_PIN_ATTEMPTS_MAX + 1)]
     DEFAULT_SCARD_PIN_ATTEMPTS = 5
 
+    # How far above the highest index seen on any input a change output may sit
+    # before it is flagged for review. Change is normally issued at the next
+    # unused index, so a change address far beyond what the inputs demonstrate
+    # is one the wallet's own scanner may never reach.
+    ALL_CHANGE_INDEX_LOOKAHEADS = [
+        (100, "100"),
+        (1000, "1000"),
+        (10000, "10000"),
+        (0, _mft("Off")),
+    ]
+    DEFAULT_CHANGE_INDEX_LOOKAHEAD = 100
+
+    # Fee rate, in sat/vB, at or above which a transaction is flagged for review.
+    # A fee is only meaningful as a rate: 50,000 sats is nothing on a 200-input
+    # consolidation and extortionate on a 1-in 2-out payment, and the
+    # share-of-inputs check cannot tell those apart.
+    #
+    # AUTO tracks resources/latest-block.json, which a scheduled workflow keeps
+    # roughly current with what recent blocks actually paid. Fee rates move by
+    # orders of magnitude between quiet periods and congestion, so a fixed
+    # default would either cry wolf or never fire; a fixed choice is still
+    # offered for anyone who prefers a stable threshold.
+    MAX_FEE_RATE__AUTO = -1
+    ALL_MAX_FEE_RATES = [
+        (MAX_FEE_RATE__AUTO, _mft("Auto")),
+        (100, "100 sat/vB"),
+        (500, "500 sat/vB"),
+        (2000, "2000 sat/vB"),
+        (0, _mft("Off")),
+    ]
+    DEFAULT_MAX_FEE_RATE = MAX_FEE_RATE__AUTO
+
+    # Used when AUTO is selected but latest-block.json is unavailable.
+    FALLBACK_MAX_FEE_RATE = 500
+
     # Satochip signing behavior
     SATOCHIP_TIMEOUT_MIN = 0.25
     SATOCHIP_TIMEOUT_MAX = 1
@@ -476,6 +511,8 @@ class SettingsConstants:
     SETTING__SIG_TYPES = "sig_types"
     SETTING__SCRIPT_TYPES = "script_types"
     SETTING__ACCOUNT_PROMPT = "account_prompt"
+    SETTING__CHANGE_INDEX_LOOKAHEAD = "change_lookahead"
+    SETTING__MAX_FEE_RATE = "max_fee_rate"
     SETTING__SEED_WORD_LENGTHS = "seed_word_lengths"
     SETTING__XPUB_DETAILS = "xpub_details"
     SETTING__PASSPHRASE = "passphrase"
@@ -868,6 +905,24 @@ class SettingsDefinition:
                     type=SettingsConstants.TYPE__SELECT_1,
                     selection_options=SettingsConstants.ALL_SCARD_PIN_ATTEMPTS,
                     default_value=SettingsConstants.DEFAULT_SCARD_PIN_ATTEMPTS),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__WALLET,
+                    attr_name=SettingsConstants.SETTING__CHANGE_INDEX_LOOKAHEAD,
+                    abbreviated_name="chglook",
+                    display_name=_mft("Change Gap Limit"),
+                    help_text=_mft("Warn when a change address sits this far past the inputs"),
+                    type=SettingsConstants.TYPE__SELECT_1,
+                    selection_options=SettingsConstants.ALL_CHANGE_INDEX_LOOKAHEADS,
+                    default_value=SettingsConstants.DEFAULT_CHANGE_INDEX_LOOKAHEAD),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__WALLET,
+                    attr_name=SettingsConstants.SETTING__MAX_FEE_RATE,
+                    abbreviated_name="maxfee",
+                    display_name=_mft("Max Fee Rate"),
+                    help_text=_mft("Warn when the fee rate is at or above this"),
+                    type=SettingsConstants.TYPE__SELECT_1,
+                    selection_options=SettingsConstants.ALL_MAX_FEE_RATES,
+                    default_value=SettingsConstants.DEFAULT_MAX_FEE_RATE),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
                     attr_name=SettingsConstants.SETTING__WIPE_TIMER,

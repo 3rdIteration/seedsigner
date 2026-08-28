@@ -1064,9 +1064,9 @@ class ToolsPasswordBIP85GenerateView(View):
             )
             if selected_seed == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
-            seed = self.controller.get_seed(selected_seed)
+            seed = self.controller.storage.seeds[selected_seed]
         else:
-            seed = self.controller.get_seed(0)
+            seed = self.controller.storage.seeds[0]
 
         ret = seed_screens.SeedBIP85SelectChildIndexScreen(title=_("BIP85 Index")).display()
         if ret == RET_CODE__BACK_BUTTON:

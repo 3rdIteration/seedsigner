@@ -182,7 +182,7 @@ class TestToolsFlows(FlowTest):
 
         # Scenario 4: No seed onboard, one script type enabled, started from Tools, BACK
         # can only go to MainMenu because of mid-flow seed load.
-        controller.discard_seed(0)
+        controller.discard_seed(controller.storage.seeds[0])
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
             FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.ADDRESS_EXPLORER),
@@ -369,7 +369,7 @@ class TestToolsFlows(FlowTest):
             derivation_path="m/84'/1'/0'",
         )
 
-        view = seed_views.SeedAddressVerificationView(seed_num=0)
+        view = seed_views.SeedAddressVerificationView(seed=self.controller.storage.seeds[0])
 
         def fake_run_screen(*args, **kwargs):
             return RET_CODE__BACK_BUTTON
@@ -454,7 +454,7 @@ class TestToolsFlows(FlowTest):
             verified_index_is_change=False,
         )
 
-        view = seed_views.SeedAddressVerificationSuccessView(seed_num=0)
+        view = seed_views.SeedAddressVerificationSuccessView(seed=self.controller.storage.seeds[0])
 
         def fake_run_screen(*args, **kwargs):
             return 0
@@ -489,7 +489,7 @@ class TestToolsFlows(FlowTest):
             verified_index_is_change=False,
         )
 
-        view = seed_views.SeedAddressVerificationSuccessView(seed_num=0)
+        view = seed_views.SeedAddressVerificationSuccessView(seed=self.controller.storage.seeds[0])
 
         def fake_run_screen(*args, **kwargs):
             return 0
@@ -564,7 +564,7 @@ class TestToolsFlows(FlowTest):
             derivation_path="m/44'/0'/0'",
         )
 
-        view = seed_views.SeedAddressVerificationView(seed_num=0)
+        view = seed_views.SeedAddressVerificationView(seed=self.controller.storage.seeds[0])
 
         def fake_run_screen(*args, **kwargs):
             return None
@@ -573,7 +573,7 @@ class TestToolsFlows(FlowTest):
             destination = view.run()
 
         assert destination.View_cls == seed_views.SeedAddressVerificationSimpleNotFoundView
-        assert destination.view_args["seed_num"] == 0
+        assert destination.view_args["seed"] is self.controller.storage.seeds[0]
         assert destination.view_args["addrs_checked"] >= 10
         assert destination.view_args["next_start_index"] >= 10
 
@@ -598,7 +598,7 @@ class TestToolsFlows(FlowTest):
             derivation_path="m/44'/0'/0'",
         )
 
-        view = seed_views.SeedAddressVerificationView(seed_num=0, use_expanded=True)
+        view = seed_views.SeedAddressVerificationView(seed=self.controller.storage.seeds[0], use_expanded=True)
 
         def fake_run_screen(*args, **kwargs):
             return None
@@ -607,7 +607,7 @@ class TestToolsFlows(FlowTest):
             destination = view.run()
 
         assert destination.View_cls == seed_views.SeedAddressVerificationNotFoundView
-        assert destination.view_args["seed_num"] == 0
+        assert destination.view_args["seed"] is self.controller.storage.seeds[0]
         assert destination.view_args["addrs_per_path_checked"] == 2
         assert destination.view_args["next_start_index"] == 2
 
@@ -632,7 +632,7 @@ class TestToolsFlows(FlowTest):
         )
 
         view = seed_views.SeedAddressVerificationNotFoundView(
-            seed_num=0, addrs_per_path_checked=10, next_start_index=10,
+            seed=self.controller.storage.seeds[0], addrs_per_path_checked=10, next_start_index=10,
         )
 
         def fake_run_screen(*args, **kwargs):
@@ -643,7 +643,7 @@ class TestToolsFlows(FlowTest):
             destination = view.run()
 
         assert destination.View_cls == seed_views.SeedAddressVerificationView
-        assert destination.view_args["seed_num"] == 0
+        assert destination.view_args["seed"] is self.controller.storage.seeds[0]
         assert destination.view_args["expanded_start_index"] == 10
         assert destination.view_args["use_expanded"] is True
 
@@ -666,7 +666,7 @@ class TestToolsFlows(FlowTest):
         )
 
         view = seed_views.SeedAddressVerificationNotFoundView(
-            seed_num=0, addrs_per_path_checked=100, next_start_index=100,
+            seed=self.controller.storage.seeds[0], addrs_per_path_checked=100, next_start_index=100,
         )
 
         def fake_run_screen(*args, **kwargs):
@@ -810,3 +810,104 @@ class TestToolsFlows(FlowTest):
                     FlowStep(seed_views.SeedAddressVerificationView),
                     FlowStep(seed_views.SeedAddressVerificationSuccessView),
                 ])
+
+class TestToolsImageEntropyFlows(FlowTest):
+
+    def test__image_entropy__unhealthy_rng_fails_closed(self):
+        """
+        Camera entropy is chained onto a system-RNG contribution. The sha256 mixing
+        means a degraded RNG cannot weaken the result, but a failed health check does
+        mean a source the design relies on is not delivering, so the flow must refuse
+        rather than quietly mint a seed on fewer sources than intended.
+        """
+        from unittest.mock import PropertyMock, patch
+
+        from seedsigner.controller import Controller
+
+        with patch.object(Controller, "hardware_rng_is_healthy",
+                          new_callable=PropertyMock, return_value=False),              patch.object(Controller, "hardware_rng_failure_reason",
+                          new_callable=PropertyMock, return_value="System RNG sample loop detected"):
+            self.run_sequence([
+                FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+                FlowStep(tools_views.ToolsMenuView,
+                         button_data_selection=tools_views.ToolsMenuView.IMAGE),
+                FlowStep(tools_views.ToolsImageEntropyLivePreviewView, screen_return_value=0),
+                FlowStep(tools_views.ToolsMenuView),
+            ])
+
+    def test__image_entropy__healthy_rng_proceeds(self):
+        """The gate must not fire when the monitor reports healthy."""
+        from unittest.mock import Mock, PropertyMock, patch
+
+        from seedsigner.controller import Controller
+        from seedsigner.gui.screens.tools_screens import ToolsImageEntropyLivePreviewScreen
+
+        with patch.object(Controller, "hardware_rng_is_healthy",
+                          new_callable=PropertyMock, return_value=True):
+            self.run_sequence([
+                FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+                FlowStep(tools_views.ToolsMenuView,
+                         button_data_selection=tools_views.ToolsMenuView.IMAGE),
+                FlowStep(tools_views.ToolsImageEntropyLivePreviewView,
+                         screen_return_value=[Mock()] * ToolsImageEntropyLivePreviewScreen.PREVIEW_POOL_SIZE),
+                FlowStep(tools_views.ToolsImageEntropyFinalImageView),
+            ])
+
+
+    def test__image_entropy__incorrect_preview_frame_count_aborts(self):
+        """
+        If the live preview screen returns anything other than the required number of
+        entropy frames, the View must raise rather than continue on to seed creation.
+        """
+        from unittest.mock import Mock
+        from seedsigner.views.view import UnhandledExceptionView
+        from seedsigner.gui.screens.tools_screens import ToolsImageEntropyLivePreviewScreen
+
+        # Empty list (no frames)
+        self.run_sequence([
+            FlowStep(tools_views.ToolsImageEntropyLivePreviewView, screen_return_value=[]),
+            FlowStep(UnhandledExceptionView),
+        ])
+
+        # Too few
+        self.run_sequence([
+            FlowStep(tools_views.ToolsImageEntropyLivePreviewView, screen_return_value=[Mock()] * 10),
+            FlowStep(UnhandledExceptionView),
+        ])
+
+        # Too many
+        self.run_sequence([
+            FlowStep(tools_views.ToolsImageEntropyLivePreviewView, screen_return_value=[Mock()] * (ToolsImageEntropyLivePreviewScreen.PREVIEW_POOL_SIZE + 5)),
+            FlowStep(UnhandledExceptionView),
+        ])
+
+        # Degenerate None
+        self.run_sequence([
+            FlowStep(tools_views.ToolsImageEntropyLivePreviewView, screen_return_value=None),
+            FlowStep(UnhandledExceptionView),
+        ])
+
+
+
+    def test__image_entropy__screen_exception_does_not_advance(self):
+        """
+        There is no explicit handling for the live preview screen raising, but the flow
+        must never continue on to seed creation when it does.
+        """
+        from seedsigner.views.view import UnhandledExceptionView
+
+        self.run_sequence([
+            FlowStep(tools_views.ToolsImageEntropyLivePreviewView, screen_return_value=Exception("Test exception")),
+            FlowStep(UnhandledExceptionView),
+        ])
+
+
+    def test__image_entropy__full_preview_frames_advances(self):
+        """ A full set of preview frames advances to the final image capture. """
+        from unittest.mock import Mock
+        from seedsigner.gui.screens.tools_screens import ToolsImageEntropyLivePreviewScreen
+
+        self.run_sequence([
+            FlowStep(tools_views.ToolsImageEntropyLivePreviewView, screen_return_value=[Mock()] * ToolsImageEntropyLivePreviewScreen.PREVIEW_POOL_SIZE),
+            FlowStep(tools_views.ToolsImageEntropyFinalImageView),
+        ])

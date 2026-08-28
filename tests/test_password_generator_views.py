@@ -332,10 +332,6 @@ def test_bip85_dice_rolls_uses_derived_entropy_directly(monkeypatch):
     class Controller:
         storage = Storage()
 
-        @staticmethod
-        def get_seed(_idx):
-            return SeedObj()
-
     view.controller = Controller()
 
     class S:
@@ -456,10 +452,6 @@ def test_bip85_dice_rolls_uses_seed_root_not_seed_bytes_none(monkeypatch):
     class Controller:
         storage = Storage()
 
-        @staticmethod
-        def get_seed(_idx):
-            return SeedObj()
-
     view.controller = Controller()
 
     class S:
@@ -515,10 +507,6 @@ def test_bip85_diceware_short_uses_bip85_entropy_directly(monkeypatch):
 
     class Controller:
         storage = Storage()
-
-        @staticmethod
-        def get_seed(_idx):
-            return SeedObj()
 
     view.controller = Controller()
 
@@ -787,10 +775,6 @@ def test_bip85_generate_hex_uses_bip85_app_hex(monkeypatch):
 
     class Controller:
         storage = Storage()
-
-        @staticmethod
-        def get_seed(_idx):
-            return SeedObj()
 
     view.controller = Controller()
 

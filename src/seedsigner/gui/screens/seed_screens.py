@@ -60,6 +60,7 @@ class SeedMnemonicEntryScreen(BaseTopNavScreen):
                 GUIConstants.EDGE_PADDING + self.keyboard_width,
                 self.canvas_height
             ),
+            additional_keys=[Keyboard.KEY_BACKSPACE_4],
             auto_wrap=[Keyboard.WRAP_LEFT, Keyboard.WRAP_RIGHT]
         )
 
@@ -548,6 +549,7 @@ class SeedBIP85SelectChildIndexScreen(KeyboardScreen):
         self.cols = 5
         self.keys_charset = "0123456789"
         self.show_save_button = True
+        self.custom_additional_keys = [Keyboard.KEY_BACKSPACE_5]
 
         super().__post_init__()
 
@@ -572,6 +574,11 @@ class SeedWordsBackupTestPromptScreen(ButtonListScreen):
 @dataclass
 class SeedExportXpubAccountNumberScreen(KeyboardScreen):
     def __post_init__(self):
+        # A list, not KeyboardScreen's default ADDITIONAL_KEYS dict: Keyboard sums
+        # each entry's "size" to check the layout fits, so it needs the key dicts
+        # themselves rather than their codes.
+        self.custom_additional_keys = [Keyboard.KEY_BACKSPACE_5]
+
         self.title = _("Account Number")
         self.user_input = "0"
 
@@ -596,6 +603,7 @@ class SeedExportXpubCustomDerivationScreen(KeyboardScreen):
         self.cols = 6
         self.keys_charset = "/'0123456789"
         self.show_save_button = True
+        self.custom_additional_keys = [Keyboard.KEY_BACKSPACE_6]
 
         super().__post_init__()
 
@@ -777,7 +785,7 @@ class SeedAddPassphraseScreen(BaseTopNavScreen):
                 Keyboard.KEY_SPACE_2,
                 Keyboard.KEY_CURSOR_LEFT,
                 Keyboard.KEY_CURSOR_RIGHT,
-                Keyboard.KEY_BACKSPACE
+                Keyboard.KEY_BACKSPACE_2
             ],
             auto_wrap=[Keyboard.WRAP_LEFT, Keyboard.WRAP_RIGHT],
             render_now=False
@@ -798,7 +806,7 @@ class SeedAddPassphraseScreen(BaseTopNavScreen):
                 Keyboard.KEY_SPACE_2,
                 Keyboard.KEY_CURSOR_LEFT,
                 Keyboard.KEY_CURSOR_RIGHT,
-                Keyboard.KEY_BACKSPACE
+                Keyboard.KEY_BACKSPACE_2
             ],
             auto_wrap=[Keyboard.WRAP_LEFT, Keyboard.WRAP_RIGHT],
             render_now=False

@@ -11,7 +11,7 @@ class TestSeedExportPlaintextQRView(BaseTest):
         self.controller.storage.finalize_pending_seed()
 
         captured = {}
-        view = SeedExportPlaintextQRView(seed_num=0)
+        view = SeedExportPlaintextQRView(seed=self.controller.storage.seeds[0])
 
         def fake_run_screen(_screen_cls, **kwargs):
             captured["encoder"] = kwargs["qr_encoder"]
@@ -28,7 +28,7 @@ class TestSeedExportPlaintextQRView(BaseTest):
         self.controller.storage.finalize_pending_seed()
 
         captured = {}
-        view = SeedExportPlaintextQRView(seed_num=0)
+        view = SeedExportPlaintextQRView(seed=self.controller.storage.seeds[0])
 
         def fake_run_screen(_screen_cls, **kwargs):
             captured["encoder"] = kwargs["qr_encoder"]

@@ -1,12 +1,14 @@
 from gettext import gettext as _
+from seedsigner.helpers.l10n import mark_for_translation as _mft
 
 from binascii import hexlify
 from binascii import hexlify
 
 from embit import bip32
 import logging
+import time
 
-from seedsigner.models.psbt_parser import PSBTParser
+from seedsigner.models.psbt_parser import InvalidPSBTError, PSBTParser, RejectCode, RiskWarning
 from seedsigner.models.settings import SettingsConstants
 from seedsigner.gui.components import FontAwesomeIconConstants, SeedSignerIconConstants
 from seedsigner.gui.screens.screen import (
@@ -134,7 +136,7 @@ class PSBTSelectSeedView(View):
             # User selected one of the n seeds
             if not ensure_microsd_seed_warning():
                 return Destination(PSBTSelectSeedView)
-            self.controller.psbt_seed = self.controller.get_seed(selected_menu_num)
+            self.controller.psbt_seed = seeds[selected_menu_num]
             return Destination(PSBTOverviewView)
 
         # The remaining flows are a sub-flow; resume PSBT flow once the seed is loaded.
@@ -192,7 +194,7 @@ class PSBTSelectSeedView(View):
                         script_pubkey = None
 
                     if script_pubkey is not None:
-                        policy = PSBTParser._get_policy(first_input, script_pubkey, psbt.xpubs)
+                        policy = PSBTParser._get_policy(first_input, script_pubkey, psbt.xpubs, None)
                         is_multisig_psbt = isinstance(policy, dict) and "m" in policy
             except Exception as exc:
                 logger.debug("Unable to determine PSBT policy", exc_info=exc)
@@ -433,10 +435,23 @@ class PSBTBIP38PassphraseView(View):
         return Destination(PSBTOverviewView)
 
 class PSBTOverviewView(View):
+    # Refusals that the user can legitimately act on, rather than simply having
+    # to reject the transaction. Appended to the technical reason.
+    #
+    # Budget: the warning screen's text box fits five lines at the body font, and
+    # TextArea renders past the bottom edge rather than raising, so an overlong
+    # message silently draws over the button. Reason + tip must stay within that
+    # for the longest realistic values AND a verbose translation.
+    REJECT_TIPS = {
+        # TRANSLATOR_NOTE: Points the user at the setting that controls this check
+        RejectCode.CHANGE_INDEX_TOO_FAR: _mft("See Change Gap Limit in Settings."),
+    }
+
     def __init__(self):
         super().__init__()
 
         self.loading_screen = None
+        self.parse_error: InvalidPSBTError = None
 
         if not self.controller.psbt_parser or self.controller.psbt_parser.seed != self.controller.psbt_seed:
             # The PSBTParser takes a while to read the PSBT. Run the loading screen while
@@ -446,11 +461,21 @@ class PSBTOverviewView(View):
             self.loading_screen.start()
                 
             try:
+                from seedsigner.controller import Controller as _Controller
                 self.controller.psbt_parser = PSBTParser(
                     self.controller.psbt,
                     seed=self.controller.psbt_seed,
-                    network=self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+                    network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
+                    reference_time=getattr(self.controller, "psbt_source_time", None),
+                    block_anchor=(_Controller.RELEASE_BLOCK_HEIGHT, _Controller.RELEASE_BLOCK_TIME),
                 )
+            except InvalidPSBTError as e:
+                # A deliberate refusal, not a crash: the psbt is parseable but
+                # unsafe to present. run() turns this into a warning screen.
+                self.loading_screen.stop()
+                self.loading_screen = None
+                logger.info("Refusing psbt: %s (%s)", e, e.code)
+                self.parse_error = e
             except Exception as e:
                 self.loading_screen.stop()
                 raise e
@@ -458,6 +483,28 @@ class PSBTOverviewView(View):
 
     def run(self):
         from seedsigner.gui.screens.psbt_screens import PSBTOverviewScreen
+
+        if self.parse_error:
+            text = str(self.parse_error)
+            tip = self.REJECT_TIPS.get(self.parse_error.code)
+            if tip:
+                # Single newline, not a blank line: the warning screen's text box
+                # fits about five lines and a blank one costs a whole line.
+                text += "\n" + _(tip)
+
+            self.run_screen(
+                WarningScreen,
+                title=_("Invalid PSBT"),
+                status_headline=None,
+                text=text,
+                button_data=[ButtonOption("Done")],
+                show_back_button=False,
+            )
+            self.controller.psbt = None
+            self.controller.psbt_parser = None
+            self.controller.psbt_seed = None
+            return Destination(MainMenuView, clear_history=True)
+
         psbt_parser = self.controller.psbt_parser
 
         change_data = psbt_parser.change_data
@@ -466,16 +513,18 @@ class PSBTOverviewView(View):
                 {
                     'address': 'bc1q............', 
                     'amount': 397621401, 
-                    'fingerprint': ['22bde1a9', '73c5da0a'], 
-                    'derivation_path': ['m/48h/1h/0h/2h/1/0', 'm/48h/1h/0h/2h/1/0']
+                    'claimed_fingerprints': ['22bde1a9', '73c5da0a'], 
+                    'claimed_derivation_paths': ['m/48h/1h/0h/2h/1/0', 'm/48h/1h/0h/2h/1/0']
                 }, {},
             ]
         """
         num_change_outputs = 0
         num_self_transfer_outputs = 0
         for change_output in change_data:
-            path_ints = bip32.parse_path(change_output["derivation_path"][0])
-            if len(path_ints) >= 2 and (path_ints[-2] & 0x7FFFFFFF) == 1:
+            # PSBTParser has already rejected any derivation a wallet could not
+            # scan for, so all that's left here is which branch it sits on.
+            path_ints = bip32.parse_path(change_output["claimed_derivation_paths"][0])
+            if PSBTParser.is_change_branch(path_ints):
                 num_change_outputs += 1
             else:
                 num_self_transfer_outputs += 1
@@ -501,6 +550,9 @@ class PSBTOverviewView(View):
             self.controller.psbt_seed = None
             return Destination(BackStackView)
 
+        if psbt_parser.risk_warnings - RiskWarning.INFORMATIONAL:
+            return Destination(PSBTRiskWarningView)
+
         # expecting p2sh (legacy multisig) and p2pkh to have no policy set
         # skip change warning and psbt math view
         if psbt_parser.policy == None:
@@ -511,6 +563,70 @@ class PSBTOverviewView(View):
 
         else:
             return Destination(PSBTMathView)
+
+
+
+class PSBTRiskWarningView(View):
+    """
+        Everything PSBTParser flagged for review: conditions that don't make the
+        transaction invalid, but that a user would not want to approve without
+        being told.
+    """
+    # Most severe first; iteration order is the display order.
+    RISK_TEXT = {
+        # TRANSLATOR_NOTE: Shown when the miner fee is a large share of what's being spent
+        RiskWarning.HIGH_FEE: _mft("The fee is an unusually large share of this transaction."),
+        # TRANSLATOR_NOTE: The fee per byte is high compared to recent blocks.
+        RiskWarning.HIGH_FEE_RATE: _mft("The fee rate is high compared to recent blocks."),
+        RiskWarning.DUST_OUTPUT: _mft("One output is below the dust threshold and may be unspendable."),
+        RiskWarning.FUTURE_LOCKTIME: _mft("This transaction cannot confirm until a future date."),
+        # TRANSLATOR_NOTE: The transaction is locked years beyond when it was created.
+        RiskWarning.LOCKTIME_FAR_FUTURE: _mft("This transaction is locked for years and cannot confirm until then."),
+        # TRANSLATOR_NOTE: BIP-68 relative timelock; the delay runs from when the
+        # input confirmed, so no fixed date can be shown.
+        RiskWarning.RELATIVE_TIMELOCK: _mft("An input is time-locked and cannot be spent yet."),
+        RiskWarning.RBF: _mft("This transaction is marked replaceable (RBF)."),
+    }
+
+    def run(self):
+        psbt_parser: PSBTParser = self.controller.psbt_parser
+        if not psbt_parser:
+            # Should not be able to get here
+            return Destination(MainMenuView)
+
+        messages = []
+        for code in self.RISK_TEXT:
+            if code not in psbt_parser.risk_warnings or code in RiskWarning.INFORMATIONAL:
+                continue
+            messages.append(_(self.RISK_TEXT[code]))
+
+        selected_menu_num = self.run_screen(
+            WarningScreen,
+            # TRANSLATOR_NOTE: Headline above a list of things to check before approving
+            status_headline=_("Review Carefully!"),
+            text="\n\n".join(messages),
+            button_data=[ButtonOption("Continue")],
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if psbt_parser.policy == None:
+            return Destination(
+                PSBTUnsupportedScriptTypeWarningView,
+                skip_current_view=True,  # Prevent going BACK to WarningViews
+            )
+
+        elif psbt_parser.change_amount == 0:
+            return Destination(
+                PSBTNoChangeWarningView,
+                skip_current_view=True,  # Prevent going BACK to WarningViews
+            )
+
+        return Destination(
+            PSBTMathView,
+            skip_current_view=True,  # Prevent going BACK to WarningViews
+        )
 
 
 
@@ -576,7 +692,11 @@ class PSBTMathView(View):
             PSBTMathScreen,
             input_amount=psbt_parser.input_amount,
             num_inputs=psbt_parser.num_inputs,
-            spend_amount=psbt_parser.spend_amount,
+            # An OP_RETURN carrying value is value leaving the wallet with no
+            # recipient. Counting it as spend is what makes
+            # inputs - spend - fee == change hold on screen; left out, the
+            # burned amount silently disappears into the arithmetic.
+            spend_amount=psbt_parser.spend_amount + psbt_parser.op_return_amount,
             num_recipients=psbt_parser.num_destinations,
             fee_amount=psbt_parser.fee_amount,
             change_amount=psbt_parser.change_amount,
@@ -675,15 +795,15 @@ class PSBTChangeDetailsView(View):
             {
                 'address': 'bc1q............', 
                 'amount': 397621401, 
-                'fingerprint': ['22bde1a9', '73c5da0a'], 
-                'derivation_path': ['m/48h/1h/0h/2h/1/0', 'm/48h/1h/0h/2h/1/0']
+                'claimed_fingerprints': ['22bde1a9', '73c5da0a'], 
+                'claimed_derivation_paths': ['m/48h/1h/0h/2h/1/0', 'm/48h/1h/0h/2h/1/0']
             }
         """
 
         # Single-sig verification is easy. We expect to find a single fingerprint
         # and derivation path.
-        fingerprints = change_data.get("fingerprint") or []
-        derivation_paths = change_data.get("derivation_path") or []
+        claimed_fingerprints = change_data.get("claimed_fingerprints") or []
+        claimed_derivation_paths = change_data.get("claimed_derivation_paths") or []
 
         if self.controller.psbt_seed:
             seed_fingerprint = self.controller.psbt_seed.get_fingerprint(
@@ -694,25 +814,28 @@ class PSBTChangeDetailsView(View):
             seed_fingerprint = hexlify(master_fp).decode() if master_fp else None
 
         if seed_fingerprint:
-            if seed_fingerprint not in fingerprints:
+            if seed_fingerprint not in claimed_fingerprints:
                 # TODO: Something is wrong with this psbt(?). Reroute to warning?
                 return Destination(NotYetImplementedView)
-            index = fingerprints.index(seed_fingerprint)
+            index = claimed_fingerprints.index(seed_fingerprint)
         else:
-            index = 0 if fingerprints else None
+            index = 0 if claimed_fingerprints else None
             if index is not None:
-                seed_fingerprint = fingerprints[index]
+                seed_fingerprint = claimed_fingerprints[index]
 
-        derivation_path = ""
-        if index is not None and index < len(derivation_paths):
-            derivation_path = derivation_paths[index]
+        claimed_derivation_path = ""
+        if index is not None and index < len(claimed_derivation_paths):
+            claimed_derivation_path = claimed_derivation_paths[index]
 
-        # 'm/84h/1h/0h/1/0' would be a change addr while 'm/84h/1h/0h/0/0' is a self-receive
-        if derivation_path:
-            path_ints = bip32.parse_path(derivation_path)
+        # 'm/84h/1h/0h/1/0' would be a change addr while 'm/84h/1h/0h/0/0' is a self-receive.
+        # Safe to read from the claim here: PSBTParser has already refused any path whose
+        # prefix does not match one the inputs demonstrate, so an output that reaches this
+        # point sits where this wallet actually keeps its keys.
+        if claimed_derivation_path:
+            path_ints = bip32.parse_path(claimed_derivation_path)
         else:
             path_ints = []
-        is_change_derivation_path = len(path_ints) >= 2 and (path_ints[-2] & 0x7FFFFFFF) == 1
+        is_change_derivation_path = PSBTParser.is_change_branch(path_ints)
         derivation_path_addr_index = path_ints[-1] & 0x7FFFFFFF if path_ints else 0
 
         if is_change_derivation_path:
@@ -834,7 +957,7 @@ class PSBTChangeDetailsView(View):
             amount=change_data.get("amount"),
             is_multisig=psbt_parser.is_multisig,
             fingerprint=seed_fingerprint or "",
-            derivation_path=derivation_path or "",
+            derivation_path=claimed_derivation_path or "",
             is_change_derivation_path=is_change_derivation_path,
             derivation_path_addr_index=derivation_path_addr_index,
             is_change_addr_verified=is_change_addr_verified,
@@ -926,7 +1049,63 @@ class PSBTFinalizeView(View):
     """
     APPROVE_PSBT = ButtonOption("Approve transaction")
 
-    
+
+    @staticmethod
+    def _locktime_text(psbt_parser: PSBTParser) -> str:
+        """
+        A one-line, human-readable nLockTime for the approval screen, or None
+        when no locktime is actually in force.
+
+        nLockTime comes in two encodings and only one of them was ever visible.
+        A timestamp locktime is compared against the clock and warned about; a
+        block-height locktime was not checked at all, so an attacker who wanted a
+        long lock simply used the height form and nothing was shown. Both forms
+        delay confirmation identically, so both are stated here.
+
+        Heights are converted to an approximate date rather than displayed raw:
+        "locked until block 1,000,000" is not something a user can act on without
+        knowing the current tip, which the device does not have. The conversion
+        anchors on Controller.RELEASE_BLOCK_HEIGHT and assumes 10-minute blocks.
+
+        This states rather than judges. The device has no RTC, so it cannot tell
+        whether a date is in the future, and a stale anchor means the estimate can
+        drift. A user making a payment today can tell that "~Mar 2031" is wrong;
+        a heuristic with no trustworthy clock cannot.
+        """
+        from seedsigner.controller import Controller
+        from seedsigner.models.psbt_parser import LOCKTIME_TIMESTAMP_THRESHOLD
+
+        if psbt_parser is None or not psbt_parser.locktime_is_enforced:
+            # Consensus ignores nLockTime unless some input is non-final.
+            return None
+
+        locktime = psbt_parser.locktime
+        if not locktime:
+            return None
+
+        if locktime >= LOCKTIME_TIMESTAMP_THRESHOLD:
+            # Already a unix timestamp; no estimation needed.
+            when = time.gmtime(locktime)
+            exact = True
+        else:
+            estimated = (
+                Controller.RELEASE_BLOCK_TIME
+                + (locktime - Controller.RELEASE_BLOCK_HEIGHT) * Controller.SECONDS_PER_BLOCK
+            )
+            if estimated <= 0:
+                return None
+            when = time.gmtime(estimated)
+            exact = False
+
+        stamp = time.strftime("%b %Y", when)
+        if exact:
+            # TRANSLATOR_NOTE: Inserts a month and year, e.g. "Locked until Mar 2031"
+            return _("Locked until {}").format(stamp)
+        # TRANSLATOR_NOTE: Inserts an approximate month and year derived from a
+        # block height, e.g. "Locked until ~Mar 2031"
+        return _("Locked until ~{}").format(stamp)
+
+
     def run(self):
         from embit.psbt import PSBT
         from seedsigner.gui.screens.psbt_screens import PSBTFinalizeScreen
@@ -945,7 +1124,12 @@ class PSBTFinalizeView(View):
 
         selected_menu_num = self.run_screen(
             PSBTFinalizeScreen,
-            button_data=[self.APPROVE_PSBT]
+            button_data=[self.APPROVE_PSBT],
+            # Informational, so it never blocked the flow and was therefore never
+            # shown at all. State it on the approval screen instead.
+            is_rbf=(psbt_parser is not None
+                    and RiskWarning.RBF in psbt_parser.risk_warnings),
+            locktime_text=self._locktime_text(psbt_parser),
         )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:

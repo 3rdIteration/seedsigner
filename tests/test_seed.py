@@ -576,7 +576,7 @@ class TestAezeedBackupOptions(BaseTest):
             captured['button_data'] = kwargs['button_data']
             return seed_views.RET_CODE__BACK_BUTTON
 
-        view = seed_views.SeedBackupView(seed_num=0)
+        view = seed_views.SeedBackupView(seed=self.controller.storage.seeds[0])
         monkeypatch.setattr(view, "run_screen", fake_run_screen)
         view.run()
 
@@ -591,7 +591,7 @@ class TestAezeedBackupOptions(BaseTest):
             captured['text'] = kwargs.get('text')
             return seed_views.RET_CODE__BACK_BUTTON
 
-        view = seed_views.SeedWordsWarningView(seed_num=0)
+        view = seed_views.SeedWordsWarningView(seed=self.controller.storage.seeds[0])
         monkeypatch.setattr(view, "run_screen", fake_run_screen)
         destination = view.run()
 
@@ -696,13 +696,13 @@ def test_seed_storage_allows_multiple_xprvs():
     xprv_b = XprvSeed("xprv9s21ZrQH143K4QViKpwKCpS2zVbz8GrZgpEchMDg6KME9HZtjfL7iThE9w5muQA4YPHKN1u5VM1w8D4pvnjxa2BmpGMfXr7hnRrRHZ93awZ")
 
     storage.set_pending_seed(xprv_a)
-    first_index = storage.finalize_pending_seed()
+    first_seed = storage.finalize_pending_seed()
 
     storage.set_pending_seed(xprv_b)
-    second_index = storage.finalize_pending_seed()
+    second_seed = storage.finalize_pending_seed()
 
-    assert first_index == 0
-    assert second_index == 1
+    assert first_seed is xprv_a
+    assert second_seed is xprv_b
     assert storage.num_seeds() == 2
     assert storage.seeds[0] == xprv_a
     assert storage.seeds[1] == xprv_b
@@ -744,7 +744,9 @@ def test_seed_storage_import_multiple_seed_types_mix_and_match():
 
         for expected_index, seed in enumerate(seeds_in_order):
             storage.set_pending_seed(seed)
-            assert storage.finalize_pending_seed() == expected_index
+            finalized = storage.finalize_pending_seed()
+            assert finalized is seed
+            assert storage.seeds.index(finalized) == expected_index
 
         assert storage.num_seeds() == len(seeds_in_order)
         assert storage.seeds == seeds_in_order
