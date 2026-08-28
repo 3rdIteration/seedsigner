@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 
 
@@ -137,4 +138,67 @@ def is_running_from_microsd() -> bool:
         return False
 
     return source_path.startswith(MicroSD.MOUNT_POINT)
+
+
+DIY_MOUNT_LOG_PATH = "/tmp/diy-mount.log"
+DIY_MOUNT_RESULT_MARKER = "=== diy-tools result ==="
+
+# Result-block fields are plain identifiers; anything else (e.g. a stray
+# timestamped human-readable line that happens to contain "=") is ignored.
+_DIY_MOUNT_FIELD_KEY_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
+
+
+def parse_diy_mount_log(text: str) -> dict | None:
+    """Parse the last *complete* ``=== diy-tools result ===`` block from a
+    /tmp/diy-mount.log dump.
+
+    The mdev hook appends one block per microSD insert/remove event; each
+    block is a run of ``key=value`` lines (values may contain spaces, never
+    newlines) following the marker line. A block counts as complete only if it
+    carries a non-empty ``status=`` value -- so a partially-written trailing
+    block (e.g. power lost mid-append) is ignored in favor of the previous
+    complete one. Everything before a block's own marker, and any lines that
+    are not well-formed ``key=value`` pairs, are skipped.
+
+    Returns the last complete block as a dict of string key/value pairs
+    (split on the FIRST "=" only), or None when no complete block exists.
+    """
+    if not text:
+        return None
+
+    blocks = []
+    current = None
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if line == DIY_MOUNT_RESULT_MARKER:
+            current = {}
+            blocks.append(current)
+            continue
+        if current is None or "=" not in line:
+            continue
+        key, _sep, value = line.partition("=")
+        if not _DIY_MOUNT_FIELD_KEY_RE.match(key):
+            continue
+        current[key] = value
+
+    for block in reversed(blocks):
+        if block.get("status"):
+            return block
+    return None
+
+
+def read_diy_mount_status(path: str = DIY_MOUNT_LOG_PATH) -> dict | None:
+    """Read the latest diy-tools mount result from /tmp/diy-mount.log.
+
+    The log lives on tmpfs, so a missing file simply means "no mount events
+    since boot" -- that is no information, not an error. Any IO problem is
+    likewise swallowed and reported as None; this must never crash the app.
+    The file is opened read-only and never modified or truncated.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as log_file:
+            text = log_file.read()
+    except OSError:
+        return None
+    return parse_diy_mount_log(text)
 

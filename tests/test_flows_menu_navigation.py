@@ -599,6 +599,29 @@ class TestMenuNavigationFlows(FlowTest):
             FlowStep(ToolsSmartcardMenuView),
         ])
 
+    def test_smartcard_satochip_diy_mount_status(self):
+        """Tools → Smartcard → DIY Tools → Mount Status → BACK.
+
+        Exercises ``ToolsDIYMountStatusView.run()`` (which reads the OS mount
+        log). The reader is patched to "no events since boot" so the flow is
+        deterministic regardless of whether /tmp/diy-mount.log exists on the
+        test host; BACK returns to the DIY Tools menu.
+        """
+        from seedsigner.views.smartcard_views import (
+            ToolsSmartcardMenuView, ToolsSatochipDIYView, ToolsDIYMountStatusView,
+        )
+        with patch(
+            "seedsigner.views.smartcard_views.read_diy_mount_status", return_value=None
+        ):
+            self.run_sequence([
+                FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+                FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.SMARTCARD),
+                FlowStep(ToolsSmartcardMenuView, button_data_selection=ToolsSmartcardMenuView.Satochip_DIY),
+                FlowStep(ToolsSatochipDIYView, button_data_selection=ToolsSatochipDIYView.MOUNT_STATUS),
+                FlowStep(ToolsDIYMountStatusView, screen_return_value=RET_CODE__BACK_BUTTON),
+                FlowStep(ToolsSatochipDIYView),
+            ])
+
 
     # ======================================================================
     #  CONDITIONAL GATING

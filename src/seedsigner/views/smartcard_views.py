@@ -52,6 +52,7 @@ from seedsigner.helpers.satochip_signer import (
     normalize_signature_der,
 )
 from seedsigner.helpers.iso7816 import format_sw_error
+from seedsigner.helpers.seedsigner_os import read_diy_mount_status
 from seedsigner.models.seed import InvalidSeedException, Seed, XprvSeed
 from seedsigner.models.settings_definition import SettingsConstants
 
@@ -4582,6 +4583,7 @@ class ToolsSatochipDIYView(View):
     BUILD_APPLETS = ButtonOption("Build Applets")
     INSTALL_APPLET = ButtonOption("Install Applet")
     UNINSTALL_APPLET = ButtonOption("Uninstall Applet")
+    MOUNT_STATUS = ButtonOption("Mount Status")
 
     def run(self):
         button_data = [
@@ -4589,6 +4591,7 @@ class ToolsSatochipDIYView(View):
             self.INSTALL_APPLET,
             self.UNINSTALL_APPLET,
             self.MANAGE_KEYS,
+            self.MOUNT_STATUS,
         ]
 
         selected_menu_num = self.run_screen(
@@ -4632,6 +4635,101 @@ class ToolsSatochipDIYView(View):
 
         elif button_data[selected_menu_num] == self.MANAGE_KEYS:
             return Destination(ToolsJavacardKeysView)
+
+        elif button_data[selected_menu_num] == self.MOUNT_STATUS:
+            return Destination(ToolsDIYMountStatusView)
+
+
+class ToolsDIYMountStatusView(View):
+    """Surfaces the latest diy-tools auto-mount result from /tmp/diy-mount.log.
+
+    The OS mdev hook appends one result block per microSD insert/remove; this
+    shows the last complete one (status + reason). A missing log file just
+    means no mount events since boot -- informational, not an error. On a hash
+    mismatch the hash that was actually found on the card (`computed`) is shown
+    truncated in the middle (e.g. ``deadbeef...90abcdef``) so the user can tell
+    which file they have without dumping two full 64-char hashes on screen.
+    """
+
+    # status -> (icon, color) for the result screen; unknown statuses fall back to WARNING.
+    _STATUS_PRESENTATION = {
+        "OK": (SeedSignerIconConstants.SUCCESS, GUIConstants.SUCCESS_COLOR),
+        "REFUSED_HASH_MISMATCH": (SeedSignerIconConstants.ERROR, GUIConstants.ERROR_COLOR),
+        "NOT_PRESENT": (SeedSignerIconConstants.WARNING, GUIConstants.WARNING_COLOR),
+        "HASH_FILE_MISSING": (SeedSignerIconConstants.ERROR, GUIConstants.ERROR_COLOR),
+        "NO_PINNED_HASH": (SeedSignerIconConstants.ERROR, GUIConstants.ERROR_COLOR),
+        "MOUNT_FAILED": (SeedSignerIconConstants.ERROR, GUIConstants.ERROR_COLOR),
+        "MICROSD_MOUNT_FAILED": (SeedSignerIconConstants.ERROR, GUIConstants.ERROR_COLOR),
+    }
+
+    _STATUS_HEADLINES = {
+        "OK": "Mounted",
+        "REFUSED_HASH_MISMATCH": "Hash mismatch",
+        "NOT_PRESENT": "Not present on card",
+        "HASH_FILE_MISSING": "Pinned hashes missing",
+        "NO_PINNED_HASH": "No pinned hash for arch",
+        "MOUNT_FAILED": "Mount failed",
+        "MICROSD_MOUNT_FAILED": "MicroSD not mounted",
+    }
+
+    def run(self):
+        status = read_diy_mount_status()
+
+        if status is None:
+            # No log file (or no complete block yet): nothing to report since boot.
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="DIY Tools",
+                status_icon_name=SeedSignerIconConstants.INFO,
+                status_color=GUIConstants.INFO_COLOR,
+                text="No mount events since boot.",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        icon_name, color = self._STATUS_PRESENTATION.get(
+            status["status"], (SeedSignerIconConstants.WARNING, GUIConstants.WARNING_COLOR)
+        )
+        headline = self._STATUS_HEADLINES.get(status["status"], status["status"])
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="DIY Tools",
+            status_icon_name=icon_name,
+            status_color=color,
+            status_headline=headline,
+            text=status.get("reason", ""),
+            show_back_button=True,
+        )
+
+        if status["status"] == "REFUSED_HASH_MISMATCH":
+            # Report the hash that was actually found on the card (truncated in
+            # the middle); the expected value is not shown.
+            computed = status.get("computed")
+            if computed:
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="DIY Tools",
+                    status_icon_size=0,
+                    status_color=color,
+                    status_headline="Hash found on microSD",
+                    text=_truncate_hash_middle(computed),
+                    show_back_button=True,
+                )
+
+        return Destination(BackStackView)
+
+
+def _truncate_hash_middle(value: str, head_chars: int = 8, tail_chars: int = 8) -> str:
+    """Shorten a long hash to ``head...tail`` (middle elided).
+
+    8+3+8 chars render on a single body-font line within the 240px canvas;
+    longer values would run off the edge (TextArea only breaks on spaces).
+    Values too short to truncate are returned unchanged.
+    """
+    if len(value) <= head_chars + tail_chars + 3:
+        return value
+    return f"{value[:head_chars]}...{value[-tail_chars:]}"
 
 
 JAVACARD_KEYS_MICROSD_FILENAME = "javacard-keys.txt"
