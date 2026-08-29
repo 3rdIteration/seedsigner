@@ -11,3 +11,7 @@
 	path = electronics/usb-plug-pcb
 	url = https://github.com/3rdIteration/PCB-Edge-USB-connector-KiCad-library.git
 	update = none
+[submodule "seedsigner-os"]
+	path = seedsigner-os
+	url = https://github.com/3rdIteration/seedsigner-os.git
+	update = none

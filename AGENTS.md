@@ -270,3 +270,21 @@ When adding a **new** code path that derives keys or produces deterministic outp
 - QR-scanned data, settings QRs, and file-imported data should all be treated as untrusted byte strings; decode as UTF-8 with error handling before further processing.
 - When adding new user-input parsing, add tests that exercise at least one non-ASCII variant (e.g. a fullwidth digit, a non-ASCII dash) to catch locale-dependent regressions.
 - Be aware that the same Unicode character can have multiple representations (e.g. `é` can be U+00E9 [NFC] or U+0065 U+0301 [NFD]). macOS file-system APIs and some input methods produce NFD; most other systems produce NFC. NFKD normalization collapses both forms into a single canonical byte sequence.
+
+## seedsigner-os submodule (release pin)
+
+The `seedsigner-os/` directory at the repository root is a **pinned git submodule** pointing to `3rdIteration/seedsigner-os` (a fork of the official `SeedSigner/seedsigner-os`). It is configured with `update = none` in `.gitmodules`.
+
+### Critical Rules
+
+- **`update = none` is load-bearing.** Both OS image build pipelines (`opt/build.sh` and `opt/luckfox/prepare-app-checkout.sh`) clone this repository **with `--recurse-submodules`** to fetch `seedsigner-translations` for `.mo` compilation. If `update = none` is removed, every image build will recursively clone the OS repo **and its nested Buildroot fork** into the rootfs overlay — causing massive slowdown, disk bloat, and potential leakage of OS/buildroot source into signed images.
+- **Pin only at release.** The submodule pointer must be updated **only** when cutting a release, to the exact OS release tag (e.g. `SeSi-0.8.7+ShSi-B12`) that built the images for that release. Do not run `git submodule update --remote` or advance the pointer casually.
+- **Bump procedure** (at release time):
+  ```bash
+  git -C seedsigner-os fetch --tags
+  git -C seedsigner-os checkout SeSi-X.Y.Z+ShSi-Bnn   # exact tag for this release
+  git add seedsigner-os
+  git commit -m "chore: pin seedsigner-os to SeSi-X.Y.Z+ShSi-Bnn for release X.Y.Z"
+  ```
+- **Keep `docs/repositories.md` in sync** when the pin moves or the fork topology changes (e.g. if the upstream org repos become the primary again). The doc contains the authoritative architecture diagram, release pairing table, audit instructions, and the `update = none` rationale.
+- **Auditors**: `git submodule update --init seedsigner-os` fetches the pinned OS tree; `git -C seedsigner-os submodule update --init opt/buildroot` fetches the Buildroot toolchain for full-toolchain audit. GitHub web UI renders both submodules directly from the pinned commits without any clone.
