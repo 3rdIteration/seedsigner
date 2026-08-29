@@ -1,6 +1,10 @@
+import importlib.util
 import os
+import shutil
 from pathlib import Path
 from unittest.mock import MagicMock, patch, PropertyMock
+
+import pytest
 
 from base import FlowTest, FlowStep
 
@@ -49,6 +53,27 @@ def _patch_microsd_child(view):
         seed = Seed(mnemonic=[word] * 11 + ["about"])
         view.controller.storage.seeds = [seed]
 
+
+def _patch_gpg_verify_file(view):
+    """Patch external deps so ToolsGPGVerifyFileView can run in tests.
+
+    Marks the GPG keys as already imported (skips the real ``gpg --import``
+    subprocess, which would touch the host keyring) and points the file list
+    at a temp dir containing one dummy file, so the View reaches its
+    ButtonListScreen where BACK exits cleanly.
+    """
+    import tempfile
+
+    tmpdir = Path(tempfile.mkdtemp(prefix="gpg_verify_test_"))
+    (tmpdir / "dummy.bin").write_bytes(b"test")
+
+    view._gpg_verify_patchers = [
+        patch("seedsigner.views.gpg_views.resolve_microsd_images_dir", return_value=tmpdir),
+    ]
+    for p in view._gpg_verify_patchers:
+        p.start()
+
+    view.controller.gpg_keys_imported = True
 
 
 class TestMenuNavigationFlows(FlowTest):
@@ -315,6 +340,31 @@ class TestMenuNavigationFlows(FlowTest):
             FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.GPG),
             FlowStep(tools_views.ToolsGPGMenuView, screen_return_value=RET_CODE__BACK_BUTTON),
             FlowStep(tools_views.ToolsMenuView),
+        ])
+
+    def test_tools_gpg_verify_signature(self):
+        """Tools → GPG Tools → File Operations → Verify Signature → BACK.
+
+        Requires ``gpg`` + ``pgpy``: without them ``ToolsGPGMenuView`` shows
+        its missing-packages error and the sub-menu buttons don't exist. The
+        View's real ``gpg --import`` is skipped via ``before_run`` so the host
+        keyring stays untouched; BACK from the file list returns to the File
+        Operations menu.
+        """
+        if shutil.which("gpg") is None or importlib.util.find_spec("pgpy") is None:
+            pytest.skip("gpg binary and/or pgpy not available")
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.GPG),
+            FlowStep(tools_views.ToolsGPGMenuView, button_data_selection=tools_views.ToolsGPGMenuView.FILE_OPS),
+            FlowStep(tools_views.ToolsGPGFileOpsMenuView, button_data_selection=tools_views.ToolsGPGFileOpsMenuView.VERIFY),
+            FlowStep(
+                tools_views.ToolsGPGVerifyFileView,
+                before_run=_patch_gpg_verify_file,
+                screen_return_value=RET_CODE__BACK_BUTTON,
+            ),
+            FlowStep(tools_views.ToolsGPGFileOpsMenuView),
         ])
 
     def test_tools_clear_descriptor(self):

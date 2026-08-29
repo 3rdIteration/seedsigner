@@ -485,6 +485,38 @@ def _format_fpr_blocks(fpr: str) -> str:
     return " ".join(fpr[i:i + 4] for i in range(0, len(fpr), 4))
 
 
+def _parse_gpg_verify_status(stdout: str, stderr: str) -> dict:
+    """Parse the output of ``gpg --status-fd=1 --verify``.
+
+    Status codes are locale-independent, unlike the human-readable stderr text.
+    Returns a dict with:
+      valid_fprs:  primary-key fingerprints (40 hex chars) from each VALIDSIG line
+      bad_sig:     True if any ERRSIG/BADSIG status was seen
+      no_pubkey:   True if NO_PUBKEY was seen (signing key missing from keyring)
+      no_signature: True if gpg reported the file contains no signature
+    """
+    valid_fprs = []
+    bad_sig = False
+    no_pubkey = False
+    for line in stdout.splitlines():
+        if not line.startswith("[GNUPG:] "):
+            continue
+        parts = line[len("[GNUPG:] "):].split(" ")
+        code = parts[0]
+        if code == "VALIDSIG" and len(parts) > 1:
+            valid_fprs.append(parts[1].upper())
+        elif code in ("ERRSIG", "BADSIG"):
+            bad_sig = True
+        elif code == "NO_PUBKEY":
+            no_pubkey = True
+    return {
+        "valid_fprs": valid_fprs,
+        "bad_sig": bad_sig,
+        "no_pubkey": no_pubkey,
+        "no_signature": "no signature found" in stderr.lower(),
+    }
+
+
 def _gpg_algo_label(algo_code: str, curve: str, bits: str) -> str:
     """Return a short human-readable description for a GPG key algorithm."""
     name = _GPG_ALGO_NAMES.get(algo_code, f"Algo {algo_code}")
@@ -4260,6 +4292,10 @@ class ToolsGPGVerifyFileView(View):
         import hashlib, shutil
         from pathlib import Path
         from seedsigner.gui.screens.screen import LoadingScreenThread
+        from seedsigner.models.gpg_trusted_projects import (
+            projects_for_filename,
+            projects_for_fingerprint,
+        )
 
         if len(self.controller.storage.seeds) > 0:
             ret = self.run_screen(
@@ -4325,24 +4361,41 @@ class ToolsGPGVerifyFileView(View):
         # Use the same filtered list to get the selected filename
         verify_file_name = visible_file_list[selected_file_num]
         logger.info("Selected: %s", verify_file_name)
-        filechecked = verify_file_name[:-4] if verify_file_name.endswith(".sig") else verify_file_name
+        # Pair the selected file with its detached signature. Detached
+        # signatures may use either a .sig or an .asc extension; files without
+        # a matching detached signature are verified as-is (e.g. clearsigned
+        # manifests such as COLDCARD's signatures.txt).
+        lowered_name = verify_file_name.lower()
+        if lowered_name.endswith(".sig") or lowered_name.endswith(".asc"):
+            filechecked = verify_file_name[:-4]
+            if not (file_list_path / filechecked).exists():
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Can't find\ncorresponding file for\nthis signature...",
+                    show_back_button=True,
+                )
+                return Destination(MainMenuView)
+            cmd = ["gpg", "--status-fd=1", "--verify", verify_file_name, filechecked]
+        else:
+            filechecked = verify_file_name
+            sig_candidate = None
+            for ext in (".sig", ".asc"):
+                candidate = verify_file_name + ext
+                if (file_list_path / candidate).exists():
+                    sig_candidate = candidate
+                    break
+            cmd = ["gpg", "--status-fd=1", "--verify"]
+            if sig_candidate:
+                cmd.extend([sig_candidate, verify_file_name])
+            else:
+                cmd.append(verify_file_name)
 
         self.loading_screen = LoadingScreenThread(
             text="Checking Signature\n\n\n\n\n\n(May take a while)"
         )
         self.loading_screen.start()
-
-        cmd = ["gpg", "--verify"]
-        if verify_file_name.endswith(".sig"):
-            cmd.append(verify_file_name)
-            if (file_list_path / filechecked).exists():
-                cmd.append(filechecked)
-        else:
-            sig_candidate = verify_file_name + ".sig"
-            if (file_list_path / sig_candidate).exists():
-                cmd.extend([sig_candidate, verify_file_name])
-            else:
-                cmd.append(verify_file_name)
 
         try:
             data = run(
@@ -4366,35 +4419,83 @@ class ToolsGPGVerifyFileView(View):
 
         self.loading_screen.stop()
 
-        result = data.stderr.split("\n")
+        status = _parse_gpg_verify_status(data.stdout, data.stderr)
 
-        valid_sig = False
-        failed_reason = "Check Failed"
-        valid_sig_keyid = ""
-        for line in result:
-            if "gpg: assuming signed data in " in line:
-                filechecked = line[30:-1]
-            elif "Primary key fingerprint:" in line:
-                valid_sig_keyid += "\n" + line[-20:]
-            elif "Good signature from" in line:
-                valid_sig = True
-            elif "gpg: no signature found" in line:
-                failed_reason = "No GPG signature found in file"
-            elif "BAD signature from" in line:
-                valid_sig = False
-                failed_reason = "Invalid Signature\nfor file..."
-                break
-            elif "can't hash datafile: No data" in line:
-                valid_sig = False
-                failed_reason = "Can't find\ncorresponding file for\nthis signature..."
+        valid_sig = bool(status["valid_fprs"]) and not status["bad_sig"]
+        if status["bad_sig"]:
+            failed_reason = "Invalid Signature\nfor file..."
+        elif status["no_pubkey"]:
+            failed_reason = "Signing key not found.\nImport the public key first."
+        elif status["no_signature"]:
+            failed_reason = "No GPG signature found in file"
+        else:
+            failed_reason = "Check Failed"
+
+        # With at least one valid signature, decide whether the signer(s) are
+        # trusted for the project this file appears to belong to. A filename
+        # matching several projects (e.g. a bare SHA256SUMS) is attributed to
+        # the unique matched project that lists one of the signers.
+        signer_fprs = status["valid_fprs"]
+        matched_projects = projects_for_filename(filechecked)
+        project = None
+        if len(matched_projects) == 1:
+            project = matched_projects[0]
+        elif len(matched_projects) > 1:
+            candidates = [
+                p for p in matched_projects
+                if any(fpr in p.fingerprints for fpr in signer_fprs)
+            ]
+            if len(candidates) == 1:
+                project = candidates[0]
+
+        trusted = bool(project) and any(
+            fpr in project.fingerprints for fpr in signer_fprs
+        )
+
+        max_shown_fprs = 3
+        signer_lines = [_format_fpr_blocks(fpr) for fpr in signer_fprs[:max_shown_fprs]]
+        if len(signer_fprs) > max_shown_fprs:
+            signer_lines.append(f"+{len(signer_fprs) - max_shown_fprs} more")
+        signers_text = "\n".join(signer_lines)
 
         if valid_sig:
+            # Files from untracked projects are always shown neutrally; the
+            # warning only applies when the file belongs to a known project
+            # but its signer is not trusted for that project.
+            if not trusted and project:
+                signer_project_names = sorted({
+                    p.name
+                    for fpr in signer_fprs
+                    for p in projects_for_fingerprint(fpr)
+                })
+                if signer_project_names:
+                    warning_text = (
+                        "Valid signature from a key not associated with "
+                        + project.name
+                        + ".\nKey belongs to: "
+                        + ", ".join(signer_project_names[:2])
+                    )
+                else:
+                    warning_text = (
+                        "Signature valid, but from an unknown key not trusted for "
+                        + project.name
+                        + "."
+                    )
+                self.run_screen(
+                    WarningScreen,
+                    title="WARNING",
+                    status_headline=None,
+                    text=warning_text,
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+
             button_data = []
             # There are a bunch of different naming conventions that different projects use...
-            manifest_filenames = ["manifest", # Sparrow uses this
-                                  "sha256", # Seedsigner uses this
-                                  "shasums"] # Liana uses this naming convention
-            if any(manifest_filename in verify_file_name for manifest_filename in manifest_filenames):
+            manifest_filenames = ["manifest",  # Sparrow uses this
+                                  "sha256",    # Seedsigner / Bitcoin Core use this
+                                  "shasums"]   # Liana uses this naming convention
+            if any(m in filechecked.lower() for m in manifest_filenames):
                 button_data.append(self.CHECK_SHA256)
 
             button_data.append(ButtonOption("Done"))
@@ -4402,8 +4503,8 @@ class ToolsGPGVerifyFileView(View):
             ret = self.run_screen(
                     LargeIconStatusScreen,
                     title="Success",
-                    status_headline=None,
-                    text="Valid Signature(s) from" + valid_sig_keyid,
+                    status_headline=project.name if trusted else None,
+                    text="Valid Signature(s) from\n" + signers_text,
                     show_back_button=False,
                     button_data=button_data
                 )
