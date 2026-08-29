@@ -1,4 +1,6 @@
 """View-level tests for ToolsGPGVerifyFileView signature verification."""
+import os
+
 import base  # noqa: F401 -- ensure hardware mocks
 from types import SimpleNamespace
 
@@ -59,11 +61,21 @@ def _make_view(monkeypatch, tmp_path, files):
     return view
 
 
-def _make_fake_run_screen(captured, select_index=None):
+def _make_fake_run_screen(captured, select_index=None, select_label=None):
     def fake_run_screen(self, screen, *args, **kwargs):
         captured.append({"screen": screen, "kwargs": kwargs})
-        if screen is ButtonListScreen and select_index is not None:
-            return select_index
+        if screen is ButtonListScreen and (select_index is not None or select_label is not None):
+            buttons = kwargs.get("button_data") or []
+            if select_index is not None:
+                return select_index
+            for i, button in enumerate(buttons):
+                label = getattr(button, "button_label", None) or str(button)
+                if label == select_label:
+                    return i
+            raise AssertionError(
+                f"Button {select_label!r} not found in "
+                f"{[getattr(b, 'button_label', b) for b in buttons]}"
+            )
         # Default: press Done/OK when present, else the first button.
         for i, button in enumerate(kwargs.get("button_data") or []):
             label = (
@@ -78,12 +90,13 @@ def _make_fake_run_screen(captured, select_index=None):
     return fake_run_screen
 
 
-def _run_view(monkeypatch, tmp_path, files, gpg_stdout, gpg_stderr="", select_index=None):
+def _run_view(monkeypatch, tmp_path, files, gpg_stdout, gpg_stderr="",
+              select_index=None, select_label=None):
     captured = []
     view = _make_view(monkeypatch, tmp_path, files)
     monkeypatch.setattr(
         ToolsGPGVerifyFileView, "run_screen",
-        _make_fake_run_screen(captured, select_index),
+        _make_fake_run_screen(captured, select_index, select_label),
     )
 
     gpg_calls = []
@@ -130,7 +143,7 @@ class TestTrustedSigner:
             monkeypatch, tmp_path,
             ["SHA256SUMS", "SHA256SUMS.asc"],
             gpg_stdout=_validsig(AVACHOW_FPR) + _validsig(UNKNOWN_FPR),
-            select_index=1,  # select SHA256SUMS (the data file)
+            select_label="SHA256SUMS",  # the data file (listdir order is arbitrary)
         )
 
         assert _screens_of_type(captured, WarningScreen) == []
@@ -200,7 +213,7 @@ class TestUntrustedSigner:
             monkeypatch, tmp_path,
             ["SHA256SUMS", "SHA256SUMS.asc"],
             gpg_stdout=_validsig(UNKNOWN_FPR),
-            select_index=1,
+            select_label="SHA256SUMS",  # the data file (listdir order is arbitrary)
         )
 
         assert _screens_of_type(captured, WarningScreen) == []
@@ -251,7 +264,7 @@ class TestSignaturePairing:
             monkeypatch, tmp_path,
             ["liana-15.0-shasums.txt", "liana-15.0-shasums.txt.asc"],
             gpg_stdout=_validsig("5B63F3B97699C7EEF3B040B19B7F629A53E77B83"),
-            select_index=0,  # select the data file
+            select_label="liana-15.0-shasums.txt",  # the data file
         )
 
         assert "liana-15.0-shasums.txt.asc" in gpg_calls[0]
@@ -262,8 +275,43 @@ class TestSignaturePairing:
             monkeypatch, tmp_path,
             ["krux-v26.08.0.zip", "krux-v26.08.0.zip.sig", "krux-v26.08.0.zip.asc"],
             gpg_stdout=_validsig(QLRD_FPR),
-            select_index=0,  # select the data file
+            select_label="krux-v26.08.0.zip",  # the data file (listdir order is arbitrary)
         )
+
+        assert "krux-v26.08.0.zip.sig" in gpg_calls[0]
+        assert "krux-v26.08.0.zip.asc" not in gpg_calls[0]
+
+    def test_sig_preferred_over_asc_regardless_of_listdir_order(
+        self, monkeypatch, tmp_path
+    ):
+        # CI regression: os.listdir order is filesystem-dependent and the data
+        # file was not first on Linux/macOS. Force the worst case (data file
+        # last) and verify pairing still picks .sig for the selected data file.
+        files = ["krux-v26.08.0.zip", "krux-v26.08.0.zip.sig", "krux-v26.08.0.zip.asc"]
+        view = _make_view(monkeypatch, tmp_path, files)
+
+        real_listdir = os.listdir
+
+        def forced_listdir(path):
+            # Deterministic worst case: signatures first, data file last.
+            return sorted(real_listdir(path), key=lambda n: (n.endswith(".zip"), n))
+
+        monkeypatch.setattr(gpg_views.os, "listdir", forced_listdir)
+
+        captured = []
+        monkeypatch.setattr(
+            ToolsGPGVerifyFileView, "run_screen",
+            _make_fake_run_screen(captured, select_label="krux-v26.08.0.zip"),
+        )
+        gpg_calls = []
+
+        def fake_subprocess_run(cmd, **kwargs):
+            gpg_calls.append(cmd)
+            return SimpleNamespace(stdout=_validsig(QLRD_FPR), stderr="")
+
+        monkeypatch.setattr("subprocess.run", fake_subprocess_run)
+
+        view.run()
 
         assert "krux-v26.08.0.zip.sig" in gpg_calls[0]
         assert "krux-v26.08.0.zip.asc" not in gpg_calls[0]
