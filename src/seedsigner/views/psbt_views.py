@@ -1,9 +1,10 @@
 from gettext import gettext as _
 
-from seedsigner.models.psbt_parser import PSBTParser
+from seedsigner.models.psbt_parser import (PSBTInputOwnershipClaimError,
+    PSBTOutputOwnershipClaimError, PSBTParser, PSBTSeedCannotSignError)
 from seedsigner.models.settings import SettingsConstants
-from seedsigner.gui.components import FontAwesomeIconConstants, SeedSignerIconConstants
-from seedsigner.gui.screens.screen import (RET_CODE__BACK_BUTTON, ButtonListScreen, ButtonOption, WarningScreen, DireWarningScreen, QRDisplayScreen)
+from seedsigner.gui.components import FontAwesomeIconConstants, GUIConstants, SeedSignerIconConstants
+from seedsigner.gui.screens.screen import (RET_CODE__BACK_BUTTON, ButtonListScreen, ButtonOption, LargeIconStatusScreen, WarningScreen, DireWarningScreen, QRDisplayScreen)
 from seedsigner.views.view import BackStackView, MainMenuView, NotYetImplementedView, View, Destination
 
 
@@ -101,9 +102,27 @@ class PSBTOverviewView(View):
                     seed=self.controller.psbt_seed,
                     network=self.settings.get_value(SettingsConstants.SETTING__NETWORK)
                 )
-            except Exception as e:
+
+            except PSBTInputOwnershipClaimError:
+                # Set clear_history to disable returning via BACK button
+                self.set_redirect(Destination(PSBTInputOwnershipClaimFailedView, clear_history=True))
+                return
+
+            except PSBTOutputOwnershipClaimError:
+                # Set clear_history to disable returning via BACK button
+                self.set_redirect(Destination(PSBTOutputOwnershipClaimFailedView, clear_history=True))
+                return
+
+            except PSBTSeedCannotSignError:
+                # Not a suspicious psbt, just the wrong seed for it. Send the user back to
+                # pick another rather than clearing the flow.
+                self.controller.psbt_parser = None
+                self.controller.psbt_seed = None
+                self.set_redirect(Destination(PSBTSeedCannotSignView))
+                return
+
+            finally:
                 self.loading_screen.stop()
-                raise e
 
 
     def run(self):
@@ -128,10 +147,6 @@ class PSBTOverviewView(View):
                 num_change_outputs += 1
             else:
                 num_self_transfer_outputs += 1
-
-        # Everything is set. Stop the loading screen
-        if self.loading_screen:
-            self.loading_screen.stop()
 
         # Run the overview screen
         selected_menu_num = self.run_screen(
@@ -449,10 +464,91 @@ class PSBTChangeDetailsView(View):
             from seedsigner.views.seed_views import LoadMultisigWalletDescriptorView
             self.controller.resume_main_flow = Controller.FLOW__PSBT
             return Destination(LoadMultisigWalletDescriptorView)
-            
+
+
+
+class PSBTSeedCannotSignView(View):
+    """
+    Reached when parsing found this seed can't sign any of the psbt's inputs (see
+    PSBTSeedCannotSignError). Routes back to seed selection so the user can pick another.
+    """
+    SELECT_DIFFERENT_SEED = ButtonOption("Select a different seed")
+
+    def run(self):
+        # This is an informational mismatch, not a warning, so it uses the neutral info
+        # icon and color rather than WarningScreen's alarming yellow edges.
+        # TODO: give this its own InfoScreen (LargeIconStatusScreen with the INFO icon and
+        # color baked in) rather than customizing the base screen at each call site.
+        self.run_screen(
+            LargeIconStatusScreen,
+            title=_("Seed Can't Sign"),
+            status_icon_name=SeedSignerIconConstants.INFO,
+            status_color=GUIConstants.INFO_COLOR,
+            text=_("None of the inputs in this transaction are controlled by this seed."),
+            button_data=[self.SELECT_DIFFERENT_SEED],
+            show_back_button=False,
+        )
+
+        # Set clear_history to disable returning via BACK button.
+        return Destination(PSBTSelectSeedView, clear_history=True)
+
+
+
+class PSBTOutputOwnershipClaimFailedView(View):
+    """
+    Reached when a false ownership claim on an output rejects the psbt (see
+    PSBTOutputOwnershipClaimError). Shows a dire warning and discards the psbt to the main
+    menu. Claims on inputs route to PSBTInputOwnershipClaimFailedView instead.
+    """
+    DISCARD = ButtonOption("Discard transaction")
+
+    def run(self):
+        self.run_screen(
+            DireWarningScreen,
+            title=_("Suspicious Transaction"),
+            status_headline=_("Likely an Attack!"),
+            text=_("The transaction's change/self-transfer outputs are not going back to your wallet."),
+            button_data=[self.DISCARD],
+            show_back_button=False,
+        )
+
+        # We're done with this PSBT. Route back to MainMenuView, which clears all ephemeral
+        # data (except in-memory seeds).
+        # Set clear_history to disable returning via BACK button.
+        return Destination(MainMenuView, clear_history=True)
+
+
+
+class PSBTInputOwnershipClaimFailedView(View):
+    """
+    Reached when a false ownership claim on an input rejects the psbt (see
+    PSBTInputOwnershipClaimError). Shows a plain (not dire) warning and discards the psbt
+    to the main menu.
+    """
+    DISCARD = ButtonOption("Discard transaction")
+
+    def run(self):
+        self.run_screen(
+            WarningScreen,
+            title=_("Transaction Problem"),
+            status_headline=None,
+            text=_("This transaction incorrectly claims that its input(s) belong to this seed."),
+            button_data=[self.DISCARD],
+            show_back_button=False,
+        )
+
+        # We're done with this PSBT. Route back to MainMenuView, which clears all ephemeral
+        # data (except in-memory seeds).
+        # Set clear_history to disable returning via BACK button.
+        return Destination(MainMenuView, clear_history=True)
+
 
 
 class PSBTAddressVerificationFailedView(View):
+    """
+    Reached when a change or self-transfer output fails address verification. Shows a dire
+    warning and discards the psbt to the main menu.
+    """
     def __init__(self, is_change: bool = True, is_multisig: bool = False):
         super().__init__()
         self.is_change = is_change
@@ -476,8 +572,9 @@ class PSBTAddressVerificationFailedView(View):
             show_back_button=False,
         )
 
-        # We're done with this PSBT. Route back to MainMenuView which always
-        #   clears all ephemeral data (except in-memory seeds).
+        # We're done with this PSBT. Route back to MainMenuView, which clears all ephemeral
+        # data (except in-memory seeds).
+        # Set clear_history to disable returning via BACK button.
         return Destination(MainMenuView, clear_history=True)
 
 
