@@ -98,8 +98,9 @@ TRUSTED_PROJECTS: Dict[str, TrustedProject] = {
     "bitcoincore": TrustedProject(
         name="Bitcoin Core",
         fingerprints=frozenset({
-            "152812300785C96444D3334D17565732E08E5E41",  # Andrew Chow (Sjors)
+            "152812300785C96444D3334D17565732E08E5E41",  # Andrew "Ava" Chow (achow101)
             "101598DC823C1B5F9A6624ABA5E0907A0380E6C3",  # Michael Ford (CoinForensics)
+            "E777299FC265DD04793070EB944D35F9AC3DB76A",  # Michael Ford (fanquake), second key
             "C388F6961FB972A95678E327F62711DBDCA8AE56",  # Dmitry Kalinkin (Dimitri)
             "6B002C6EA3F91B1B0DF0C9BC8F617F1200A6D25C",  # Gloria Zhao
             "E61773CD6E01040E2F1BD78CE7E2984B6289C93A",  # Matthew Zipkin
@@ -109,6 +110,10 @@ TRUSTED_PROJECTS: Dict[str, TrustedProject] = {
             "71A3B16735405025D447E8F274810B012346C9A6",  # Wladimir J. van der Laan
             "E86AE73439625BBEE306AAE6B66D427F873CB1A3",  # Matt Edwards (m3dwards)
             "982A193E3CE0EED535E09023188CBB2648416AD5",  # 0xB10C
+            "D1DBF2C4B96F2DEBF4C16654410108112E7EA81F",  # Hennadii Stepanov (hebasto)
+            "0AD83877C1F0CD1EE9BD660AD7CC770B81FD22A8",  # Ben Carman (benthecarman)
+            "5B286407E1EA6FE01CF9AF48BF131C2D0536F8AC",  # Marcel Fornasier (marleo)
+            "ED9BDF7AD6A55E232E84524257FF9BDBCC301009",  # Sjors Provoost
             _EMZY_FPR,
         }),
         file_patterns=(
@@ -119,7 +124,9 @@ TRUSTED_PROJECTS: Dict[str, TrustedProject] = {
     "gnupg": TrustedProject(
         name="GnuPG",
         fingerprints=frozenset({
-            "5B80C5754298F0CB55D8ED6ABCEF7E294B092E28",  # GnuPG release signing key
+            "5B80C5754298F0CB55D8ED6ABCEF7E294B092E28",  # Andre Heinecke (release signing key)
+            "6DAA6E64A76D2840571B4902528897B826403ADA",  # Werner Koch (dist signing 2020)
+            "AC8E115BF73E2D8D47FA9908E98E9B2D19C6C8BD",  # Niibe Yutaka (GnuPG release key)
         }),
         file_patterns=(_p(r"^gnupg-"),),
     ),

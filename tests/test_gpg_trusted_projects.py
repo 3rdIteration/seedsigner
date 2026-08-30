@@ -1,4 +1,6 @@
 """Tests for the GPG trusted-projects whitelist (models.gpg_trusted_projects)."""
+from pathlib import Path
+
 import base  # noqa: F401 -- ensure hardware mocks
 
 from seedsigner.models.gpg_trusted_projects import (
@@ -7,6 +9,8 @@ from seedsigner.models.gpg_trusted_projects import (
     projects_for_filename,
     projects_for_fingerprint,
 )
+
+GPG_KEYS_DIR = Path(__file__).resolve().parent.parent / "gpg_keys"
 
 
 class TestProjectsForFilename:
@@ -147,6 +151,52 @@ class TestProjectsForFingerprint:
 
     def test_unknown_fingerprint(self):
         assert projects_for_fingerprint("0000000000000000000000000000000000000000") == []
+
+
+class TestRecentReleaseSigners:
+    """Fingerprints added after auditing recent release signatures (2026)."""
+
+    BITCOIN_CORE_31_1_SIGNERS = {
+        "E777299FC265DD04793070EB944D35F9AC3DB76A",  # Michael Ford (fanquake)
+        "D1DBF2C4B96F2DEBF4C16654410108112E7EA81F",  # Hennadii Stepanov (hebasto)
+        "0AD83877C1F0CD1EE9BD660AD7CC770B81FD22A8",  # Ben Carman (benthecarman)
+        "5B286407E1EA6FE01CF9AF48BF131C2D0536F8AC",  # Marcel Fornasier (marleo)
+        "ED9BDF7AD6A55E232E84524257FF9BDBCC301009",  # Sjors Provoost
+    }
+
+    GNUPG_CURRENT_SIGNERS = {
+        "6DAA6E64A76D2840571B4902528897B826403ADA",  # Werner Koch (dist signing 2020)
+        "AC8E115BF73E2D8D47FA9908E98E9B2D19C6C8BD",  # Niibe Yutaka
+    }
+
+    def test_bitcoin_core_31_1_signers_trusted(self):
+        for fpr in self.BITCOIN_CORE_31_1_SIGNERS:
+            assert projects_for_fingerprint(fpr) == [TRUSTED_PROJECTS["bitcoincore"]], (
+                f"{fpr} should be trusted only for Bitcoin Core"
+            )
+
+    def test_gnupg_current_signers_trusted(self):
+        for fpr in self.GNUPG_CURRENT_SIGNERS:
+            assert projects_for_fingerprint(fpr) == [TRUSTED_PROJECTS["gnupg"]], (
+                f"{fpr} should be trusted only for GnuPG"
+            )
+
+    def test_new_signer_key_files_are_bundled(self):
+        expected = {
+            "E777299FC265DD04793070EB944D35F9AC3DB76A": "BitcoinCore_Fanquake.asc",
+            "D1DBF2C4B96F2DEBF4C16654410108112E7EA81F": "BitcoinCore_Hebasto.asc",
+            "0AD83877C1F0CD1EE9BD660AD7CC770B81FD22A8": "BitcoinCore_Benthecarman.asc",
+            "5B286407E1EA6FE01CF9AF48BF131C2D0536F8AC": "BitcoinCore_Marleo.asc",
+            "ED9BDF7AD6A55E232E84524257FF9BDBCC301009": "BitcoinCore_SjorsProvoost.asc",
+        }
+        for fpr, filename in expected.items():
+            assert (GPG_KEYS_DIR / filename).is_file(), f"missing bundled key {filename}"
+
+    def test_gnupg_whitelist_covers_bundled_release_keys(self):
+        # GNUPG_ReleaseKeys.asc bundles four keys; the whitelist lists the three
+        # that signed releases in the tracked window (the fourth, "GnuPG.com
+        # Release Signing Key 2021", has not).
+        assert len(TRUSTED_PROJECTS["gnupg"].fingerprints) == 3
 
 
 class TestWhitelistIntegrity:

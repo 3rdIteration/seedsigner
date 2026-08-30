@@ -30,7 +30,7 @@ Filenames are matched case-insensitively; one trailing detached-signature extens
 ## Sparrow Wallet
 
 - Website: https://sparrowwallet.com
-- Releases: https://github.com/sparrow-money/SparrowWallet/releases
+- Releases: https://github.com/sparrowwallet/sparrow/releases
 - Artifacts: `sparrow-*` installers with detached signatures; manifest file named `manifest`.
 
 | Signer | Fingerprint | Bundled key |
@@ -50,17 +50,19 @@ Filenames are matched case-insensitively; one trailing detached-signature extens
 ## Krux Firmware
 
 - Website: https://kruxfirmware.com
-- Releases: https://github.com/KruxBSD/krux-firmware/releases
-- Artifacts: `krux-*` firmware files with detached signatures.
+- Releases: https://github.com/selfcustody/krux/releases
+- Artifacts: `krux-*` firmware files with a `.sig` sidecar.
 
 | Signer | Fingerprint | Bundled key |
 |--------|-------------|-------------|
 | qlrd | `B4281DDD FBBD207B FA411313 8974C902 99326322` | `gpg_keys/Krux_Qlrd.asc` |
 
+Known limitation: the published `.sig` files are **not OpenPGP signatures** (they are a small non-PGP binary blob, consistent across releases), so GPG verification of Krux firmware reports "no valid OpenPGP data" regardless of imported keys. The qlrd key is retained for reference; it also expired on 2026-05-14.
+
 ## Specter Desktop
 
 - Website: https://specterdesktop.com
-- Releases: https://github.com/keepkey/specter-desktop/releases
+- Releases: https://github.com/cryptoadvance/specter-desktop/releases (moved from the old `keepkey` org)
 - Artifacts: `specter-*` / `specterd-*` installers, `cryptoadvance_specter*` firmware, and a bare `SHA256SUMS` manifest (ambiguous with Bitcoin Core's — disambiguated by the signer's fingerprint).
 
 | Signer | Fingerprint | Bundled key |
@@ -73,8 +75,8 @@ Note: Stepan Snigirev's last signed release (v2.1.0-pre1, June 2024) predates th
 ## Electrum
 
 - Website: https://electrum.org
-- Releases: https://github.com/spesmilo/electrum/releases
-- Artifacts: `electrum-*` installers with detached signatures. Releases are multi-signed by several builders; **any** of the keys below is trusted.
+- Releases: https://download.electrum.org/ (per-version directories, each containing `.asc` signatures; no GitHub release objects)
+- Artifacts: `Electrum-*` / `electrum-*` installers with detached signatures. Releases are multi-signed by several builders; **any** of the keys below is trusted.
 
 | Signer | Fingerprint | Bundled key |
 |--------|-------------|-------------|
@@ -94,8 +96,9 @@ Emzy also signs Bitcoin Core releases (listed under both projects). The felixb_f
 
 | Signer | Fingerprint | Bundled key |
 |--------|-------------|-------------|
-| Andrew Chow (Sjors) | `15281230 0785C964 44D3334D 17565732 E08E5E41` | `gpg_keys/BitcoinCore_AvaChow.asc` |
+| Andrew "Ava" Chow (achow101) | `15281230 0785C964 44D3334D 17565732 E08E5E41` | `gpg_keys/BitcoinCore_AvaChow.asc` |
 | Michael Ford (CoinForensics) | `101598DC 823C1B5F 9A6624AB A5E0907A 0380E6C3` | `gpg_keys/BitcoinCore_CoinForensicsc.asc` |
+| Michael Ford (fanquake) — second key, distinct from the CoinForensics one above | `E777299F C265DD04 793070EB 944D35F9 AC3DB76A` | `gpg_keys/BitcoinCore_Fanquake.asc` |
 | Dmitry Kalinkin (Dimitri) | `C388F696 1FB972A9 5678E327 F62711DB DCA8AE56` | `gpg_keys/BitcoinCore_Dimitri.asc` |
 | Gloria Zhao | `6B002C6E A3F91B1B 0DF0C9BC 8F617F12 00A6D25C` | `gpg_keys/BitcoinCore_GloriaZhao.asc` |
 | Matthew Zipkin | `E61773CD 6E01040E 2F1BD78C E7E2984B 6289C93A` | `gpg_keys/BitcoinCore_MatthewZipkin.asc` |
@@ -105,7 +108,13 @@ Emzy also signs Bitcoin Core releases (listed under both projects). The felixb_f
 | Wladimir J. van der Laan | `71A3B167 35405025 D447E8F2 74810B01 2346C9A6` | `gpg_keys/BitcoinCore_WladimirJvanderLaan.asc` |
 | Matt Edwards (m3dwards) | `E86AE734 39625BBE E306AAE6 B66D427F 873CB1A3` | `gpg_keys/BitcoinCore_m3dwards.asc` |
 | 0xB10C | `982A193E 3CE0EED5 35E09023 188CBB26 48416AD5` | `gpg_keys/Bitcoin_Core_0xB10C.asc` |
+| Hennadii Stepanov (hebasto) | `D1DBF2C4 B96F2DEB F4C16654 41010811 2E7EA81F` | `gpg_keys/BitcoinCore_Hebasto.asc` |
+| Ben Carman (benthecarman) | `0AD83877 C1F0CD1E E9BD660A D7CC770B 81FD22A8` | `gpg_keys/BitcoinCore_Benthecarman.asc` |
+| Marcel Fornasier (marleo) | `5B286407 E1EA6FE0 1CF9AF48 BF131C2D 0536F8AC` | `gpg_keys/BitcoinCore_Marleo.asc` |
+| Sjors Provoost | `ED9BDF7A D6A55E23 2E845242 57FF9BDB CC301009` | `gpg_keys/BitcoinCore_SjorsProvoost.asc` |
 | Emzy | `9EDAFF80 E0806596 04F4A76B 2EBB056F D847F8A7` | `gpg_keys/Electrum_Emzy.asc` |
+
+The fanquake, hebasto, benthecarman, marleo, and Sjors Provoost keys were added after auditing the v31.1 (July 2026) `SHA256SUMS` signatures: each key ID observed in that manifest was mapped to its primary fingerprint via a public keyserver. Note that several Bitcoin Core signers — including Sjors Provoost's key above (expired 2026-07-01, yet used for v31.1) and the Ava Chow key — have lapsed expirations; GPG still verifies signatures made with them cryptographically, so they remain trusted here.
 
 ## GnuPG
 
@@ -115,13 +124,17 @@ Emzy also signs Bitcoin Core releases (listed under both projects). The felixb_f
 
 | Signer | Fingerprint | Bundled key |
 |--------|-------------|-------------|
-| GnuPG release signing key | `5B80C575 4298F0CB 55D8ED6A BCEF7E29 4B092E28` | `gpg_keys/GNUPG_ReleaseKeys.asc` |
+| Andre Heinecke (release signing key) | `5B80C575 4298F0CB 55D8ED6A BCEF7E29 4B092E28` | `gpg_keys/GNUPG_ReleaseKeys.asc` |
+| Werner Koch (dist signing 2020) | `6DAA6E64 A76D2840 571B4902 528897B8 26403ADA` | `gpg_keys/GNUPG_ReleaseKeys.asc` |
+| Niibe Yutaka (GnuPG release key) | `AC8E115B F73E2D8D 47FA9908 E98E9B2D 19C6C8BD` | `gpg_keys/GNUPG_ReleaseKeys.asc` |
+
+All three keys (plus a fourth, "GnuPG.com Release Signing Key 2021", which is not listed because it has not signed any release in the tracked window) are bundled together in the single `GNUPG_ReleaseKeys.asc` file. Current releases (gnupg-2.4.x and later) are signed by Werner Koch and/or Niibe Yutaka; older 2.0–2.3 era releases used yet other keys that predate this list.
 
 ## COLDCARD (Coinkite)
 
 - Website: https://coldcard.com
-- Firmware releases: https://github.com/coinkite/coldcard-firmware/releases; upgrade instructions at https://docs.coldcard.com/upgrade.html
-- Artifacts: `coldcard.dfu`, `coldcard-factory.dfu`, and `cc-recovery-*` / `mk4-recovery-*` files with detached signatures. The release manifest `signatures.txt` is **clearsigned** (signature embedded in the file) and verified directly.
+- Firmware downloads: https://coldcard.com/downloads (source repo without GitHub releases: https://github.com/Coldcard/firmware); upgrade instructions at https://coldcard.com/docs/upgrade/
+- Artifacts: `*-coldcard.dfu` firmware files. The release manifest `signatures.txt` (published in the source repo's `releases/` directory) is **clearsigned** (signature embedded in the file) and verified directly; its SHA-256 hashes cover the `.dfu` files.
 
 | Signer | Fingerprint | Bundled key |
 |--------|-------------|-------------|
@@ -140,12 +153,14 @@ Emzy also signs Bitcoin Core releases (listed under both projects). The felixb_f
 ## Casa Passport (Foundation Devices)
 
 - Website: https://casacurrency.com
-- Releases: https://github.com/Foundation-Devices/Passport/releases
-- Artifacts: `*-passport.bin` firmware files with detached signatures.
+- Releases: https://github.com/Foundation-Devices/passport-firmware/releases (redirect target of the old `Foundation-Devices/Passport` repo)
+- Artifacts: `passport-fw-*` firmware files with detached signatures.
 
 | Signer | Fingerprint | Bundled key |
 |--------|-------------|-------------|
 | Ken Carpenter | `5DBE7F18 52939353 15E56E31 CFE1890A B7FC8B64` | `gpg_keys/Foundationdevices_Ken_Carpenter.asc` |
+
+Note: the latest published release (v1.1.0, August 2022) predates the two-year recency window and was signed with Ken Carpenter's older "GitHub" key (`E7FA9F9E 3477BA54 9091B6A7 57C004A5 20148A68`), which is not bundled. No newer releases have been published in the tracked window, so no action was taken.
 
 ## BIP39 Tool (Ian Coleman)
 
