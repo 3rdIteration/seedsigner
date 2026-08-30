@@ -50,7 +50,11 @@ class TestProjectsForFilename:
                 "bitcoin-31.1-x86_64-linux-gnu.tar.gz",
                 "bitcoin-31.1-win64-setup-unsigned.exe",
             ],
-            "gnupg": ["gnupg-2.5.21.tar.bz2"],
+            "gnupg": [
+                "gnupg-2.5.21.tar.bz2",
+                "gpg4win-5.1.0.exe",
+                "gpg4win-5.1.0.tar.xz",
+            ],
             "coldcard": [
                 "2026-08-20T1336-v5.6.1-mk-coldcard.dfu",
                 "2026-08-20T1336-v5.6.1-mk-coldcard-factory.dfu",
@@ -86,6 +90,7 @@ class TestProjectsForFilename:
 
     def test_detached_sig_extension_is_stripped(self):
         assert project_for_filename("krux-v26.08.0.zip.sig") is TRUSTED_PROJECTS["krux"]
+        assert project_for_filename("gpg4win-5.1.0.exe.sig") is TRUSTED_PROJECTS["gnupg"]
         # Ambiguous manifest: stripping .asc yields the same (ambiguous) result.
         assert projects_for_filename("SHA256SUMS.asc") == projects_for_filename("SHA256SUMS")
         assert project_for_filename("SHA256SUMS.asc") is None

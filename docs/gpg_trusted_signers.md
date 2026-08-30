@@ -120,7 +120,7 @@ The fanquake, hebasto, benthecarman, marleo, and Sjors Provoost keys were added 
 
 - Website: https://gnupg.org
 - Releases: https://www.gnupg.org/download/ (source at https://github.com/gpg/gnupg)
-- Artifacts: `gnupg-*` source archives with detached signatures.
+- Artifacts: `gnupg-*` source archives with detached signatures, plus Gpg4Win's `gpg4win-*` Windows installers and source archives — since 2021 those are signed by the official GnuPG release keys (see https://www.gpg4win.org/package-integrity.html).
 
 | Signer | Fingerprint | Bundled key |
 |--------|-------------|-------------|

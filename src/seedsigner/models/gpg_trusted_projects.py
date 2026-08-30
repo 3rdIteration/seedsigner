@@ -128,7 +128,11 @@ TRUSTED_PROJECTS: Dict[str, TrustedProject] = {
             "6DAA6E64A76D2840571B4902528897B826403ADA",  # Werner Koch (dist signing 2020)
             "AC8E115BF73E2D8D47FA9908E98E9B2D19C6C8BD",  # Niibe Yutaka (GnuPG release key)
         }),
-        file_patterns=(_p(r"^gnupg-"),),
+        file_patterns=(
+            _p(r"^gnupg-"),
+            # Gpg4Win installers/source, signed by the official GnuPG release keys since 2021
+            _p(r"^gpg4win-"),
+        ),
     ),
     "coldcard": TrustedProject(
         name="COLDCARD (Coinkite)",
