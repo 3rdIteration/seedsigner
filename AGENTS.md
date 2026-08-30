@@ -42,6 +42,12 @@ When stacking multiple `TextArea` components (e.g. on `LargeIconStatusScreen` su
 - Keep `src/seedsigner/hardware/io_config.json` and `docs/io_config.md` consistent whenever pin mappings or profile details are changed.
 - If the JSON and documentation conflict and the correct source of truth is unclear, explicitly ask the user how they want the conflict resolved before finalizing changes.
 
+## GPG trusted-signer consistency guidance
+
+- Keep `src/seedsigner/models/gpg_trusted_projects.py` (the filename→project and fingerprint→signer whitelist used by **Verify Signature**) consistent with `docs/gpg_trusted_signers.md` whenever a project, signer fingerprint, bundled key file, or filename pattern changes.
+- Fingerprints in the module must be 40-character uppercase hex primary-key fingerprints that match the bundled public keys under `gpg_keys/`. When adding a new signer, add (or confirm) the matching `.asc` in `gpg_keys/` and list it in both the module and the docs page.
+- A key that signs for more than one tracked project is listed under each of those projects (e.g. Emzy signs both Electrum and Bitcoin Core).
+
 ## Persistent settings and platform-detected defaults
 
 `Settings.get_instance()` in `src/seedsigner/models/settings.py` initialises settings in three layers, applied in order so that each layer overrides the previous:

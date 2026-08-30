@@ -4,8 +4,12 @@ needed; run_screen captures what would be shown on the display."""
 
 # Bootstrap the shared test environment (hardware mocks, singleton resets) the
 # same way the full suite and other view tests do, so importing the heavy
-# smartcard_views module here doesn't run ahead of the mock setup.
-import tests.base  # noqa: F401
+# smartcard_views module here doesn't run ahead of the mock setup. Must use the
+# plain "base" name: "tests.base" is a *different* module for the same file, so
+# it would re-execute base.py under a second identity and reinstall fresh
+# MagicMocks into sys.modules, desyncing constants already bound by imported
+# modules (e.g. HardwareButtonsConstants in tools_screens).
+import base  # noqa: F401
 
 from seedsigner.views import smartcard_views
 

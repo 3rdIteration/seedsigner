@@ -1,6 +1,8 @@
 import sys
 from unittest.mock import MagicMock
 
+import pytest
+
 # Mock hardware-dependent modules so unit tests can run without them
 sys.modules.setdefault('RPi', MagicMock())
 sys.modules.setdefault('RPi.GPIO', MagicMock())
@@ -48,3 +50,25 @@ class DummyBatteryHat(MagicMock):
         return None
 
 sys.modules['seedsigner.hardware.battery_hat'] = MagicMock(BatteryHat=DummyBatteryHat)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _base_module_single_identity():
+    """Ensure tests/base.py executes at most once per pytest process.
+
+    Both `import base` and `import tests.base` load tests/base.py; if both forms
+    appear in one run, the second import re-executes the module body under a new
+    identity and reinstalls fresh MagicMocks into sys.modules while modules
+    imported earlier keep references to the first pass's mocks. That split-brain
+    state broke HardwareButtonsConstants identity checks in test_tools_screens.py
+    (full-suite runs only). Use `import base` in all test files.
+    """
+    yield
+    base = sys.modules.get("base")
+    if base is None:
+        return
+    tests_base = sys.modules.get("tests.base")
+    assert tests_base is None or tests_base is base, (
+        "tests/base.py was imported under two module identities ('base' and "
+        "'tests.base'); use `import base` in all test files"
+    )
