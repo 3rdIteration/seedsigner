@@ -367,6 +367,58 @@ class TestMenuNavigationFlows(FlowTest):
             FlowStep(tools_views.ToolsGPGFileOpsMenuView),
         ])
 
+    def test_tools_gpg_import_menu(self):
+        """Tools → GPG Tools → Import Keys → BACK → GPG menu."""
+        if shutil.which("gpg") is None or importlib.util.find_spec("pgpy") is None:
+            pytest.skip("gpg binary and/or pgpy not available")
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.GPG),
+            FlowStep(tools_views.ToolsGPGMenuView, button_data_selection=tools_views.ToolsGPGMenuView.IMPORT),
+            FlowStep(tools_views.ToolsGPGImportMenuView, screen_return_value=RET_CODE__BACK_BUTTON),
+            FlowStep(tools_views.ToolsGPGMenuView),
+        ])
+
+    def test_tools_gpg_import_privkey_menu(self):
+        """Tools → GPG Tools → Import Keys → Private Key → BACK → Import menu.
+
+        Verifies the privkey import sub-menu (Generate New / Derive BIP85 / From QR /
+        From File / From Seedkeeper) is reachable and backs out correctly. The items'
+        destinations are covered by the UI-driver flow tests; walking into them here
+        would hit direct ``Screen.display()`` calls the mocked harness can't drive.
+        """
+        if shutil.which("gpg") is None or importlib.util.find_spec("pgpy") is None:
+            pytest.skip("gpg binary and/or pgpy not available")
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.GPG),
+            FlowStep(tools_views.ToolsGPGMenuView, button_data_selection=tools_views.ToolsGPGMenuView.IMPORT),
+            FlowStep(tools_views.ToolsGPGImportMenuView, button_data_selection=tools_views.ToolsGPGImportMenuView.PRIVKEY),
+            FlowStep(tools_views.ToolsGPGImportPrivkeyMenuView, screen_return_value=RET_CODE__BACK_BUTTON),
+            FlowStep(tools_views.ToolsGPGImportMenuView),
+        ])
+
+    def test_tools_gpg_import_privkey_bip85_no_seed(self):
+        """Tools → GPG Tools → Import Keys → Private Key → Derive BIP85 (no seed).
+
+        With no seeds loaded ``ToolsGPGLoadBIP85KeyView`` shows its warning and backs
+        out before reaching the text-entry screens, so this walks the user's exact bug
+        path as far as the mocked harness allows.
+        """
+        if shutil.which("gpg") is None or importlib.util.find_spec("pgpy") is None:
+            pytest.skip("gpg binary and/or pgpy not available")
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.GPG),
+            FlowStep(tools_views.ToolsGPGMenuView, button_data_selection=tools_views.ToolsGPGMenuView.IMPORT),
+            FlowStep(tools_views.ToolsGPGImportMenuView, button_data_selection=tools_views.ToolsGPGImportMenuView.PRIVKEY),
+            FlowStep(tools_views.ToolsGPGImportPrivkeyMenuView, button_data_selection=tools_views.ToolsGPGImportPrivkeyMenuView.LOAD_BIP85_KEY),
+            FlowStep(tools_views.ToolsGPGLoadBIP85KeyView, screen_return_value=0),
+        ])
+
     def test_tools_clear_descriptor(self):
         """Tools → Clear Multisig Descriptor.
 

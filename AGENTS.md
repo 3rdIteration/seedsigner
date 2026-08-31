@@ -228,7 +228,7 @@ When moving or renaming an underscore-prefixed function:
 
 ### Navigation test maintenance
 
-`tests/test_flows_menu_navigation.py` (**56 tests**) walks every UI menu path to catch lazy-import errors and platform-crashes. **Whenever a menu tree (a View's button_data list) is changed, a new View is added, or a View's imports are modified, update this test file** to cover the new/changed path.
+`tests/test_flows_menu_navigation.py` (**60 tests**) walks every UI menu path to catch lazy-import errors and platform-crashes. **Whenever a menu tree (a View's button_data list) is changed, a new View is added, or a View's imports are modified, update this test file** to cover the new/changed path.
 
 Key rules:
 - **Every settings-gated or conditionally-shown menu item must have a test** that verifies it is reachable (setting enabled) and/or hidden (setting disabled).
@@ -238,6 +238,23 @@ Key rules:
 - Use `before_run` callbacks (like `_patch_microsd_child`, `_patch_scan_view_decoder`) to patch hardware deps so child Views can be entered without crashing in CI.
 
 When adding a new View that uses lazy imports, always add the corresponding `FlowStep` to an existing or new test method — even a simple "navigate to the View and stop" test is sufficient to catch `NameError` regressions.
+
+### Real-screen (UI driver) flow testing
+
+The normal flow tests mock `View.run_screen()`, so **Screens are never constructed or exercised** — screen-construction bugs (e.g. a keyboard layout that doesn't fit its grid, which raised `"charset will not fit in a 4x6 layout"`) and input-handling regressions can only be caught on-device or by the screenshot generator. Two layers close that gap:
+
+- **`tests/test_screen_construction.py`** — constructs every keyboard-bearing Screen against a real (in-memory) canvas and asserts its keyboards build without error. **Whenever you add a new Screen that builds a `Keyboard`, add it to this file's case list.** This is the cheap, high-value regression net for layout/fit bugs.
+- **`tests/ui_driver.py` + `FlowStep(real_screens=True)`** — runs *real* Screens through their real `_run()` input loops with scripted button presses (and simulated camera frames). Use this for end-to-end coverage of high-value user paths that involve typing or multi-step screen interaction (see `tests/test_real_screen_flows.py` for the GPG BIP85 / Generate-New and Text-QR-encode examples).
+
+How to drive a real-screen flow:
+1. Build the button script with the planning helpers (`plan_text_entry_script`, `plan_keyboard_screen_script`) — they derive the exact key sequence by driving throwaway `Keyboard` objects through their real `update_from_input()` and **verify the plan by replaying it** before returning, so a wrong plan fails fast in the helper rather than mid-flow.
+2. Wrap the flow in a `UISession(script=[...])` (optionally with `camera_frames=[...]`) and pass it to `run_sequence(..., ui_session=session)`. Mark each View whose Screens should run for real with `FlowStep(SomeView, real_screens=True)`; those steps must **not** set `screen_return_value`/`button_data_selection` (the script supplies the input instead).
+3. Assert on `session.renderer.frames` (real frames were rendered) and, where relevant, on a real side effect (e.g. a key actually present in an isolated GPG keyring via `GNUPGHOME`).
+
+Gotchas:
+- The `UISession` swaps the `Renderer`, `HardwareButtons`, and (optionally) `Camera` singletons for test stand-ins; every Screen picks them up at construction, so construct Screens only *inside* the session.
+- GPG subprocess flows must point `GNUPGHOME` at a fresh temp dir (`monkeypatch.setenv`) **and** create that directory first — gpg will not create its own homedir and fails with rc=2 otherwise. Clean up any module-level state the View mutates (e.g. `BIP85_DATA`) in a `finally`.
+- A real-screen step is allowed to be the *last* step in the sequence even though it specifies no mocked interaction; `run_sequence` handles that (don't add a redundant trailing `FlowStep`).
 
 ## Unicode and locale-safe string handling
 

@@ -8264,13 +8264,21 @@ class ToolsGPGImportKeyToCardView(View):
         return Destination(ToolsGPGMenuView)
 
 class ToolsTextQRTextEntryView(View):
-    def __init__(self, textToEncode: str = ""):
+    """
+    initial_keyboard: used by the screenshot generator to render each different keyboard layout.
+    """
+    def __init__(self, textToEncode: str = "", initial_keyboard: str = None):
         super().__init__()
         self.textToEncode = textToEncode
+        self.initial_keyboard = initial_keyboard
 
 
     def run(self):
-        ret_dict = ToolsTextQRTextEntryScreen(textToEncode=self.textToEncode, title=_("Text to Encode")).display()
+        ret_dict = ToolsTextQRTextEntryScreen(
+            textToEncode=self.textToEncode,
+            title=_("Text to Encode"),
+            initial_keyboard=self.initial_keyboard,
+        ).display()
 
         try:
             import re

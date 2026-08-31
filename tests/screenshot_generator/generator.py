@@ -37,6 +37,7 @@ from seedsigner.controller import Controller
 from seedsigner.gui.renderer import Renderer
 from seedsigner.gui.screens.screen import BaseScreen
 from seedsigner.gui.screens.seed_screens import SeedAddPassphraseScreen
+from seedsigner.gui.screens.tools_screens import ToolsTextQRTextEntryScreen
 from seedsigner.gui.toast import RemoveSDCardToastManagerThread, SDCardStateChangeToastManagerThread
 from seedsigner.gui.toast import DefaultToast, InfoToast, SuccessToast, WarningToast, ErrorToast, DireWarningToast
 from seedsigner.hardware.microsd import MicroSD
@@ -541,6 +542,12 @@ def generate_screenshots(locale):
                 ScreenshotConfig(tools_views.ToolsAddressExplorerAddressTypeView, mock_context_manager=mock_multisig_wallet_descriptor_loaded),
                 ScreenshotConfig(tools_views.ToolsAddressExplorerAddressListView),
                 # ScreenshotConfig(tools_views.ToolsAddressExplorerAddressView),
+
+                ScreenshotConfig(tools_views.ToolsTextQRTextEntryView, screenshot_name="ToolsTextQRTextEntryView_lowercase"),
+                ScreenshotConfig(tools_views.ToolsTextQRTextEntryView, dict(initial_keyboard=ToolsTextQRTextEntryScreen.KEYBOARD__UPPERCASE_BUTTON_TEXT), screenshot_name="ToolsTextQRTextEntryView_uppercase"),
+                ScreenshotConfig(tools_views.ToolsTextQRTextEntryView, dict(initial_keyboard=ToolsTextQRTextEntryScreen.KEYBOARD__DIGITS_BUTTON_TEXT),    screenshot_name="ToolsTextQRTextEntryView_digits"),
+                ScreenshotConfig(tools_views.ToolsTextQRTextEntryView, dict(initial_keyboard=ToolsTextQRTextEntryScreen.KEYBOARD__SYMBOLS_1_BUTTON_TEXT), screenshot_name="ToolsTextQRTextEntryView_symbols_1"),
+                ScreenshotConfig(tools_views.ToolsTextQRTextEntryView, dict(initial_keyboard=ToolsTextQRTextEntryScreen.KEYBOARD__SYMBOLS_2_BUTTON_TEXT), screenshot_name="ToolsTextQRTextEntryView_symbols_2"),
             ],
             "Settings Views": settings_views_list + [
                 ScreenshotConfig(settings_views.IOTestView),
