@@ -44,59 +44,50 @@ pytestmark = pytest.mark.skipif(
 
 MNEMONIC = "resource timber firm banner horror pupil frozen main pear direct pioneer broken grid core insane begin sister pony end debate task silk empty curious".split()
 
-# BIP85 GPG RSA entropy vectors sourced from libwally-core's test suite:
-# https://github.com/ElementsProject/libwally-core/blob/master/src/test/test_bip85.py
+# BIP85 GPG RSA entropy vectors, using the BIP85-spec RSA derivation path
+# m/83696968'/828365'/{key_bits}'/{index}' (v4, back in line with the B8 scheme).
+# Derived via embit bip85.derive_entropy(root, 828365, [bits, index]).
 LIBWALLY_RSA_MASTER_XPRV = (
     "xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb"
 )
 BIP85_GPG_RSA_VECTORS = [
     (
-        "2b9380df43421f46b5c38e13ea80612ff53488bc5d272e86d493ee1eecf738bb7b50e4978b7352f95772f1211483b0e6bba86c544a946b10d76ed493b8c2e01f",
-        1024,
-        0,
-    ),
-    (
-        "b34c06698228ce7a531dd292e76a4fbde1238659588e70714e1a7558a6df54e533034ba4d29ff42133db54af37520ba6724e3d3cd7e98329d6a0e4806e166bf0",
-        1024,
-        1,
-    ),
-    (
-        "98c4fb6d76f203e8828bdfd28416edca7a83a9b203901f7ad31f056cda8b3c25b19e5fd2aa642ca0abb9ed8bebf3d141af6c76b28a19eba624bdc6f8a76ce138",
+        "e3ff02b1f0b934357cc0952225bb0e90081005b0cc992c5ed22f6fb8e9c628a3a0f138f9324e33ed4ba7250e43dd66d725a4e4c683dcf5a3b4015b82bcf71934",
         2048,
         0,
     ),
     (
-        "fad7641f55ce91a45a7ff36a7d8ebcac34b28778fd9f98abeba7afd24e0ff80ac9aaff7c8c728fbca5ebb893e0f7b9bce9b62f15c977044ad9cd05685044189e",
+        "b1b4d03eb9826aeb2fabc4529dc37da5eaaa9072d3e2b7e69da79862e2b9cd8131dbb5a9001612239cd96310f6be0417bd39c39500bf8a99ba5df32571866fe6",
         2048,
         1,
     ),
     (
-        "ed98d9cd1919fbcf73f5e3d2496b9bc43f869ffe5e27e6d55dc740eb9039ec545f084037e189ced93d0e71f70a3bcc0fa76560b98f685d2725b8345e1be50e01",
+        "9bd8cb61fea01892ffd981b4da7aae22f32c9641e49c48104682e249a98f7911ed55035a52e085938291d64e34537e9cc0b730f42ae9183b5ddaac33a55764ea",
         3072,
         0,
     ),
     (
-        "750caeee45c70b71a0297532a22e73f03a38bf226ffa95bc52969d98a586ee5913c7e9d9514d87455e6530c46d277ff67995a56e484bcefdcb662a1bb1d57d43",
+        "fc49330db1352558f615651ae8d7840b083cce5c9e731e349847569d3813a3f7f605b5d66b178bf19fdd04bd7f48d2ddb07e16793703d17ee06c86e49e19a896",
         3072,
         1,
     ),
     (
-        "2d2ef3335dc51e7a0642bfe86fba0bb4e8401b703d8d679bb1a31d75f8a81f1fd52b20b2eae50ef6e0378b8755f4f0426c68b54f11edc0c848e017e81bb2ad87",
+        "12a499947a142ee3ede9c0960061383f2564b5cc569327d0dd22f7887094676f2e5d5785cd4eb683990d12209ebf6f39a5c1b5e217ea66710260e99fbe4b2be3",
         4096,
         0,
     ),
     (
-        "02b18073332b3486f1ef0bad015bdbe695595b8b3ed5ea5b4d9e54b54670e7a8011dd69b888f5042f9ae8d9f658708f786314458ba0c0078339789c50f78085b",
+        "a6fdf91d4f4a0cadaf3d20d638744b574306725aababa0ab7136f8f8b88c5a4c5ca6104646d695cd95a72ad15e6e6912e263762eab951bfcea8e9939ed7c03f4",
         4096,
         1,
     ),
     (
-        "c966fcf60d5ede0515ef2c51dbe300b1e67e448049fa1a63770a104f0d52ab173f9891a6345f9d0993452d7a0ba446ada5c69c8cd07a656829df9bb26f6ca29f",
+        "b3a0baa54a6fa75363e2bc0809dafd20eacea8b4d0fba9ef26f9ea9c471e135c53c1f787fd6a7a02bf736bed620d44e5b4465856fae6c2ef2d620b730098f8e9",
         8192,
         0,
     ),
     (
-        "b8f8456044ebc18a964ef05dae81d88c6f602823d8c0415a912ed58095244562f459781c142aa723bb29092b08ce22efc648e631c6b9fdb46ffad845c893a27f",
+        "1b5f1ae261e9e36039cd7d55d25e71934a4f0a2fdd2d93b2f73fbd272d04257d6eba8f6ff6bc1ffe1d58f68b707b794e54e983e2f573991bb776b48b8ed9a1ca",
         8192,
         1,
     ),
@@ -123,7 +114,7 @@ def test_bip85_drng_vector():
 def test_bip85_rsa_entropy_vectors_match_libwally():
     root = bip32.HDKey.from_string(LIBWALLY_RSA_MASTER_XPRV)
     for expected, bits, index in BIP85_GPG_RSA_VECTORS:
-        entropy = bip85.derive_entropy(root, tools_views.BIP85_GPG_APP, [tools_views.BIP85_GPG_KEY_TYPE_RSA, bits, index])
+        entropy = bip85.derive_entropy(root, tools_views.BIP85_GPG_APP, [bits, index])
         assert entropy.hex() == expected
 
 
@@ -206,17 +197,11 @@ CROSS_IMPL_ECC_VECTORS = [
     ),
 ]
 
-# Expected RSA-2048 n value for path m/83696968'/828365'/0'/2048'/0'
-# generated via PyCryptodome RSA.generate(2048, randfunc=drng.read).
+# Expected RSA-2048 n value for path m/83696968'/828365'/2048'/0'
+# generated via PyCryptodome RSA.generate(2048, randfunc=drng.read) using the
+# BIP85-spec (v4) RSA derivation path.
 CROSS_IMPL_RSA2048_N = int(
-    "c76c90074ba3f2e487c5d7714bdade9e1c6e4beafb3c1d1246ed9d0a5607a15d"
-    "58608bc5aec96db6160920c8327487311bc9f799d9bb312e489e2296d3e93ceb"
-    "322bf5d8ede6f989713e1ecc3b03ad146186aaba5af50656f3c29babb7b792da"
-    "8e6e1ffc6521af425965faeb5c94bd18d1526d77d8b51f501d029fb59a26384b"
-    "0269ddb36c79ee8764d0e2d09222eb9f9bfd0a7ae6be35f71e63743cdca8983e"
-    "bd7e712b2b38c8ea84fcb950bd851b882642eb05a0578c346057d9eeb7fa3218"
-    "eefcdb9b19aa11e8a1364e81de2a54940496a302c1958a99f6bf3b7b8154d0b4"
-    "c800081a8311b5b4182ed3e057af0e1010232b2e04fdc1edf5cf37978ac75cb9",
+    "d8561115a08e16b3c491b634673f57e14e4c76a918fb052f64cf73da48e987246d6aa01e2ce6ec18cabfef03e2ae820266c524f6db6aad2bc6a0c2b94ab86483e01d99cf07432958a6f56c313e39bee25e30b4f5bf0576b65d4d1bd94dbb7f259e8e59c005f132968ea5b679906f82b9f3fb5febd5f6819ff200e3dbe06622b04fef08c8e5fa3f0a290dc0859521ee0879c7bdc27159d6486875c2c21237abfd96f8659779836a4fe5560c79918ab64df5f285677a27616b5f4523f3b6c3d867fedf4616d456dd4ad477ea06efa2bf8e72d0274d51a2058dc1d5ae97e238f7ab30ec168204d15d5e294be7942b1177398de2b0c19a5b89e9795958db56055319",
     16,
 )
 
@@ -281,8 +266,8 @@ def test_xprv_seed_produces_same_bip85_gpg_keys():
     root_from_xprv = xprv_seed.get_root()
 
     # The roots must derive identical BIP85 entropy
-    entropy_mn = bip85.derive_entropy(root_from_mnemonic, tools_views.BIP85_GPG_APP, [0, 2048, 0])
-    entropy_xp = bip85.derive_entropy(root_from_xprv, tools_views.BIP85_GPG_APP, [0, 2048, 0])
+    entropy_mn = bip85.derive_entropy(root_from_mnemonic, tools_views.BIP85_GPG_APP, [2048, 0])
+    entropy_xp = bip85.derive_entropy(root_from_xprv, tools_views.BIP85_GPG_APP, [2048, 0])
     assert entropy_mn == entropy_xp, "XprvSeed BIP85 entropy must match mnemonic Seed"
 
     # RSA key must be identical
@@ -299,10 +284,10 @@ def test_xprv_seed_produces_same_bip85_gpg_keys():
 def test_bip85_rsa_deterministic():
     seed = Seed(mnemonic=MNEMONIC)
     root = bip32.HDKey.from_seed(seed.seed_bytes)
-    key = bip85_rsa_from_root(root, 1024, 0)
+    key = bip85_rsa_from_root(root, 2048, 0)
     assert key.size_in_bits() == MIN_RSA_KEY_BITS
     assert key.n == int(
-        "cf61fb06f3fea3d33e2671cf1f8c9878760864c63ae73e7c9b9f8a912740368a1fa4dc416a5d98e825ce08adcbc57eb3f6032079aea83da0bae61ac544a11c23ced82227cab51c2f72cf163c77ef77607fc2fb6e959a83baceb94d0a70fe8662d9d8180748e7240b2440ceb85240280ef1c83e19c19c9dc7bb8f5a60904a0a3cbf6fec290da4210900c07a52ef1c2380947bd373291aaafffd598fde0dd6b9ce6f24b70a4714092b16a377190e6b80f447412e7b0e9bece88a94c3a0f6854715947980de09d463343939733704679787f7622928c28bce92e11298cb54b87694284d50645e56cc51fb9411b026723adb05f68037d040e8448f7762507309a1c7",
+        "c50bee42220c0162164154c147b661aff9ac6b56e9f1a470db1fdba5ba82338113c5734135bb49d7a4e248b2927324dcd2d5493d385543145177a79cb0a7cdea8c8b31f493d24a7bdeb0cdd0c7ef3685e34c7f5776d2f86d6b3b935bf2d5d3edcbb5c338314444eba19c2c128e935cfaa217fde3fbcab3d2dfdc9a7d9dbf9ca5d1f9cd58f862d8158d0de7fb5c8935ea52547d662bbe1e484752b2104e8d337a4794f9c2b2b0b6c4afcb4bf88c304644c0b134355f39228619091fe7fbe612f0005216b441edce575dbf639710c73eab6da71f980bb2a412b19fbceeca3b56756a62d29e12cbfbb1a6025f4059a9ea5ce6b537e2f06bb589a5e24b22a6f77b95",
         16,
     )
 
@@ -320,7 +305,7 @@ def test_bip85_rsa_3072_deterministic():
     key = bip85_rsa_from_root(root, 3072, 0)
     assert key.size_in_bits() == 3072
     assert key.n == int(
-        "b338ff5ea63036e2dea2cc9037f8c3147d47c539ced2a20ca5d979186e8269ea9ab538c584cbfa5171d34f79e9e5e33aaf6ed24e436b55d2dca362e50c11003c32a7293c78c54c0d89bddb0b4a97257fe619ac320af247d2f45cc59d6a5587e764419021abba5a10cc79c1a2b410da9e4d656731bcd48c3b3a2ead9824504cc8c751a688c3b3b9d7977c8f5b9b70c4b60eac295446a6c145dc2ca723d9ee557b2200737b4b5116467f8344b00a22a2954875b629e63fc27b17429041ccf95b4ae077d2cdd3227d32135d94e05130f404975a8bf7b4bbcfbbc1f9bcaa6886374e4899988d0c7b1d471906c210159543e07b297081e1ea6eca074e79558904a179eaa1c96e26a32c09a39df2c08eff672c7d9759768f657698dfd63621937056dcff02ac99ac8ebcc5dc5bff93fc5de20f768eb6660a9e755b1eb059b135c6dec968cda8877c362c7b97ce899403b2a43e7e2c86ca5355f371a8cd01582df8900d76159ef5a298fde9845378efd11798c7c2ee1f9450d7b1edc120c0c3a379913d",
+        "c3cfd8332fde9f8ec605520f687c11f250b0eedfd695aa3170f3eb242c15e0be769a1120f9c81c30615e3a5f3a0c50aa399df15f2d3a8554a0d698c5c86cacfbbce160c8bf6e7f581f9ad16885cbe5aeffeddc8ff66c16a16b6f429da765b98adbdd4554e0ec322206fc8c9b780f3527f2b93aa3075bde1fb735829e41f5f42be6ee7dc0d28f570c394e7610f44b85ba452a933e2405a3a72cdf8d33577a85fb5bb35b2cd0c2d7c6f3309c4ca47aab8eb094d31db982c91e9ea9c8f369827d73c4a53f943c15dfff791b33aa2d60173f13dc437cee05222b288726cea9d02eefff111a74714655ed6c048c27ff1a3264732d2952a233c42b640ec93bc214a39eef342b285c828ae00d2082fae2bef26e88a6fc0650939beeeb518feea3b79576a54afe640146eb0d9fb0bcd12d14d7dea6aed79527243a182f6bf83d9b6128582b87eddecfb99d8969c779314e8334e7580204ac25ae734035b45510268d6fb8964a4f74ae7ca5ff2cabf0553c374d760d600da4472d09a42a81844844346525",
         16,
     )
 
@@ -1216,6 +1201,94 @@ def test_bip85_save_and_load(tmp_path):
     assert BIP85_DATA[fpr]["subkeys"][0]["type"] == "ECDH ECC NIST P-256"
 
 
+@pytest.mark.parametrize(
+    "ss_version,expected_version",
+    [
+        ("SS0.8.6+Satochip+Earthdiver-B4", "v1"),
+        ("SeSi-0.8.6+ShSi-B8", "v1"),
+        ("SeSi-0.8.7+ShSi-B9", "v2"),
+        ("SeSi-0.8.7+ShSi-B10", "v2"),
+        ("SeSi-0.8.7+ShSi-B11", "v3"),
+        ("SeSi-0.8.7+ShSi-B12", "v3"),
+        ("SeSi-0.8.7+ShSi-B13", "v4"),
+        ("SeSi-0.8.7+ShSi-B99", "v4"),
+        ("garbage", "v4"),
+        (None, "v4"),
+    ],
+)
+def test_bip85_version_from_ss_version(ss_version, expected_version):
+    from seedsigner.views.tools_views import _bip85_version_from_ss_version
+
+    assert _bip85_version_from_ss_version(ss_version) == expected_version
+
+
+def test_bip85_import_sets_version_from_ss_version():
+    import json
+    from seedsigner.views.tools_views import bip85_import_json, BIP85_DATA
+
+    BIP85_DATA.clear()
+    entries = [
+        {
+            "primary_fpr": "A" * 40,
+            "seed_fpr": "B",
+            "index": 1,
+            "key_type": "RSA 2048",
+            "ss_version": "SeSi-0.8.7+ShSi-B9",
+            "uids": ["u"],
+            "primary_uid": "u",
+            "subkeys": [],
+            "revocations": [],
+        },
+        {
+            "primary_fpr": "C" * 40,
+            "seed_fpr": "D",
+            "index": 2,
+            "key_type": "ECC NIST P-256",
+            "ss_version": "SeSi-0.8.6+ShSi-B8",
+            "uids": ["v"],
+            "primary_uid": "v",
+            "subkeys": [],
+            "revocations": [],
+        },
+        {
+            "primary_fpr": "E" * 40,
+            "seed_fpr": "F",
+            "index": 3,
+            "key_type": "ECC secp256k1",
+            "ss_version": "SeSi-0.8.7+ShSi-B13",
+            "uids": ["w"],
+            "primary_uid": "w",
+            "subkeys": [],
+            "revocations": [],
+        },
+    ]
+    bip85_import_json(json.dumps(entries))
+    assert BIP85_DATA["A" * 40]["bip85_version"] == "v2"
+    assert BIP85_DATA["C" * 40]["bip85_version"] == "v1"
+    assert BIP85_DATA["E" * 40]["bip85_version"] == "v4"
+
+
+def test_bip85_import_preserves_existing_version():
+    import json
+    from seedsigner.views.tools_views import bip85_import_json, BIP85_DATA
+
+    BIP85_DATA.clear()
+    entry = {
+        "primary_fpr": "9" * 40,
+        "seed_fpr": "S",
+        "index": 0,
+        "key_type": "RSA 2048",
+        "ss_version": "SeSi-0.8.6+ShSi-B8",
+        "bip85_version": "v4",  # explicit; should not be overwritten by ss_version
+        "uids": ["x"],
+        "primary_uid": "x",
+        "subkeys": [],
+        "revocations": [],
+    }
+    bip85_import_json(json.dumps([entry]))
+    assert BIP85_DATA["9" * 40]["bip85_version"] == "v4"
+
+
 def test_load_bip85_data_from_microsd(monkeypatch, tmp_path):
     from pathlib import Path
     from seedsigner.views import gpg_views
@@ -1869,7 +1942,7 @@ def test_rebuild_bip85_key(monkeypatch):
 
     verify_called = {}
 
-    def fake_verify(seed, fingerprint, key_index, created_ts, primary_algo, primary_bits, primary_curve, subkeys):
+    def fake_verify(seed, fingerprint, key_index, created_ts, primary_algo, primary_bits, primary_curve, subkeys, version=None):
         verify_called["subkeys"] = subkeys
         return True
 
@@ -2135,7 +2208,7 @@ def test_add_subkeys_auto_bip85_index(monkeypatch):
 
     captured = {}
 
-    def fake_bip85_add_subkeys(fpr, alg, key_index, start_index, seed):
+    def fake_bip85_add_subkeys(fpr, alg, key_index, start_index, seed, version=None):
         captured["key_index"] = key_index
         captured["start_index"] = start_index
         captured["seed"] = seed
@@ -2143,7 +2216,7 @@ def test_add_subkeys_auto_bip85_index(monkeypatch):
 
     monkeypatch.setattr(gpg_views, "bip85_add_subkeys", fake_bip85_add_subkeys)
 
-    def fake_verify(seed, fingerprint, key_index, created_ts, primary_algo, primary_bits, primary_curve, subkeys):
+    def fake_verify(seed, fingerprint, key_index, created_ts, primary_algo, primary_bits, primary_curve, subkeys, version=None):
         captured["verified_seed"] = seed
         captured["verified_key_index"] = key_index
         return True
@@ -2239,13 +2312,13 @@ def test_add_subkeys_registry_index_correction(monkeypatch):
 
     calls = []
 
-    def fake_bip85_add_subkeys(fpr, alg, key_index, start_index, seed):
+    def fake_bip85_add_subkeys(fpr, alg, key_index, start_index, seed, version=None):
         calls.append(("add", key_index, start_index))
         return []
 
     monkeypatch.setattr(gpg_views, "bip85_add_subkeys", fake_bip85_add_subkeys)
 
-    def fake_verify(seed, fingerprint, key_index, created_ts, primary_algo, primary_bits, primary_curve, subkeys):
+    def fake_verify(seed, fingerprint, key_index, created_ts, primary_algo, primary_bits, primary_curve, subkeys, version=None):
         calls.append(("verify", key_index))
         return key_index == 0
 

@@ -131,16 +131,17 @@ def _normalize_date_input(s: str) -> str:
     return s
 
 # BIP85 GPG application numbers per updated spec.
-# RSA derivation path: m/83696968'/828365'/0'/{key_bits}'/{key_index}'[/{sub_key}']
-# ECC derivation path: m/83696968'/828366'/{key_type}'/{key_bits}'/{key_index}'[/{sub_key}']
+# RSA derivation path (v4, the default): m/83696968'/828365'/{key_bits}'/{key_index}'[/{sub_key}']
+# RSA derivation path (v2/v3 legacy):   m/83696968'/828365'/0'/{key_bits}'/{key_index}'[/{sub_key}']
+# ECC derivation path (v3/v4):          m/83696968'/828366'/{key_type}'/{key_bits}'/{key_index}'[/{sub_key}']
 BIP85_GPG_APP = 828365
 BIP85_GPG_ECC_APP = 828366
 
 # BIP85 GPG key_type codes
-# RSA key_type (used with BIP85_GPG_APP 828365')
+# RSA key_type (used with BIP85_GPG_APP 828365' only in the v2/v3 legacy path)
 BIP85_GPG_KEY_TYPE_RSA = 0
 
-# ECC key_types (used with BIP85_GPG_ECC_APP 828366')
+# ECC key_types (used with BIP85_GPG_ECC_APP 828366' in v3/v4)
 BIP85_GPG_KEY_TYPE_BRAINPOOL = 0
 BIP85_GPG_KEY_TYPE_CURVE25519 = 1
 BIP85_GPG_KEY_TYPE_SECP256K1 = 2
@@ -148,6 +149,40 @@ BIP85_GPG_KEY_TYPE_NIST = 3
 
 # In-memory registry of BIP85-derived keys
 BIP85_DATA = {}
+
+
+def _bip85_version_from_ss_version(ss_version: str | None) -> str:
+    """Map a SeedSigner firmware version string to the BIP85 GPG scheme version.
+
+    Versions embed a build number in a trailing ``-B<n>`` segment (e.g. B12) and
+    the derivation scheme changed at specific releases:
+
+    - ``B4``-``B8``       -> v1 (per-curve ECC apps, spec RSA path)
+    - ``B9``-``B10``      -> v2 (unified app 828365' + key_type codes)
+    - ``B11``-``B12``     -> v3 (ECC app 828366', legacy RSA path)
+    - ``B13`` and later   -> v4 (spec RSA path, ECC app 828366')
+
+    Unknown or unparseable versions fall back to the latest scheme (v4).
+    """
+    from seedsigner.models.settings_definition import SettingsConstants
+
+    if not ss_version:
+        return SettingsConstants.BIP85_GPG_VERSION_V4
+
+    import re
+
+    m = re.search(r"-B(\d+)", ss_version)
+    if not m:
+        return SettingsConstants.BIP85_GPG_VERSION_V4
+
+    build = int(m.group(1))
+    if build <= 8:
+        return SettingsConstants.BIP85_GPG_VERSION_V1
+    if build <= 10:
+        return SettingsConstants.BIP85_GPG_VERSION_V2
+    if build <= 12:
+        return SettingsConstants.BIP85_GPG_VERSION_V3
+    return SettingsConstants.BIP85_GPG_VERSION_V4
 
 
 def _resolve_bip85_app_and_keytype(
@@ -160,26 +195,38 @@ def _resolve_bip85_app_and_keytype(
     curve_constant : int
         One of the ECC ``BIP85_GPG_KEY_TYPE_*`` constants (not RSA).
     version : str or None
-        ``SettingsConstants.BIP85_GPG_VERSION_V2`` or ``_V3``.
+        ``SettingsConstants.BIP85_GPG_VERSION_V1``, ``_V2``, ``_V3`` or ``_V4``.
         If ``None``, reads the current setting from ``Settings`` singleton.
 
     Returns
     -------
-    tuple[int, int]
-        (BIP85 app number, numeric key_type for the derivation path).
+    tuple[int, int | None]
+        (BIP85 app number, numeric key_type for the derivation path).  The
+        key_type is ``None`` for v1, where the curve is encoded directly in the
+        app number (no key_type element in the path).
 
     .. note::
-      RSA is not handled here—it uses the hardcoded ``BIP85_GPG_APP``
-      and key_type 0 in ``bip85_rsa_from_root``.  Because RSA's constant
-      equals ``BIP85_GPG_KEY_TYPE_BRAINPOOL`` (both are 0), the RSA check
-      is omitted to avoid ambiguity.
+      RSA is not handled here—it uses ``BIP85_GPG_APP`` in
+      ``bip85_rsa_from_root``, which adds the ``0'`` key_type element only for
+      the v2/v3 legacy schemes.  Because RSA's constant equals
+      ``BIP85_GPG_KEY_TYPE_BRAINPOOL`` (both are 0), the RSA check is omitted
+      here to avoid ambiguity.
     """
+    from seedsigner.models.settings_definition import SettingsConstants
+
     if version is None:
         from seedsigner.models.settings import Settings
-        from seedsigner.models.settings_definition import SettingsConstants
         version = Settings.get_instance().get_value(SettingsConstants.SETTING__BIP85_GPG_VERSION)
 
-    from seedsigner.models.settings_definition import SettingsConstants
+    if version == SettingsConstants.BIP85_GPG_VERSION_V1:
+        # v1: each curve has its own app number, no key_type element in path.
+        _v1_app = {
+            BIP85_GPG_KEY_TYPE_CURVE25519: 828366,   # Curve25519
+            BIP85_GPG_KEY_TYPE_SECP256K1: 828367,    # secp256k1
+            BIP85_GPG_KEY_TYPE_NIST: 828368,         # NIST P-256
+            BIP85_GPG_KEY_TYPE_BRAINPOOL: 828369,    # Brainpool P-256
+        }
+        return (_v1_app[curve_constant], None)
 
     if version == SettingsConstants.BIP85_GPG_VERSION_V2:
         _v2_kt = {
@@ -189,6 +236,8 @@ def _resolve_bip85_app_and_keytype(
             BIP85_GPG_KEY_TYPE_BRAINPOOL: 4,
         }
         return (BIP85_GPG_APP, _v2_kt[curve_constant])
+
+    # v3 / v4
     return (BIP85_GPG_ECC_APP, curve_constant)
 
 
@@ -213,6 +262,9 @@ def bip85_import_json(data: str, *, clear: bool = True):
             if primary and primary in uids:
                 uids = [primary] + [u for u in uids if u != primary]
                 entry["uids"] = uids
+            # Resolve the derivation scheme from the firmware version that
+            # created the key so it can be rebuilt even under a newer scheme.
+            entry.setdefault("bip85_version", _bip85_version_from_ss_version(entry.get("ss_version")))
             BIP85_DATA[entry["primary_fpr"]] = entry
 
 
@@ -1533,6 +1585,7 @@ class ToolsGPGRebuildBip85KeyView(View):
             primary_bits,
             primary_curve,
             verify_subkeys,
+            entry.get("bip85_version"),
         ):
             logger.warning(
                 "BIP85 verification failed for %s", entry["primary_fpr"]
@@ -1573,32 +1626,33 @@ class ToolsGPGRebuildBip85KeyView(View):
         loading.start()
         try:
             pk = PrivKeyV4()
+            bip85_version = entry.get("bip85_version")
             if key_type == "secp256k1":
                 pk.pkalg = PubKeyAlgorithm.ECDSA
-                pk.keymaterial = bip85_secp256k1_from_root(root, key_index)
+                pk.keymaterial = bip85_secp256k1_from_root(root, key_index, version=bip85_version)
             elif key_type == "p256":
                 pk.pkalg = PubKeyAlgorithm.ECDSA
-                pk.keymaterial = bip85_p256_from_root(root, key_index)
+                pk.keymaterial = bip85_p256_from_root(root, key_index, version=bip85_version)
             elif key_type == "p384":
                 pk.pkalg = PubKeyAlgorithm.ECDSA
-                pk.keymaterial = bip85_p384_from_root(root, key_index)
+                pk.keymaterial = bip85_p384_from_root(root, key_index, version=bip85_version)
             elif key_type == "p521":
                 pk.pkalg = PubKeyAlgorithm.ECDSA
-                pk.keymaterial = bip85_p521_from_root(root, key_index)
+                pk.keymaterial = bip85_p521_from_root(root, key_index, version=bip85_version)
             elif key_type == "brainpoolp256r1":
                 pk.pkalg = PubKeyAlgorithm.ECDSA
-                pk.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index)
+                pk.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index, version=bip85_version)
             elif key_type == "brainpoolp384r1":
                 pk.pkalg = PubKeyAlgorithm.ECDSA
-                pk.keymaterial = bip85_brainpoolp384r1_from_root(root, key_index)
+                pk.keymaterial = bip85_brainpoolp384r1_from_root(root, key_index, version=bip85_version)
             elif key_type == "brainpoolp512r1":
                 pk.pkalg = PubKeyAlgorithm.ECDSA
-                pk.keymaterial = bip85_brainpoolp512r1_from_root(root, key_index)
+                pk.keymaterial = bip85_brainpoolp512r1_from_root(root, key_index, version=bip85_version)
             elif key_type == "ed25519":
                 pk.pkalg = PubKeyAlgorithm.EdDSA
-                pk.keymaterial = bip85_ed25519_from_root(root, key_index)
+                pk.keymaterial = bip85_ed25519_from_root(root, key_index, version=bip85_version)
             else:
-                rsa_main = bip85_rsa_from_root(root, KEY_BITS, key_index)
+                rsa_main = bip85_rsa_from_root(root, KEY_BITS, key_index, version=bip85_version)
                 pk.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
                 pk.keymaterial = rsa_to_privpacket(rsa_main)
             pk.created = created
@@ -1653,10 +1707,10 @@ class ToolsGPGRebuildBip85KeyView(View):
                     subpkt.pkalg = pkalg
                     if key_type in func_map:
                         subpkt.keymaterial = func_map[key_type](
-                            root, group_idx, idx, alg[0]
+                            root, group_idx, idx, alg[0], version=bip85_version
                         )
                     else:
-                        rsa_sub = bip85_rsa_from_root(root, KEY_BITS, group_idx, idx)
+                        rsa_sub = bip85_rsa_from_root(root, KEY_BITS, group_idx, idx, version=bip85_version)
                         subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
                 else:
                     g_idx = sub.get("index", 0)
@@ -1674,7 +1728,7 @@ class ToolsGPGRebuildBip85KeyView(View):
                     if parts[0] == "RSA":
                         bits = int(parts[1])
                         subpkt.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
-                        rsa_sub = bip85_rsa_from_root(root, bits, group_idx, idx)
+                        rsa_sub = bip85_rsa_from_root(root, bits, group_idx, idx, version=bip85_version)
                         subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
                     else:
                         alg_name = parts[0]
@@ -1699,7 +1753,7 @@ class ToolsGPGRebuildBip85KeyView(View):
                         }
                         subpkt.pkalg = pkalg_map[parts[0]]
                         func = func_map[curve_label_lc]
-                        subpkt.keymaterial = func(root, group_idx, idx, alg_name)
+                        subpkt.keymaterial = func(root, group_idx, idx, alg_name, version=bip85_version)
                     subpkt.created = created
                     subpkt.update_hlen()
                     subkey = PGPKey()
@@ -5538,7 +5592,9 @@ class ToolsGPGLoadPrivkeySeedkeeperView(View):
         return Destination(ToolsGPGMenuView)
 
 
-def bip85_rsa_from_root(root, bits: int, index: int, sub_index: int | None = None):
+def bip85_rsa_from_root(
+    root, bits: int, index: int, sub_index: int | None = None, version=None
+):
     """Generate a deterministic RSA key from BIP85 entropy.
 
     Uses PyCryptodome's ``RSA.generate(bits, randfunc=drng.read)`` as the
@@ -5546,16 +5602,31 @@ def bip85_rsa_from_root(root, bits: int, index: int, sub_index: int | None = Non
     ``RSA.generate_key(4096, drng_reader.read)``.  Alternative RSA
     implementations MUST consume the DRNG byte-stream identically to
     PyCryptodome to ensure cross-implementation determinism.
+
+    ``version`` selects the derivation scheme.  The default (v4, or whatever
+    the ``SETTING__BIP85_GPG_VERSION`` is set to when ``None``) uses the
+    BIP85-spec RSA path ``m/83696968'/828365'/{bits}'/{index}'``.  The v2/v3
+    legacy schemes prepend the ``0'`` RSA key_type discriminator, which was
+    dropped in v1/v4 to bring RSA back in line with BIP85.
     """
     from embit import bip85
     from Cryptodome.PublicKey import RSA
     from seedsigner.helpers.bip85_drng import BIP85DRNG
+    from seedsigner.models.settings_definition import SettingsConstants
+
+    if version is None:
+        from seedsigner.models.settings import Settings
+        version = Settings.get_instance().get_value(SettingsConstants.SETTING__BIP85_GPG_VERSION)
 
     # Enforce a minimum RSA key size to avoid weak keys.
     if bits < MIN_RSA_KEY_BITS:
         bits = MIN_RSA_KEY_BITS
 
-    path = [BIP85_GPG_KEY_TYPE_RSA, bits, index]
+    if version in (SettingsConstants.BIP85_GPG_VERSION_V2, SettingsConstants.BIP85_GPG_VERSION_V3):
+        path = [BIP85_GPG_KEY_TYPE_RSA, bits, index]
+    else:
+        # v1 / v4: spec path, no key_type discriminator.
+        path = [bits, index]
     if sub_index is not None:
         path.append(sub_index)
     entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
@@ -5564,15 +5635,15 @@ def bip85_rsa_from_root(root, bits: int, index: int, sub_index: int | None = Non
 
 
 def bip85_ed25519_from_root(
-    root, index: int, sub_index: int | None = None, alg: str = "EdDSA"
+    root, index: int, sub_index: int | None = None, alg: str = "EdDSA", version=None
 ):
     from embit import bip85
     from seedsigner.helpers.ec_point import ed25519_pub_from_seed, curve25519_pub_from_seed
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
-    app, kt = _resolve_bip85_app_and_keytype(BIP85_GPG_KEY_TYPE_CURVE25519)
-    path = [kt, 256, index]
+    app, kt = _resolve_bip85_app_and_keytype(BIP85_GPG_KEY_TYPE_CURVE25519, version)
+    path = ([kt] if kt is not None else []) + [256, index]
     if sub_index is not None:
         path.append(sub_index)
     entropy = bip85.derive_entropy(root, app, path)
@@ -5743,6 +5814,7 @@ def bip85_verify_existing(
     primary_bits: str,
     primary_curve: str,
     subkeys,
+    version=None,
 ) -> bool:
     from embit import bip32
     from pgpy import PGPKey
@@ -5785,32 +5857,32 @@ def bip85_verify_existing(
             bits = MIN_RSA_KEY_BITS
         if bits < MIN_RSA_KEY_BITS:
             bits = MIN_RSA_KEY_BITS
-        rsa_main = bip85_rsa_from_root(root, bits, key_index)
+        rsa_main = bip85_rsa_from_root(root, bits, key_index, version=version)
         pk.keymaterial = rsa_to_privpacket(rsa_main)
     elif primary_curve == "secp256k1":
         pk.pkalg = PubKeyAlgorithm.ECDSA
-        pk.keymaterial = bip85_secp256k1_from_root(root, key_index)
+        pk.keymaterial = bip85_secp256k1_from_root(root, key_index, version=version)
     elif primary_curve == "nistp256":
         pk.pkalg = PubKeyAlgorithm.ECDSA
-        pk.keymaterial = bip85_p256_from_root(root, key_index)
+        pk.keymaterial = bip85_p256_from_root(root, key_index, version=version)
     elif primary_curve == "nistp384":
         pk.pkalg = PubKeyAlgorithm.ECDSA
-        pk.keymaterial = bip85_p384_from_root(root, key_index)
+        pk.keymaterial = bip85_p384_from_root(root, key_index, version=version)
     elif primary_curve == "nistp521":
         pk.pkalg = PubKeyAlgorithm.ECDSA
-        pk.keymaterial = bip85_p521_from_root(root, key_index)
+        pk.keymaterial = bip85_p521_from_root(root, key_index, version=version)
     elif primary_curve == "brainpoolp256r1":
         pk.pkalg = PubKeyAlgorithm.ECDSA
-        pk.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index)
+        pk.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index, version=version)
     elif primary_curve == "brainpoolp384r1":
         pk.pkalg = PubKeyAlgorithm.ECDSA
-        pk.keymaterial = bip85_brainpoolp384r1_from_root(root, key_index)
+        pk.keymaterial = bip85_brainpoolp384r1_from_root(root, key_index, version=version)
     elif primary_curve == "brainpoolp512r1":
         pk.pkalg = PubKeyAlgorithm.ECDSA
-        pk.keymaterial = bip85_brainpoolp512r1_from_root(root, key_index)
+        pk.keymaterial = bip85_brainpoolp512r1_from_root(root, key_index, version=version)
     elif primary_curve == "ed25519":
         pk.pkalg = PubKeyAlgorithm.EdDSA
-        pk.keymaterial = bip85_ed25519_from_root(root, key_index)
+        pk.keymaterial = bip85_ed25519_from_root(root, key_index, version=version)
     else:
         logger.warning(
             "Unsupported primary key params: algo=%s bits=%s curve=%s",
@@ -5840,36 +5912,36 @@ def bip85_verify_existing(
         bits = int(sk.get("bits", "0") or "0")
         if algo in ("1", "2", "3"):
             subpkt.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
-            rsa_sub = bip85_rsa_from_root(root, bits, group_idx, sub_index)
+            rsa_sub = bip85_rsa_from_root(root, bits, group_idx, sub_index, version=version)
             subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
         elif curve == "secp256k1":
             subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
             alg_name = "ECDH" if algo == "18" else "ECDSA"
-            subpkt.keymaterial = bip85_secp256k1_from_root(root, group_idx, sub_index, alg_name)
+            subpkt.keymaterial = bip85_secp256k1_from_root(root, group_idx, sub_index, alg_name, version=version)
         elif curve == "nistp256":
             subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
             alg_name = "ECDH" if algo == "18" else "ECDSA"
-            subpkt.keymaterial = bip85_p256_from_root(root, group_idx, sub_index, alg_name)
+            subpkt.keymaterial = bip85_p256_from_root(root, group_idx, sub_index, alg_name, version=version)
         elif curve == "nistp384":
             subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
             alg_name = "ECDH" if algo == "18" else "ECDSA"
-            subpkt.keymaterial = bip85_p384_from_root(root, group_idx, sub_index, alg_name)
+            subpkt.keymaterial = bip85_p384_from_root(root, group_idx, sub_index, alg_name, version=version)
         elif curve == "nistp521":
             subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
             alg_name = "ECDH" if algo == "18" else "ECDSA"
-            subpkt.keymaterial = bip85_p521_from_root(root, group_idx, sub_index, alg_name)
+            subpkt.keymaterial = bip85_p521_from_root(root, group_idx, sub_index, alg_name, version=version)
         elif curve == "brainpoolp256r1":
             subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
             alg_name = "ECDH" if algo == "18" else "ECDSA"
-            subpkt.keymaterial = bip85_brainpoolp256r1_from_root(root, group_idx, sub_index, alg_name)
+            subpkt.keymaterial = bip85_brainpoolp256r1_from_root(root, group_idx, sub_index, alg_name, version=version)
         elif curve == "brainpoolp384r1":
             subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
             alg_name = "ECDH" if algo == "18" else "ECDSA"
-            subpkt.keymaterial = bip85_brainpoolp384r1_from_root(root, group_idx, sub_index, alg_name)
+            subpkt.keymaterial = bip85_brainpoolp384r1_from_root(root, group_idx, sub_index, alg_name, version=version)
         elif curve == "brainpoolp512r1":
             subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
             alg_name = "ECDH" if algo == "18" else "ECDSA"
-            subpkt.keymaterial = bip85_brainpoolp512r1_from_root(root, group_idx, sub_index, alg_name)
+            subpkt.keymaterial = bip85_brainpoolp512r1_from_root(root, group_idx, sub_index, alg_name, version=version)
         elif curve == "cv25519":
             if algo != "18":
                 logger.warning(
@@ -5881,11 +5953,11 @@ def bip85_verify_existing(
                 )
                 return False
             subpkt.pkalg = PubKeyAlgorithm.ECDH
-            subpkt.keymaterial = bip85_ed25519_from_root(root, group_idx, sub_index, "ECDH")
+            subpkt.keymaterial = bip85_ed25519_from_root(root, group_idx, sub_index, "ECDH", version=version)
         elif curve == "ed25519":
             subpkt.pkalg = PubKeyAlgorithm.EdDSA if algo == "22" else PubKeyAlgorithm.ECDH
             alg_name = "EdDSA" if algo == "22" else "ECDH"
-            subpkt.keymaterial = bip85_ed25519_from_root(root, group_idx, sub_index, alg_name)
+            subpkt.keymaterial = bip85_ed25519_from_root(root, group_idx, sub_index, alg_name, version=version)
         else:
             logger.warning(
                 "Unsupported subkey params at idx=%s: algo=%s curve=%s bits=%s",
@@ -5915,7 +5987,7 @@ from typing import Optional, List, Dict
 
 
 def bip85_add_subkeys(
-    fingerprint: str, alg: str, key_index: int, start_index: int, seed
+    fingerprint: str, alg: str, key_index: int, start_index: int, seed, version=None
 ) -> Optional[List[Dict]]:
     from subprocess import run
     from embit import bip32
@@ -6001,23 +6073,23 @@ def bip85_add_subkeys(
         subpkt = PrivSubKeyV4()
         subpkt.pkalg = pkalg
         if alg_canon == "secp256k1":
-            subpkt.keymaterial = bip85_secp256k1_from_root(root, key_index, sub_index, alg_name[0])
+            subpkt.keymaterial = bip85_secp256k1_from_root(root, key_index, sub_index, alg_name[0], version=version)
         elif alg_canon == "nistp256":
-            subpkt.keymaterial = bip85_p256_from_root(root, key_index, sub_index, alg_name[0])
+            subpkt.keymaterial = bip85_p256_from_root(root, key_index, sub_index, alg_name[0], version=version)
         elif alg_canon == "nistp384":
-            subpkt.keymaterial = bip85_p384_from_root(root, key_index, sub_index, alg_name[0])
+            subpkt.keymaterial = bip85_p384_from_root(root, key_index, sub_index, alg_name[0], version=version)
         elif alg_canon == "nistp521":
-            subpkt.keymaterial = bip85_p521_from_root(root, key_index, sub_index, alg_name[0])
+            subpkt.keymaterial = bip85_p521_from_root(root, key_index, sub_index, alg_name[0], version=version)
         elif alg_canon == "brainpoolp256r1":
-            subpkt.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index, sub_index, alg_name[0])
+            subpkt.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index, sub_index, alg_name[0], version=version)
         elif alg_canon == "brainpoolp384r1":
-            subpkt.keymaterial = bip85_brainpoolp384r1_from_root(root, key_index, sub_index, alg_name[0])
+            subpkt.keymaterial = bip85_brainpoolp384r1_from_root(root, key_index, sub_index, alg_name[0], version=version)
         elif alg_canon == "brainpoolp512r1":
-            subpkt.keymaterial = bip85_brainpoolp512r1_from_root(root, key_index, sub_index, alg_name[0])
+            subpkt.keymaterial = bip85_brainpoolp512r1_from_root(root, key_index, sub_index, alg_name[0], version=version)
         elif alg_canon == "ed25519":
-            subpkt.keymaterial = bip85_ed25519_from_root(root, key_index, sub_index, alg_name[0])
+            subpkt.keymaterial = bip85_ed25519_from_root(root, key_index, sub_index, alg_name[0], version=version)
         else:
-            rsa_sub = bip85_rsa_from_root(root, KEY_BITS, key_index, sub_index)
+            rsa_sub = bip85_rsa_from_root(root, KEY_BITS, key_index, sub_index, version=version)
             subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
         subpkt.created = created
         subpkt.update_hlen()
@@ -6102,15 +6174,15 @@ def loose_add_subkeys(fingerprint: str, alg: str) -> bool:
     return r.returncode == 0
 
 def bip85_secp256k1_from_root(
-    root, index: int, sub_index: int | None = None, alg: str = "ECDSA"
+    root, index: int, sub_index: int | None = None, alg: str = "ECDSA", version=None
 ):
     from embit import bip85
     from seedsigner.helpers.ec_point import secp256k1_pub_xy
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
-    app, kt = _resolve_bip85_app_and_keytype(BIP85_GPG_KEY_TYPE_SECP256K1)
-    path = [kt, 256, index]
+    app, kt = _resolve_bip85_app_and_keytype(BIP85_GPG_KEY_TYPE_SECP256K1, version)
+    path = ([kt] if kt is not None else []) + [256, index]
     if sub_index is not None:
         path.append(sub_index)
     entropy = bip85.derive_entropy(root, app, path)
@@ -6141,15 +6213,15 @@ def bip85_secp256k1_from_root(
 
 
 def bip85_p256_from_root(
-    root, index: int, sub_index: int | None = None, alg: str = "ECDSA"
+    root, index: int, sub_index: int | None = None, alg: str = "ECDSA", version=None
 ):
     from embit import bip85
     from seedsigner.helpers.ec_point import nist_pub_xy
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
-    app, kt = _resolve_bip85_app_and_keytype(BIP85_GPG_KEY_TYPE_NIST)
-    path = [kt, 256, index]
+    app, kt = _resolve_bip85_app_and_keytype(BIP85_GPG_KEY_TYPE_NIST, version)
+    path = ([kt] if kt is not None else []) + [256, index]
     if sub_index is not None:
         path.append(sub_index)
     entropy = bip85.derive_entropy(root, app, path)
@@ -6183,15 +6255,15 @@ def bip85_p256_from_root(
 
 
 def bip85_brainpoolp256r1_from_root(
-    root, index: int, sub_index: int | None = None, alg: str = "ECDSA",
+    root, index: int, sub_index: int | None = None, alg: str = "ECDSA", version=None,
 ):
     from embit import bip85
     from seedsigner.helpers.ec_point import brainpool_pub_xy
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
-    app, kt = _resolve_bip85_app_and_keytype(BIP85_GPG_KEY_TYPE_BRAINPOOL)
-    path = [kt, 256, index]
+    app, kt = _resolve_bip85_app_and_keytype(BIP85_GPG_KEY_TYPE_BRAINPOOL, version)
+    path = ([kt] if kt is not None else []) + [256, index]
     if sub_index is not None:
         path.append(sub_index)
     entropy = bip85.derive_entropy(root, app, path)
@@ -6224,15 +6296,15 @@ def bip85_brainpoolp256r1_from_root(
 
 
 def bip85_p384_from_root(
-    root, index: int, sub_index: int | None = None, alg: str = "ECDSA"
+    root, index: int, sub_index: int | None = None, alg: str = "ECDSA", version=None
 ):
     from embit import bip85
     from seedsigner.helpers.ec_point import nist_pub_xy
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
-    app, kt = _resolve_bip85_app_and_keytype(BIP85_GPG_KEY_TYPE_NIST)
-    path = [kt, 384, index]
+    app, kt = _resolve_bip85_app_and_keytype(BIP85_GPG_KEY_TYPE_NIST, version)
+    path = ([kt] if kt is not None else []) + [384, index]
     if sub_index is not None:
         path.append(sub_index)
     entropy = bip85.derive_entropy(root, app, path)
@@ -6263,7 +6335,7 @@ def bip85_p384_from_root(
 
 
 def bip85_p521_from_root(
-    root, index: int, sub_index: int | None = None, alg: str = "ECDSA"
+    root, index: int, sub_index: int | None = None, alg: str = "ECDSA", version=None
 ):
     from embit import bip85
     from seedsigner.helpers.ec_point import nist_pub_xy
@@ -6271,8 +6343,8 @@ def bip85_p521_from_root(
     from pgpy.packet import fields
     from seedsigner.helpers.bip85_drng import BIP85DRNG
 
-    app, kt = _resolve_bip85_app_and_keytype(BIP85_GPG_KEY_TYPE_NIST)
-    path = [kt, 521, index]
+    app, kt = _resolve_bip85_app_and_keytype(BIP85_GPG_KEY_TYPE_NIST, version)
+    path = ([kt] if kt is not None else []) + [521, index]
     if sub_index is not None:
         path.append(sub_index)
     entropy = bip85.derive_entropy(root, app, path)
@@ -6306,15 +6378,15 @@ def bip85_p521_from_root(
 
 
 def bip85_brainpoolp384r1_from_root(
-    root, index: int, sub_index: int | None = None, alg: str = "ECDSA",
+    root, index: int, sub_index: int | None = None, alg: str = "ECDSA", version=None,
 ):
     from embit import bip85
     from seedsigner.helpers.ec_point import brainpool_pub_xy
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
-    app, kt = _resolve_bip85_app_and_keytype(BIP85_GPG_KEY_TYPE_BRAINPOOL)
-    path = [kt, 384, index]
+    app, kt = _resolve_bip85_app_and_keytype(BIP85_GPG_KEY_TYPE_BRAINPOOL, version)
+    path = ([kt] if kt is not None else []) + [384, index]
     if sub_index is not None:
         path.append(sub_index)
     entropy = bip85.derive_entropy(root, app, path)
@@ -6345,15 +6417,15 @@ def bip85_brainpoolp384r1_from_root(
 
 
 def bip85_brainpoolp512r1_from_root(
-    root, index: int, sub_index: int | None = None, alg: str = "ECDSA",
+    root, index: int, sub_index: int | None = None, alg: str = "ECDSA", version=None,
 ):
     from embit import bip85
     from seedsigner.helpers.ec_point import brainpool_pub_xy
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
-    app, kt = _resolve_bip85_app_and_keytype(BIP85_GPG_KEY_TYPE_BRAINPOOL)
-    path = [kt, 512, index]
+    app, kt = _resolve_bip85_app_and_keytype(BIP85_GPG_KEY_TYPE_BRAINPOOL, version)
+    path = ([kt] if kt is not None else []) + [512, index]
     if sub_index is not None:
         path.append(sub_index)
     entropy = bip85.derive_entropy(root, app, path)
@@ -6734,6 +6806,7 @@ class ToolsGPGLoadBIP85KeyView(View):
                 "index": key_index,
                 "key_type": key_type_label,
                 "ss_version": self.controller.VERSION,
+                "bip85_version": _bip85_version_from_ss_version(self.controller.VERSION),
                 "uids": [uid_str],
                 "primary_uid": uid_str,
                 "subkeys": subkey_info_list,
@@ -6816,6 +6889,7 @@ class ToolsGPGAddSubkeysView(View):
         created_ts = keys[selected]["created"]
         entry = BIP85_DATA.get(fingerprint)
         bip85 = entry is not None
+        bip85_version = entry.get("bip85_version") if entry else None
         fingerprint_suffix = fingerprint[-4:] if isinstance(fingerprint, str) and len(fingerprint) >= 4 else fingerprint
         logger.debug(
             "AddSubkeysView: fpr_suffix=%s bip85=%s start_index=%s",
@@ -6866,6 +6940,7 @@ class ToolsGPGAddSubkeysView(View):
                 primary_bits,
                 primary_curve,
                 subkeys,
+                bip85_version,
             ):
                 logger.debug(
                     "Selected seed/index failed validation (base_index=%s)",
@@ -6882,6 +6957,7 @@ class ToolsGPGAddSubkeysView(View):
                         primary_bits,
                         primary_curve,
                         subkeys,
+                        bip85_version,
                     ):
                         corrected = i
                         break
@@ -6945,7 +7021,7 @@ class ToolsGPGAddSubkeysView(View):
         try:
             if bip85:
                 added_info = bip85_add_subkeys(
-                    fingerprint, alg, key_index, start_index, seed
+                    fingerprint, alg, key_index, start_index, seed, bip85_version
                 )
                 success = added_info is not None
             elif alg.startswith("rsa"):

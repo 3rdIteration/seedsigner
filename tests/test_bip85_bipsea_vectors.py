@@ -37,9 +37,8 @@ and incremented by 1.
 =================  =======  ===========  ==============  =============
 Key type           Entropy  Private key  OpenSSL pubkey  PGP fingerprint
 =================  =======  ===========  ==============  =============
-RSA-1024           ✓        ✓            ✓ (cross-sign)  ✓ (bipsea)
-RSA-2048           ✓        ✓            ✓ (cross-sign)  ✓ (bipsea)
-RSA-4096           ✓        ✓            ✓ (cross-sign)  ✓ (bipsea)
+RSA-2048           ✓        ✓            ✓ (cross-sign)  ✓ (PyCryptodome)
+RSA-4096           ✓        ✓            ✓ (cross-sign)  ✓ (PyCryptodome)
 Curve25519 (256)   ✓        ✓            ✓               ✓ (bipsea)
 secp256k1 (256)    ✓        ✓            ✓               ✓ (bipsea)
 NIST P-256         ✓        ✓            ✓               ✓ (bipsea)
@@ -67,7 +66,6 @@ from seedsigner.views.tools_views import (
     BIP85_GPG_CREATED_TS,
     BIP85_GPG_APP,
     BIP85_GPG_ECC_APP,
-    BIP85_GPG_KEY_TYPE_RSA,
     BIP85_GPG_KEY_TYPE_CURVE25519,
     BIP85_GPG_KEY_TYPE_SECP256K1,
     BIP85_GPG_KEY_TYPE_NIST,
@@ -100,10 +98,10 @@ MASTER_XPRV = (
 # This is deterministic and implementation-agnostic (no library differences).
 
 RSA_ENTROPY_VECTORS = [
-    # (key_type, key_bits, expected_entropy_hex) - uses BIP85_GPG_APP (828365')
-    (BIP85_GPG_KEY_TYPE_RSA, 1024, "2b9380df43421f46b5c38e13ea80612ff53488bc5d272e86d493ee1eecf738bb7b50e4978b7352f95772f1211483b0e6bba86c544a946b10d76ed493b8c2e01f"),
-    (BIP85_GPG_KEY_TYPE_RSA, 2048, "98c4fb6d76f203e8828bdfd28416edca7a83a9b203901f7ad31f056cda8b3c25b19e5fd2aa642ca0abb9ed8bebf3d141af6c76b28a19eba624bdc6f8a76ce138"),
-    (BIP85_GPG_KEY_TYPE_RSA, 4096, "2d2ef3335dc51e7a0642bfe86fba0bb4e8401b703d8d679bb1a31d75f8a81f1fd52b20b2eae50ef6e0378b8755f4f0426c68b54f11edc0c848e017e81bb2ad87"),
+    # (key_bits, expected_entropy_hex) - uses BIP85_GPG_APP (828365') with the
+    # BIP85-spec RSA path [key_bits, index] (v4, back in line with B8).
+    (2048, "e3ff02b1f0b934357cc0952225bb0e90081005b0cc992c5ed22f6fb8e9c628a3a0f138f9324e33ed4ba7250e43dd66d725a4e4c683dcf5a3b4015b82bcf71934"),
+    (4096, "12a499947a142ee3ede9c0960061383f2564b5cc569327d0dd22f7887094676f2e5d5785cd4eb683990d12209ebf6f39a5c1b5e217ea66710260e99fbe4b2be3"),
 ]
 
 ECC_ENTROPY_VECTORS = [
@@ -120,14 +118,14 @@ ECC_ENTROPY_VECTORS = [
 
 
 def test_bipsea_rsa_entropy_vectors():
-    """RSA GPG entropy derivation values match bipsea test vectors."""
+    """RSA GPG entropy derivation values use the BIP85-spec RSA path."""
     root = bip32.HDKey.from_string(MASTER_XPRV)
-    for key_type, key_bits, expected in RSA_ENTROPY_VECTORS:
+    for key_bits, expected in RSA_ENTROPY_VECTORS:
         entropy = bip85.derive_entropy(
-            root, BIP85_GPG_APP, [key_type, key_bits, 0]
+            root, BIP85_GPG_APP, [key_bits, 0]
         )
         assert entropy.hex() == expected, (
-            f"RSA entropy mismatch for type={key_type} bits={key_bits}"
+            f"RSA entropy mismatch for bits={key_bits}"
         )
 
 
@@ -243,7 +241,7 @@ def test_openssl_cross_validates_ed25519_public_key():
     assert pgpy_pub == ref_pub
 
 
-@pytest.mark.parametrize("bits", [1024, 2048, 3072, 4096], ids=["RSA-1024", "RSA-2048", "RSA-3072", "RSA-4096"])
+@pytest.mark.parametrize("bits", [2048, 3072, 4096], ids=["RSA-2048", "RSA-3072", "RSA-4096"])
 def test_openssl_cross_validates_rsa_key(bits):
     """PyCryptodome RSA key self-signs and cross-verifies correctly."""
     from Cryptodome.Signature import pkcs1_15
@@ -392,12 +390,12 @@ def _build_rsa_pgp_key(root, bits, index=0):
     ids=["RSA-2048", "RSA-4096"],
 )
 def test_bipsea_rsa_gpg_fingerprint(bits):
-    """RSA GPG key fingerprints match updated bipsea test vectors.
+    """RSA GPG key fingerprints match the BIP85-spec (v4) reference values.
 
-    As of bipsea commit d8f8d9075a, bipsea uses PyCryptodome for RSA
-    generation, so all RSA fingerprints now match between implementations.
-
-    RSA-1024 is tested separately since seedsigner enforces MIN_RSA_KEY_BITS=2048.
+    PyCryptodome generates the RSA key deterministically from the spec-path
+    entropy, so the fingerprints are the canonical cross-implementation values.
+    The bipsea fork still uses a ``{key_type}'`` discriminator in its RSA
+    derivation path, so its RSA fingerprints are no longer comparable to ours.
     """
     root = bip32.HDKey.from_string(MASTER_XPRV)
     pgp_key = _build_rsa_pgp_key(root, bits)
@@ -405,84 +403,24 @@ def test_bipsea_rsa_gpg_fingerprint(bits):
     assert actual == BIPSEA_RSA_FINGERPRINTS[bits]
 
 
-def test_bipsea_rsa1024_fingerprint_direct():
-    """RSA-1024 bipsea fingerprint validated via PyCryptodome directly.
-
-    SeedSigner enforces MIN_RSA_KEY_BITS=2048, so we can't use
-    bip85_rsa_from_root for 1024.  Instead we generate the key
-    directly with PyCryptodome from the BIP85-derived entropy.
-    """
-    from Cryptodome.PublicKey import RSA
-    from pgpy import PGPKey, PGPUID
-    from pgpy.pgp import PrivKeyV4
-    from pgpy.constants import (
-        PubKeyAlgorithm,
-        KeyFlags,
-        HashAlgorithm,
-        SymmetricKeyAlgorithm,
-        CompressionAlgorithm,
-    )
-    from pgpy.packet import fields
-    from pgpy.packet.types import MPI
-
-    root = bip32.HDKey.from_string(MASTER_XPRV)
-    entropy = bip85.derive_entropy(
-        root, BIP85_GPG_APP, [BIP85_GPG_KEY_TYPE_RSA, 1024, 0]
-    )
-    drng = BIP85DRNG.new(entropy)
-    rsa_key = RSA.generate(1024, randfunc=drng.read)
-
-    km = fields.RSAPriv()
-    km.n = MPI(rsa_key.n)
-    km.e = MPI(rsa_key.e)
-    km.d = MPI(rsa_key.d)
-    km.p = MPI(rsa_key.p)
-    km.q = MPI(rsa_key.q)
-    km.u = MPI(pow(rsa_key.p, -1, rsa_key.q))  # CRT coefficient u = p^(-1) mod q
-
-    created = datetime.datetime.fromtimestamp(
-        BIP85_GPG_CREATED_TS, tz=datetime.timezone.utc
-    )
-    pk = PrivKeyV4()
-    pk.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
-    pk.keymaterial = km
-    pk.created = created
-    pk.update_hlen()
-
-    # Direct _key assignment required: pgpy has no public API for
-    # constructing a PGPKey from raw key material fields.
-    pgp_key = PGPKey()
-    pgp_key._key = pk
-    uid = PGPUID.new("BIP85")
-    pgp_key.add_uid(
-        uid,
-        usage={KeyFlags.Certify, KeyFlags.Sign},
-        hashes=[HashAlgorithm.SHA256],
-        ciphers=[SymmetricKeyAlgorithm.AES256],
-        compression=[CompressionAlgorithm.ZLIB],
-        created=created,
-    )
-
-    actual = str(pgp_key.fingerprint).replace(" ", "")
-    assert actual == BIPSEA_RSA_FINGERPRINTS[1024]
-
-
-# ── RSA fingerprint vectors (all sizes now match bipsea) ─────────────────────
-# PyCryptodome (FIPS 186-4) fingerprints.  As of bipsea commit d8f8d9075a,
-# bipsea uses PyCryptodome for RSA generation so all vectors match.
+# ── RSA fingerprint vectors ──────────────────────────────────────────────────
+# PyCryptodome (FIPS 186-4) fingerprints for the BIP85-spec (v4) RSA path
+# m/83696968'/828365'/{bits}'/{index}'.  These are the canonical reference.
+# Note: the bipsea fork still uses the legacy ``{key_type}'`` discriminator in
+# its RSA path, so bipsea's RSA fingerprints are no longer comparable to ours
+# (which now follow the published BIP85 path).  RSA validation therefore
+# rests on PyCryptodome directly.
 
 BIPSEA_RSA_FINGERPRINTS = {
-    1024: "874A39644ED0255DEEC18E0E1E6388649672CF70",
-    2048: "99879DF6D21E34C8A086A4BD8B448E5BC298294A",
-    4096: "24C25A48383E117546871767D9A05CA64F2F6A85",
+    2048: "08E699DF46930585D4AB8A16BF0C839D23676360",
+    4096: "9148089D2080DF384C05726EA26BB7140A1B13FF",
 }
 
 # Internal reference including 3072 (not in bipsea vectors but validated)
 PYCRYPTODOME_RSA_FINGERPRINTS = {
-    1024: "874A39644ED0255DEEC18E0E1E6388649672CF70",
-    2048: "99879DF6D21E34C8A086A4BD8B448E5BC298294A",
-    3072: "5871B1143CE5724B381499ABA371306954371056",
-    4096: "24C25A48383E117546871767D9A05CA64F2F6A85",
+    2048: "08E699DF46930585D4AB8A16BF0C839D23676360",
+    3072: "B24263BC646F34EE10CCF75A962E123B8CB8654C",
+    4096: "9148089D2080DF384C05726EA26BB7140A1B13FF",
 }
 
 
@@ -496,15 +434,14 @@ def test_pycryptodome_rsa_fingerprint(bits):
 
 
 def test_rsa_implementations_now_agree():
-    """RSA 2048/4096: bipsea and PyCryptodome produce identical fingerprints.
+    """RSA 2048/4096: PyCryptodome produces the canonical, self-consistent
+    fingerprints for the BIP85-spec RSA path.
 
-    As of bipsea commit d8f8d9075a, the reference implementation uses
-    PyCryptodome for RSA generation (FIPS 186-4 random MR witnesses).
-    This resolves the previous divergence where bipsea's pure-Python
-    ``_is_prime()`` used fixed small-prime witnesses that consumed NO
-    DRNG bytes, producing different primes for RSA-4096.
-
-    RSA-1024 is validated separately (seedsigner enforces MIN_RSA_KEY_BITS=2048).
+    PyCryptodome (FIPS 186-4 random MR witnesses) is the reference algorithm
+    implied by the BIP85 spec's example ``RSA.generate_key(4096, drng_reader.read)``.
+    The bipsea fork still embeds a ``{key_type}'`` discriminator in its RSA
+    derivation path, so its RSA fingerprints are no longer comparable — our
+    RSA now follows the published BIP85 path (matching B8).
     """
     root = bip32.HDKey.from_string(MASTER_XPRV)
     for bits in (2048, 4096):
@@ -512,10 +449,10 @@ def test_rsa_implementations_now_agree():
         pgp_key = _build_rsa_pgp_key(root, bits)
         actual = str(pgp_key.fingerprint).replace(" ", "")
         assert actual == expected_fp, (
-            f"RSA-{bits} fingerprint should match bipsea/PyCryptodome"
+            f"RSA-{bits} fingerprint should match the spec-path reference"
         )
         assert actual == PYCRYPTODOME_RSA_FINGERPRINTS[bits], (
-            f"RSA-{bits} bipsea vector should equal PyCryptodome reference"
+            f"RSA-{bits} reference should equal PyCryptodome output"
         )
 
 
@@ -530,7 +467,7 @@ def test_rsa2048_primes_from_pycryptodome():
 
     root = bip32.HDKey.from_string(MASTER_XPRV)
     entropy = bip85.derive_entropy(
-        root, BIP85_GPG_APP, [BIP85_GPG_KEY_TYPE_RSA, 2048, 0]
+        root, BIP85_GPG_APP, [2048, 0]
     )
 
     # Generate twice with same entropy — must produce identical keys
