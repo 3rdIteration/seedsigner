@@ -2556,9 +2556,14 @@ class ToolsSeedkeeperSaveDescriptorView(View):
             for secret_id, secret_label in multisig_descriptor_secrets:
                 secret_dict = Satochip_Connector.seedkeeper_export_secret(secret_id, None)
 
-                secret_dict['secret'] = unhexlify(secret_dict['secret'])[1:].decode()
+                # V2 "Descriptor" secrets are stored with a 2-byte length prefix,
+                # while V1 "Password"-style secrets use a 1-byte prefix. The shared
+                # decode helper tries the 2-byte form first, then 1-byte, then raw,
+                # so re-reading an existing V2 Descriptor no longer trips a utf-8
+                # decode error (we were stripping only one byte with [1:]).
+                multisig_descriptor_templates.append(_decode_seedkeeper_text(secret_dict))
 
-                multisig_descriptor_templates.append(secret_dict['secret'])
+                logger.debug("Decoded existing descriptor template")
 
             logger.debug("Loaded %d multisig descriptor templates from Seedkeeper", len(multisig_descriptor_templates))
 
