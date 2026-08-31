@@ -51,10 +51,12 @@ class TestRealScreenFlows(FlowTest):
 
         from seedsigner.hardware.buttons import HardwareButtonsConstants as K
         from seedsigner.views.tools_views import BIP85_DATA
+        from test_gpg_message import _msys2_path
 
         gnupghome = tmp_path / "gnupg"
         gnupghome.mkdir()  # gpg won't create its own homedir
-        monkeypatch.setenv("GNUPGHOME", str(gnupghome))
+        # Git-for-Windows' MSYS2 gpg (Windows CI) needs POSIX-style paths; native GPG keeps C:\...
+        monkeypatch.setenv("GNUPGHOME", _msys2_path(str(gnupghome)))
 
         self.controller.storage.seeds = [Seed(mnemonic=MNEMONIC)]
 
@@ -91,7 +93,7 @@ class TestRealScreenFlows(FlowTest):
             assert len(session.renderer.frames) > 0
 
             # The derived key really exists in the isolated GPG keyring with our UID
-            env = dict(os.environ, GNUPGHOME=str(gnupghome))
+            env = dict(os.environ, GNUPGHOME=_msys2_path(str(gnupghome)))
             listed = subprocess.run(
                 ["gpg", "--batch", "--with-colons", "--list-secret-keys"],
                 capture_output=True, text=True, env=env,
@@ -121,10 +123,12 @@ class TestRealScreenFlows(FlowTest):
             pytest.skip("gpg binary and/or pgpy not available")
 
         from seedsigner.hardware.buttons import HardwareButtonsConstants as K
+        from test_gpg_message import _msys2_path
 
         gnupghome = tmp_path / "gnupg"
         gnupghome.mkdir()  # gpg won't create its own homedir
-        monkeypatch.setenv("GNUPGHOME", str(gnupghome))
+        # Git-for-Windows' MSYS2 gpg (Windows CI) needs POSIX-style paths; native GPG keeps C:\...
+        monkeypatch.setenv("GNUPGHOME", _msys2_path(str(gnupghome)))
 
         name_script = plan_text_entry_script(ToolsTextQRTextEntryScreen, "Alice", title="Name")
         email_script = plan_text_entry_script(ToolsTextQRTextEntryScreen, "alice@example.com", title="Email")
@@ -152,7 +156,7 @@ class TestRealScreenFlows(FlowTest):
 
         assert len(session.renderer.frames) > 0
 
-        env = dict(os.environ, GNUPGHOME=str(gnupghome))
+        env = dict(os.environ, GNUPGHOME=_msys2_path(str(gnupghome)))
         listed = subprocess.run(
             ["gpg", "--batch", "--with-colons", "--list-secret-keys"],
             capture_output=True, text=True, env=env,
