@@ -872,6 +872,38 @@ class TestSeedKeeper:
         assert "DEK" in parsed
         connector.seedkeeper_reset_secret(sid)
 
+    def test_import_export_descriptor(self):
+        """Round-trip a V2 "Descriptor" secret (type 0xC1, 2-byte length prefix).
+
+        Mirrors ToolsSeedkeeperSaveDescriptorView / ToolsSeedkeeperLoadDescriptorView:
+        the Save view stores descriptors with a 2-byte big-endian length prefix and
+        the Load view decodes it with the shared ``_decode_seedkeeper_text`` helper.
+        This guards the #416 regression where re-reading the stored descriptor
+        crashed with ``'utf-8' codec can't decode byte 0xc0`` (the read-back used a
+        1-byte strip for a 2-byte-prefixed secret).
+
+        Skipped when the installed pysatochip/applet does not expose the Descriptor
+        secret type (0xC1), e.g. the vanilla PyPI ``pysatochip==0.17.0``.
+        """
+        payload = b"wsh(sortedmulti(2,aabbccddeeff00112233445566778899))"
+        connector = self._connect()
+        header = connector.make_header("Descriptor", "Plaintext export allowed", "test_descriptor")
+        secret_list = list(len(payload).to_bytes(2, "big")) + list(payload)
+        try:
+            (sid, _) = connector.seedkeeper_import_secret({
+                "header": header,
+                "secret_list": secret_list,
+            })
+        except Exception as exc:
+            pytest.skip(f"installed pysatochip/applet does not support Descriptor (0xC1): {exc}")
+
+        try:
+            exported = connector.seedkeeper_export_secret(sid, None)
+            decoded = _decode_seedkeeper_text(exported["secret"])
+            assert decoded == payload.decode("utf-8")
+        finally:
+            connector.seedkeeper_reset_secret(sid)
+
     def test_change_pin(self):
         connector = self._connect()
         old_pin = list("1234".encode("utf-8"))

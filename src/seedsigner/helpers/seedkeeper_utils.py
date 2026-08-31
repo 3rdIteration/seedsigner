@@ -4,6 +4,7 @@ from pysatochip.JCconstants import (
     SEEDKEEPER_DIC_ORIGIN,
     SEEDKEEPER_DIC_EXPORT_RIGHTS,
 )
+from pysatochip.CardConnector import UnexpectedSW12Error
 from seedsigner.gui.screens import (
     RET_CODE__BACK_BUTTON,
     ButtonListScreen,
@@ -191,12 +192,30 @@ def ensure_seedkeeper_capacity(connector, secret_dic: dict, free_memory: int | N
     ``free_memory`` is ``None`` the helper will query the Seedkeeper for the
     latest free space value, otherwise the supplied ``free_memory`` will be used
     for the comparison.
+
+    Some (older DIY) Seedkeeper applets do not implement the seedkeeper status
+    command (INS 0xA7) and answer 0x6D00 ("instruction not supported") instead of
+    reporting free space.  In that case capacity cannot be pre-checked, so treat
+    the import as fitting and let the card surface its own out-of-memory error
+    (0x9C01) during the actual import, rather than blocking every write.
     """
 
     required_bytes = calculate_seedkeeper_secret_size(secret_dic)
     available_bytes = free_memory
     if available_bytes is None:
-        available_bytes = get_seedkeeper_free_memory(connector)
+        try:
+            available_bytes = get_seedkeeper_free_memory(connector)
+        except UnexpectedSW12Error:
+            logger.warning(
+                "Seedkeeper does not support status (0x6D00); "
+                "skipping capacity pre-check"
+            )
+            available_bytes = None
+
+    if available_bytes is None:
+        # Capacity cannot be determined (0x6D00); assume it fits so the write
+        # proceeds and the card can reject it with its own memory error.
+        return True, required_bytes, None
 
     return required_bytes <= available_bytes, required_bytes, available_bytes
 
