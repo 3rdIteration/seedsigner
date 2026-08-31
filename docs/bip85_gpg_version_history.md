@@ -11,7 +11,8 @@ several versions as the spec and available hardware matured.
 | v0 | Aug 31 – Sep 14, 2025 | *(development only, no release)* | Initial implementation; all keys use app 828365 |
 | v1 | Sep 15, 2025 – Mar 8, 2026 | `SS0.8.6+Satochip+Earthdiver-B4` … `SeSi-0.8.6+ShSi-B8` | Separate BIP85 app per curve |
 | v2 | Mar 9, 2026 – Jun 2026 | `SeSi-0.8.6+ShSi-B9`, `SeSi-0.8.6+ShSi-B10` | Unified app 828365 with `key_type` codes |
-| v3 | Jun 2026+ (planned) | *(B11-TestingFixes branch, unreleased)* | Split RSA (828365) and ECC (828366) apps |
+| v3 | Jun 2026+ | `SeSi-0.8.7+ShSi-B11`, `SeSi-0.8.7+ShSi-B12` | Split RSA (828365) and ECC (828366) apps |
+| v4 | B13+ | `SeSi-0.8.7+ShSi-B13`+ | RSA spec path (`m/83696968'/828365'/{bits}'/{index}'`) |
 
 ## Detailed per-version description
 
@@ -67,7 +68,7 @@ Added P-384, P-521, Brainpool P-384, Brainpool P-512.
 - **Curves**: RSA, Curve25519, secp256k1, NIST (P-256/P-384/P-521), Brainpool (P-256/P-384/P-512)
 - **Tags**: `SeSi-0.8.6+ShSi-B9`, `SeSi-0.8.6+ShSi-B10`
 
-### v3 (B11-TestingFixes branch — unreleased)
+### v3 (B11-B12)
 
 **Breaking change for ECC keys only.** RSA key derivation is identical to v2.
 
@@ -96,25 +97,61 @@ least-used curve (Brainpool) occupies code 0, reducing migration friction.
 - **RSA key type code**: 0 (unchanged from v2)
 - **Curves**: Same as v2
 
+### v4 (B13+)
+
+**Restores the BIP85-spec RSA derivation path** (`m/83696968'/828365'/{bits}'/{index}'`,
+back in line with the B8 scheme). The leftover `0'` RSA `key_type` discriminator
+introduced in v2/v3 is dropped. **ECC derivation is unchanged from v3.**
+
+- **Apps**: unchanged from v3 (`828365'` RSA, `828366'` ECC)
+- **Path format**:
+  - RSA: `m/83696968'/828365'/{bits}'/{index}'[/{sub_index}']`
+  - ECC: `m/83696968'/828366'/{key_type}'/{key_bits}'/{index}'[/{sub_index}']`
+- **ECC key type codes**: unchanged from v3 (1=C25519, 2=secp256k1, 3=NIST, 0=Brainpool)
+- **RSA key type code**: removed from the path
+
+> **RSA warning:** B9–B12 firmware derived RSA GPG keys with the extra `0'`
+> discriminator. Those keys are no longer re-derivable with the v4 default
+> path. When restoring from BIP85 metadata saved by B9–B12 firmware, the
+> device automatically selects the matching v2/v3 scheme from the saved
+> `ss_version` (see the metadata auto-select notes below).
+
+## Metadata auto-select
+
+When BIP85 metadata is imported or loaded, SeedSigner resolves each key's
+deriving scheme from the `ss_version` field (the firmware that created the
+key) and stores it as `bip85_version` on the in-memory entry. Rebuild /
+verify / add-subkeys then use that per-key scheme instead of the global
+`SETTING__BIP85_GPG_VERSION` setting, so old keys are restored correctly even
+under newer firmware. The mapping is:
+
+- `B4`–`B8`   -> v1
+- `B9`–`B10`  -> v2
+- `B11`–`B12` -> v3
+- `B13`+      -> v4 (latest)
+
+The manual `SETTING__BIP85_GPG_VERSION` setting still governs brand-new key
+generation and is the default when metadata provides no `ss_version`.
+
 ## Summary table
 
 ```
-           v0 (dev)         v1 (B4-B8)        v2 (B9-B10)       v3 (B11)
-         ────────────────────────────────────────────────────────────────
-App      828365'           828365'-828369'    828365'            828365' (RSA)
-                                                                 828366' (ECC)
+           v0 (dev)         v1 (B4-B8)        v2 (B9-B10)       v3 (B11-B12)      v4 (B13+)
+         ─────────────────────────────────────────────────────────────────────────────────
+App      828365'           828365'-828369'    828365'            828365' (RSA)      828365' (RSA)
+                                                                  828366' (ECC)      828366' (ECC)
 
-Path     [param, idx]      [256, idx] (ECC)   [kt, bits, idx]   [kt, bits, idx]
-                           [bits, idx] (RSA)
+Path     [param, idx]      [256, idx] (ECC)   [kt, bits, idx]   [kt, bits, idx]   [bits, idx] (RSA)
+                           [bits, idx] (RSA)                                       [kt, bits, idx] (ECC)
 
-ECC kt   N/A               N/A                1=C25519          1=C25519
-                                              2=secp256k1       2=secp256k1
-                                              3=NIST            3=NIST
-                                              4=Brainpool       0=Brainpool
+ECC kt   N/A               N/A                1=C25519          1=C25519           1=C25519
+                                              2=secp256k1       2=secp256k1        2=secp256k1
+                                              3=NIST            3=NIST             3=NIST
+                                              4=Brainpool       0=Brainpool        0=Brainpool
 
-RSA kt   N/A               N/A                0                 0
+RSA kt   N/A               N/A                0                 0                 (dropped)
 
-P-384/   ✗                 ✗                  ✓                 ✓
+P-384/   ✗                 ✗                  ✓                 ✓                  ✓
 P-521
 
 Brainpool ✗                P-256 only          ✓                 ✓
@@ -126,7 +163,10 @@ Brainpool ✗                P-256 only          ✓                 ✓
   The compatible bipsea test vectors were generated starting from v1.
 - **v2 → v3 is a breaking change for ECC keys** — the app number changed
   from `828365'` to `828366'` and key_type codes were remapped. RSA keys
-  are unaffected.
+  were unaffected (still `[0, bits, idx]`).
+- **v3 → v4 is a breaking change for RSA keys** — the `0'` RSA key_type
+  discriminator is dropped, restoring the BIP85-spec path `[bits, idx]`.
+  ECC keys are unaffected. Restored via the metadata auto-select feature.
 - **Upstream SeedSigner (v0.8.7)** does **not** contain any GPG support.
   All versions described above are on the
   [3rdIteration](https://github.com/3rdIteration/SeedSigner) fork.

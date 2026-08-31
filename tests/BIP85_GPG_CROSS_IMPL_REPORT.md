@@ -6,13 +6,16 @@ SeedSigner's BIP85 GPG implementation was validated against the bipsea reference
 test vectors (commit `d8f8d9075a7ed6677c3be993f67c5d79e4bd63e1`), OpenSSL (via
 python-cryptography), and PyCryptodome (FIPS 186-4).
 
-**All vectors now match.** RSA vectors were updated in bipsea to use PyCryptodome
-for generation. The P-521 scalar derivation was fixed in SeedSigner to use bit
-masking (matching bipsea's reference implementation) instead of modular reduction.
+**All vectors now match.** The ECC scalar/P-521 derivations and fingerprints
+match bipsea. **RSA** uses the BIP85-spec derivation path
+(`m/83696968'/828365'/{bits}'/{index}'`, no `0'` key_type element) and is
+validated against PyCryptodome directly — the bipsea fork still embeds the legacy
+`0'` discriminator in its RSA path, so bipsea's RSA fingerprints are no longer
+comparable to ours.
 
 ---
 
-## RSA: ✓ RESOLVED — All vectors match
+## RSA: ✓ RESOLVED — PyCryptodome spec-path vectors
 
 ### Background
 
@@ -24,16 +27,19 @@ PyCryptodome's FIPS 186-4 implementation (which uses random witnesses from the D
 ### Resolution
 
 As of bipsea commit `d8f8d9075a`, the reference implementation uses PyCryptodome's
-`RSA.generate(key_bits, randfunc=drng.read)` for RSA generation. All RSA test
-vectors have been regenerated and now match PyCryptodome exactly.
+`RSA.generate(key_bits, randfunc=drng.read)` for RSA generation. SeedSigner likewise
+uses PyCryptodome, and its RSA derivation follows the **BIP85-spec path** (v4):
+`m/83696968'/828365'/{bits}'/{index}'`. The bipsea fork appends a `0'` RSA
+`key_type` discriminator to its path, so its RSA fingerprints diverge from ours;
+RSA validation here therefore rests on PyCryptodome as the canonical reference.
 
-### Validated RSA fingerprints
+### Validated RSA fingerprints (BIP85-spec path)
 
-| Key size | Fingerprint | bipsea | PyCryptodome | OpenSSL cross-sign |
-|----------|-------------|--------|--------------|-------------------|
-| RSA-1024 | `874A 3964 4ED0 255D EEC1 8E0E 1E63 8864 9672 CF70` | ✓ | ✓ | ✓ |
-| RSA-2048 | `9987 9DF6 D21E 34C8 A086 A4BD 8B44 8E5B C298 294A` | ✓ | ✓ | ✓ |
-| RSA-4096 | `24C2 5A48 383E 1175 4687 1767 D9A0 5CA6 4F2F 6A85` | ✓ | ✓ | ✓ |
+| Key size | Fingerprint | PyCryptodome | OpenSSL cross-sign |
+|----------|-------------|--------------|-------------------|
+| RSA-2048 | `08E6 99DF 4693 0585 D4AB 8A16 BF0C 839D 2367 6360` | ✓ | ✓ |
+| RSA-3072 | `B242 63BC 646F 34EE 10CC F75A 962E 123B 8CB8 654C` | ✓ | ✓ |
+| RSA-4096 | `9148 089D 2080 DF38 4C05 726E A26B B714 0A1B 13FF` | ✓ | ✓ |
 
 ---
 
@@ -103,9 +109,8 @@ requirements.
 
 All key types were cross-validated against **three independent implementations**:
 
-| Key type | Entropy | Private key | OpenSSL pubkey | OpenSSL sign/verify | PGP fingerprint (bipsea) |
-|----------|---------|-------------|----------------|---------------------|--------------------------|
-| RSA-1024 | ✓ | ✓ | ✓ (cross-sign) | ✓ | ✓ |
+| Key type | Entropy | Private key | OpenSSL pubkey | OpenSSL sign/verify | PGP fingerprint (PyCryptodome/spec) |
+|----------|---------|-------------|----------------|---------------------|------------------------------------|
 | RSA-2048 | ✓ | ✓ | ✓ (cross-sign) | ✓ | ✓ |
 | RSA-4096 | ✓ | ✓ | ✓ (cross-sign) | ✓ | ✓ |
 | Curve25519 (Ed25519) | ✓ | ✓ | ✓ | ✓ | ✓ |

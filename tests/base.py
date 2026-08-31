@@ -1,4 +1,5 @@
 import sys
+from contextlib import ExitStack
 from dataclasses import dataclass
 from unittest.mock import MagicMock, Mock, patch
 from typing import Callable
@@ -232,16 +233,25 @@ class FlowStep:
         * screen_return_value:   mocked Screen interaction result: raw return value as if from the Screen.
         * button_data_selection: mocked Screen interaction result: the View.button_data value of the desired option.
         * is_redirect:           expects the Destination to specify `skip_current_view=True`.
+        * real_screens:          run the View's real Screens (requires a ui_session on run_sequence);
+                                 user input comes from the session's button script instead of the mocked
+                                 screen_return_value/button_data_selection.
     """
     expected_view: type[View] = None
     before_run: Callable[[View], None] = None
     screen_return_value: int | str = None
     button_data_selection: str | tuple = None
     is_redirect: bool = False
+    real_screens: bool = False
 
     def __post_init__(self):
         if self.screen_return_value is not None and self.button_data_selection is not None:
             raise Exception("Can't specify both `screen_return_value` and `button_data_selection`")
+        if self.real_screens and (self.screen_return_value is not None or self.button_data_selection is not None):
+            raise Exception(
+                "Can't specify screen_return_value/button_data_selection with real_screens=True; "
+                "the real Screens consume the UISession's button script instead"
+            )
 
 
 
@@ -281,11 +291,27 @@ class FlowTest(BaseTest):
         raise StopFlowBasedTest()
 
 
-    def run_sequence(self, sequence: list[FlowStep], initial_destination_view_args: dict = None) -> None:
+    def run_sequence(self, sequence: list[FlowStep], initial_destination_view_args: dict = None, ui_session=None) -> None:
         """
         Run a pre-set sequence of Views w/manually-specified return values in order to test
         the Controller's flow control logic and the routing from View to View.
+
+        Pass `ui_session` (a tests.ui_driver.UISession) to run steps marked
+        real_screens=True against real Screens: their user input is consumed from the
+        session's button script, and every rendered frame is recorded on
+        session.renderer.frames for assertions.
         """
+        # Capture before patching below so real_screens steps can restore it
+        real_run_screen = View.run_screen
+
+        with ExitStack() as stack:
+            if ui_session is not None:
+                stack.enter_context(ui_session)
+
+            self._run_sequence(sequence, initial_destination_view_args, real_run_screen)
+
+
+    def _run_sequence(self, sequence: list[FlowStep], initial_destination_view_args: dict, real_run_screen) -> None:
         with patch("seedsigner.views.view.Destination._run_view", autospec=True) as mock_run_view:
             with patch("seedsigner.views.view.View.run_screen", autospec=True) as mock_run_screen:
                 def run_view(destination: Destination, *args, **kwargs):
@@ -301,7 +327,7 @@ class FlowTest(BaseTest):
                     if destination.View_cls != cur_flow_step.expected_view:
                         raise FlowTestUnexpectedViewException(f"Expected {cur_flow_step.expected_view}, got {destination.View_cls}")
                     
-                    if len(sequence) == 1:
+                    if len(sequence) == 1 and not cur_flow_step.real_screens:
                         # This is the last step in the sequence
                         if cur_flow_step.screen_return_value is None and cur_flow_step.button_data_selection is None:
                             # This is the last View in the sequence and it doesn't specify any
@@ -332,15 +358,24 @@ class FlowTest(BaseTest):
 
                         prev_mock_run_screen_call_count = mock_run_screen.call_count
 
-                        # Run the View (with our mocked run_screen) and get the next Destination that results
-                        destination = destination.view.run()
+                        use_real_screens = cur_flow_step.real_screens
+                        if use_real_screens:
+                            # Run the View's real Screens against the UISession's test
+                            # renderer and scripted button input.
+                            View.run_screen = real_run_screen
+                        try:
+                            # Run the View (with our mocked run_screen) and get the next Destination that results
+                            destination = destination.view.run()
+                        finally:
+                            if use_real_screens:
+                                View.run_screen = mock_run_screen
 
-                        if mock_run_screen.call_count == prev_mock_run_screen_call_count and cur_flow_step.is_redirect is not True:
+                        if not use_real_screens and mock_run_screen.call_count == prev_mock_run_screen_call_count and cur_flow_step.is_redirect is not True:
                             # The current View redirected without calling run_screen()
                             # but we weren't expecting it.
                             raise FlowTestUnexpectedRedirectException(f"Unexpected redirect to {destination.View_cls}")
 
-                        elif mock_run_screen.call_count > prev_mock_run_screen_call_count and cur_flow_step.is_redirect:
+                        elif not use_real_screens and mock_run_screen.call_count > prev_mock_run_screen_call_count and cur_flow_step.is_redirect:
                             # The View ran its Screen, but the current FlowStep was expecting it
                             # to redirect (is_redirect=True) *instead of* running its Screen.
                             raise FlowTestMissingRedirectException(f"FlowStep expected redirect but {cur_flow_step.expected_view} did not redirect")

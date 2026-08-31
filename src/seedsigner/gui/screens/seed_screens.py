@@ -1949,7 +1949,7 @@ class SeedEncryptedQRMnemonicIDScreen(BaseTopNavScreen):
                 Keyboard.KEY_SPACE_2,
                 Keyboard.KEY_CURSOR_LEFT,
                 Keyboard.KEY_CURSOR_RIGHT,
-                Keyboard.KEY_BACKSPACE
+                Keyboard.KEY_BACKSPACE_2
             ],
             auto_wrap=[Keyboard.WRAP_LEFT, Keyboard.WRAP_RIGHT],
             render_now=False
@@ -1970,7 +1970,7 @@ class SeedEncryptedQRMnemonicIDScreen(BaseTopNavScreen):
                 Keyboard.KEY_SPACE_2,
                 Keyboard.KEY_CURSOR_LEFT,
                 Keyboard.KEY_CURSOR_RIGHT,
-                Keyboard.KEY_BACKSPACE
+                Keyboard.KEY_BACKSPACE_2
             ],
             auto_wrap=[Keyboard.WRAP_LEFT, Keyboard.WRAP_RIGHT],
             render_now=False
