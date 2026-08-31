@@ -13,9 +13,11 @@ Entries marked "(SeedSigner official)" originate from the upstream project, whil
 - Enhance Satochip benchmark signing tool to run 20 signatures and report min/avg/max times
 - Randomize order of PSBT inputs during Satochip signing to further obfuscate input processing
 - Deterministic BIP85 GPG key derivation with configurable name, email, expiration (defaulting to the end of 2029 for RSA 2048 keys and the end of 2035 for other key types), and key type (NIST P-256, Brainpool P-256, RSA 2048, RSA 3072, RSA 4096, or secp256k1); metadata such as expiration, deprecation, and end-of-use dates can be modified after import
+- BIP85 GPG RSA keys now derive via the BIP85-spec path `m/83696968'/828365'/{bits}'/{index}'` (no `0'` key_type discriminator), bringing RSA back in line with the B8-era scheme; ECC derivation is unchanged
 - RSA key selections warn that generation on a Pi Zero may take approximately 3 minutes (2048), 15 minutes (3072), or an hour (4096) and recommend NIST or Brainpool keys as faster, smaller alternatives
 - MicroSD and GPG tools now display seed-loaded warnings only when opening file pickers
 - GPG public keys can now be exported directly to a connected Seedkeeper card as ASCII-armored text
+- Loading BIP85 GPG metadata now auto-selects the correct derivation scheme from each key's `ss_version` (map of firmware B-number → v1/v2/v3/v4), and it is stored per-key so the manual `BIP85 GPG version` setting only governs brand-new key generation
 
 ## 2025-08-04 - SS0.8.6+Satochip+Earthdiver-B3 (smartcard fork)
 - Satochip card transaction signing and PSBT verification

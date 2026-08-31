@@ -163,7 +163,7 @@ class Controller(Singleton):
         rather than at the top in order avoid circular imports.
     """
 
-    VERSION = "SeSi-0.8.7+ShSi-B12"
+    VERSION = "SeSi-0.8.7+ShSi-B13"
 
     # Chain-tip anchor, loaded from resources/latest-block.json and refreshed by
     # .github/workflows/update-latest-block.yml.

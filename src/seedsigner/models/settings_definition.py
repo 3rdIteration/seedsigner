@@ -662,10 +662,16 @@ class SettingsConstants:
     ]
 
     # BIP85 GPG version constants
+    # v1 (B4-B8) is internal-only: it is auto-selected from saved metadata but is
+    # not offered as a manual setting (its per-curve app numbers predate the
+    # key_type discriminator scheme).
+    BIP85_GPG_VERSION_V1 = "v1"
     BIP85_GPG_VERSION_V2 = "v2"
     BIP85_GPG_VERSION_V3 = "v3"
+    BIP85_GPG_VERSION_V4 = "v4"
     ALL_BIP85_GPG_VERSIONS = [
-        (BIP85_GPG_VERSION_V3, "v3 (latest)"),
+        (BIP85_GPG_VERSION_V4, "v4 (latest)"),
+        (BIP85_GPG_VERSION_V3, "v3 (B11-B12 compatibility)"),
         (BIP85_GPG_VERSION_V2, "v2 (B9-B10 compatibility)"),
     ]
 
@@ -1082,11 +1088,11 @@ class SettingsDefinition:
                        attr_name=SettingsConstants.SETTING__BIP85_GPG_VERSION,
                        abbreviated_name="bip85ver",
                        display_name=_mft("BIP85 GPG version"),
-                       help_text=_mft("v3 is the latest; use v2 to recreate B9-B10 keys"),
+                       help_text=_mft("v4 is the latest; use v2 or v3 to recreate B9-B12 keys"),
                        type=SettingsConstants.TYPE__SELECT_1,
                        visibility=SettingsConstants.VISIBILITY__ADVANCED,
                        selection_options=SettingsConstants.ALL_BIP85_GPG_VERSIONS,
-                       default_value=SettingsConstants.BIP85_GPG_VERSION_V3),
+                       default_value=SettingsConstants.BIP85_GPG_VERSION_V4),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                        attr_name=SettingsConstants.SETTING__BIP85_CHILD_SEEDS,
