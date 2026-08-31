@@ -486,9 +486,9 @@ def test_bip85_gpg_mixed_subkeys_deterministic():
         "6093F744D09D51C230F0F498675FDABF1B809BF5",
         "85BC69CB49E4D0DA251250C4724713A741F680C4",
         "AD7644301EC93FE89E884F22C7F0741C8576F571",
-        "49902AF8AE102DC986233CB6626F4106A6AB1355",
-        "94D620C2FC7DD25BAEC027FA106DAD2E7177CFB7",
-        "E3C9FEA1785D2A00CCAC373BB8AC66BF71D074F0",
+        "0938B62C0B8FE641FE528A8411A26272C153E6CF",
+        "9696B4AAFCA808BFFDE2A04AD2CA980F3652A5D4",
+        "07A435FD12E96F72C09B31966577C9E71A248706",
     ]
 
 
@@ -1925,18 +1925,18 @@ def test_rebuild_bip85_key(monkeypatch):
     calls = []
     real = gpg_views.bip85_p256_from_root
 
-    def fake_p256(root, key_index, sub_index=None, alg=None):
+    def fake_p256(root, key_index, sub_index=None, alg=None, version=None):
         calls.append(("p256", key_index, sub_index, alg))
-        return real(root, key_index, sub_index, alg)
+        return real(root, key_index, sub_index, alg, version)
 
     monkeypatch.setattr(gpg_views, "bip85_p256_from_root", fake_p256)
 
     rsa_calls = []
     real_rsa = gpg_views.bip85_rsa_from_root
 
-    def fake_rsa(root, bits, key_index, sub_index=None):
+    def fake_rsa(root, bits, key_index, sub_index=None, version=None):
         rsa_calls.append((bits, key_index, sub_index))
-        return real_rsa(root, bits, key_index, sub_index)
+        return real_rsa(root, bits, key_index, sub_index, version)
 
     monkeypatch.setattr(gpg_views, "bip85_rsa_from_root", fake_rsa)
 
