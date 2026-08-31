@@ -275,7 +275,12 @@ def bip85_save_data(path):
     p = Path(path)
     if p.is_dir():
         for entry in BIP85_DATA.values():
-            fname = p / f"BIP85_{entry['seed_fpr']}.json"
+            # One file per derived key, named by a shortened primary-key
+            # fingerprint (first 4 + last 4 chars). Several BIP85 keys can be
+            # derived from the same seed, so a seed-keyed name would let one
+            # overwrite the others.
+            fpr = entry["primary_fpr"]
+            fname = p / f"BIP85_{fpr[:4]}_{fpr[-4:]}.json"
             with open(fname, "w", encoding="utf-8") as f:
                 json.dump(entry, f, indent=2)
     else:

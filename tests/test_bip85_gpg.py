@@ -1178,7 +1178,7 @@ def test_filter_deletable_subkeys_bip85_only_latest():
 
 def test_bip85_save_and_load(tmp_path):
     BIP85_DATA.clear()
-    fpr = "F"
+    fpr = "A1B2C3D4E5F60718293A4B5C6D7E8F9012345678"
     BIP85_DATA[fpr] = {
         "primary_fpr": fpr,
         "seed_fpr": "seedfpr",
@@ -1191,7 +1191,7 @@ def test_bip85_save_and_load(tmp_path):
         "revocations": ["A"],
     }
     bip85_save_data(tmp_path)
-    assert (tmp_path / "BIP85_seedfpr.json").exists()
+    assert (tmp_path / f"BIP85_{fpr[:4]}_{fpr[-4:]}.json").exists()
     BIP85_DATA.clear()
     bip85_load_data(tmp_path)
     assert BIP85_DATA[fpr]["seed_fpr"] == "seedfpr"
@@ -1199,6 +1199,46 @@ def test_bip85_save_and_load(tmp_path):
     assert BIP85_DATA[fpr]["uids"][0] == "User <user@example.com>"
     assert BIP85_DATA[fpr]["primary_uid"] == "User <user@example.com>"
     assert BIP85_DATA[fpr]["subkeys"][0]["type"] == "ECDH ECC NIST P-256"
+
+
+def test_bip85_save_same_seed_multiple_keys(tmp_path):
+    """Two BIP85 keys derived from the same seed must both be saved and restored."""
+    BIP85_DATA.clear()
+    seed_fpr = "S" * 40
+    fpr_a = "A1B2C3D4E5F60718293A4B5C6D7E8F9012345678"
+    fpr_b = "B2C3D4E5F6A708192A3B4C5D6E7F8091ABCDEF01"
+    BIP85_DATA[fpr_a] = {
+        "primary_fpr": fpr_a,
+        "seed_fpr": seed_fpr,
+        "index": 0,
+        "key_type": "ECC NIST P-256",
+        "ss_version": Controller.VERSION,
+        "uids": ["User A <a@example.com>"],
+        "primary_uid": "User A <a@example.com>",
+        "subkeys": [],
+        "revocations": [],
+    }
+    BIP85_DATA[fpr_b] = {
+        "primary_fpr": fpr_b,
+        "seed_fpr": seed_fpr,
+        "index": 1,
+        "key_type": "RSA 3072",
+        "ss_version": Controller.VERSION,
+        "uids": ["User B <b@example.com>"],
+        "primary_uid": "User B <b@example.com>",
+        "subkeys": [],
+        "revocations": [],
+    }
+
+    bip85_save_data(tmp_path)
+    files = sorted(f.name for f in tmp_path.glob("*.json"))
+    assert files == [f"BIP85_{fpr_a[:4]}_{fpr_a[-4:]}.json", f"BIP85_{fpr_b[:4]}_{fpr_b[-4:]}.json"]
+
+    BIP85_DATA.clear()
+    bip85_load_data(tmp_path)
+    assert set(BIP85_DATA.keys()) == {fpr_a, fpr_b}
+    assert BIP85_DATA[fpr_a]["index"] == 0
+    assert BIP85_DATA[fpr_b]["index"] == 1
 
 
 @pytest.mark.parametrize(
