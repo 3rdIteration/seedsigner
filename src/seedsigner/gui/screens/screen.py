@@ -622,6 +622,76 @@ class ButtonListScreen(BaseTopNavScreen):
 
 
 @dataclass
+class PagedTextScreen(ButtonListScreen):
+    """Read-only text that is longer than one screenful, shown a page at a time.
+
+    Back button at the top, one advance button at the bottom -- "More" until the
+    last page, "Done" on it. Anything that has more to say than fits in 240x240
+    can use this instead of silently running off the bottom edge.
+
+    The caller splits the text: call get_paging_dimensions() and hand the result
+    to components.reflow_text_into_pages(), then pass the pages in as
+    `paged_info`. Splitting in the View rather than here means the page count is
+    known before the first render, so the button label and the title's page
+    counter are right on page 1, and the pages are computed once for the whole
+    walk rather than on every page turn.
+    """
+    paged_info: List[str] = None
+    page_num: int = 0
+
+    # Defaults filled in at init: class attrs cannot call the get_*_font_*()
+    # methods, which are only correct after the display size is known.
+    text_font_name: str = None
+    text_font_size: int = None
+    next_button_text: str = None
+    done_button_text: str = None
+
+
+    @staticmethod
+    def get_paging_dimensions() -> Tuple[int, int]:
+        """(width, height) in px of the body area one page has to fit into."""
+        from seedsigner.gui.renderer import Renderer
+        renderer = Renderer.get_instance()
+        start_y = GUIConstants.TOP_NAV_HEIGHT + GUIConstants.COMPONENT_PADDING
+        end_y = renderer.canvas_height - GUIConstants.EDGE_PADDING - GUIConstants.BUTTON_HEIGHT - GUIConstants.COMPONENT_PADDING
+        return (renderer.canvas_width - 2 * GUIConstants.EDGE_PADDING, end_y - start_y)
+
+
+    def __post_init__(self):
+        if not self.paged_info:
+            raise Exception("paged_info is required")
+        if self.page_num >= len(self.paged_info):
+            raise Exception("Bug in paged_info calculation")
+
+        if len(self.paged_info) > 1:
+            # Page counter in the title: on a screen this small the user needs to
+            # know how much is left before deciding to click through it.
+            self.title = _("{title} {page}/{total}").format(
+                title=self.title, page=self.page_num + 1, total=len(self.paged_info)
+            )
+
+        self.is_bottom_list = True
+        is_last_page = self.page_num == len(self.paged_info) - 1
+        if is_last_page:
+            button_text = self.done_button_text or _("Done")
+        else:
+            button_text = self.next_button_text or _("More")
+        self.button_data = [ButtonOption(button_text)]
+
+        super().__post_init__()
+
+        self.components.append(TextArea(
+            text=self.paged_info[self.page_num],
+            is_text_centered=False,
+            font_name=self.text_font_name,
+            font_size=self.text_font_size,
+            screen_y=GUIConstants.TOP_NAV_HEIGHT + GUIConstants.COMPONENT_PADDING,
+            height=self.get_paging_dimensions()[1],
+        ))
+
+
+
+@dataclass
 class LargeButtonScreen(BaseTopNavScreen):
     button_data: list = None
 

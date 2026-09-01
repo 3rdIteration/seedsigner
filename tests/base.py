@@ -12,7 +12,13 @@ try:
     import numpy
 except ImportError:
     sys.modules['numpy'] = MagicMock()  # numpy is only in the Raspi requirements; not needed for tests. But is imported in BackgroundImportThread.
-sys.modules['seedsigner.gui.renderer'] = MagicMock()
+_renderer_module = MagicMock()
+# Real integer canvas dimensions: view code that lays text out (e.g. splitting a
+# report into pages) does arithmetic on these before any Screen is constructed,
+# and MagicMocks do not compare or subtract. 240x240 is the baseline display.
+_renderer_module.Renderer.get_instance.return_value.canvas_width = 240
+_renderer_module.Renderer.get_instance.return_value.canvas_height = 240
+sys.modules['seedsigner.gui.renderer'] = _renderer_module
 sys.modules['seedsigner.gui.screens.screensaver'] = MagicMock()
 sys.modules['seedsigner.gui.toast'] = MagicMock()
 sys.modules['seedsigner.hardware.buttons'] = MagicMock()

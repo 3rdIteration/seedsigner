@@ -53,6 +53,10 @@ WIFI_MODULE_PATTERNS = (
 REMOTE_SHELL_DAEMONS = ("telnetd", "sshd", "dropbear")
 LOGGING_DAEMONS = ("syslogd", "klogd")
 DEV_TOOLS = ("pip", "pip3", "curl", "wget")
+# console= devices that are not a physical port: the null sink, and the numeric
+# virtual terminals (tty0..tty63) the framebuffer console lives on.
+SILENT_CONSOLE = "ttynull"
+VIRTUAL_CONSOLE_PREFIX = "tty"
 # Filesystems whose contents do not survive a reboot.
 VOLATILE_FSTYPES = ("tmpfs", "ramfs")
 
@@ -302,19 +306,47 @@ def check_usb_gadget() -> HardeningCheck:
 
 
 def check_serial_console() -> HardeningCheck:
+    """Fails only for a console on a *physical port*.
+
+    Not every ``console=`` token is an exposure, and treating them alike caused a
+    false alarm: a Raspberry Pi whose cmdline.txt names no console still boots
+    with whatever the firmware and DTB supply, which can be a plain virtual
+    terminal. A numeric VT (``tty0``, ``tty1``) is the framebuffer -- there is no
+    port to clip onto and no getty on it in any SeedSigner image -- so it is
+    reported but not failed. ``ttynull`` is the null sink, i.e. silence itself.
+    Anything else (``ttyAMA0``, ``ttyS0``, ``ttyFIQ0``, ``ttyUSB0``, ``ttyGS0``,
+    ...) is a real UART and still fails.
+    """
     cmdline = _read_text(PROC_CMDLINE)
     if cmdline is None:
-        state, detail = STATE_NA, _("No /proc/cmdline")
-    else:
-        consoles = [
-            token for token in cmdline.split()
-            if token.startswith("console=") and not token.startswith("console=ttynull")
-        ]
-        if consoles:
-            state = STATE_FAIL
-            detail = _("Console: {tokens}").format(tokens=" ".join(consoles))
+        return HardeningCheck(
+            key="serial_console", label=_("Serial console silenced"), severity=SEVERITY_CRITICAL,
+            state=STATE_NA, detail=_("No /proc/cmdline"), open_name=_("serial"),
+        )
+
+    ports: list[str] = []
+    virtual: list[str] = []
+    for token in cmdline.split():
+        if not token.startswith("console="):
+            continue
+        # console=<device>[,<options>] -- e.g. console=ttyAMA0,115200n8
+        device = token[len("console="):].split(",", 1)[0]
+        if device == SILENT_CONSOLE:
+            continue
+        suffix = device[len(VIRTUAL_CONSOLE_PREFIX):]
+        if device.startswith(VIRTUAL_CONSOLE_PREFIX) and suffix.isdigit():
+            virtual.append(device)
         else:
-            state, detail = STATE_PASS, _("No serial console")
+            ports.append(device)
+
+    if ports:
+        state = STATE_FAIL
+        detail = _("Console: {devices}").format(devices=" ".join(ports))
+    elif virtual:
+        state = STATE_PASS
+        detail = _("Virtual terminal only: {devices}").format(devices=" ".join(virtual))
+    else:
+        state, detail = STATE_PASS, _("No serial console")
     return HardeningCheck(
         key="serial_console", label=_("Serial console silenced"), severity=SEVERITY_CRITICAL,
         state=state, detail=detail, open_name=_("serial"),
