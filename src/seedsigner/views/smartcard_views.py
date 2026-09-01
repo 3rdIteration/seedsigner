@@ -584,7 +584,7 @@ class ToolsCommonNdefView(View):
                 text=success_text,
                 show_back_button=False,
             )
-            return Destination(MainMenuView)
+            return Destination(BackStackView)
         except Exception as e:
             self.run_screen(
                 WarningScreen,
@@ -988,7 +988,7 @@ class ToolsSatochipChangePinView(View):
                 show_back_button=True,
             )
         
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
     
 class ToolsSatochipChangeNFCView(View):
     def run(self):
@@ -1040,7 +1040,7 @@ class ToolsSatochipChangeNFCView(View):
                 text=f"NFC policy applied successfully!",
                 show_back_button=False,
             )
-            return Destination(MainMenuView)
+            return Destination(BackStackView)
     
         else:
             error_messages = {
@@ -1062,7 +1062,7 @@ class ToolsSatochipChangeNFCView(View):
                 text=failed_string,
                 show_back_button=True,
             )
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 class ToolsSatochipFactoryResetView(View):
     def run(self):
@@ -1516,7 +1516,7 @@ class ToolsSatochipChangeLabelView(View):
                 show_back_button=True,
             )
 
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 class ToolsSeedkeeperView(View):
     VIEW_FREE_SPACE = ButtonOption("View Free Space")
@@ -2934,7 +2934,7 @@ class ToolsKeycardBenchmarkSignView(View):
             text=text,
             show_back_button=False,
         )
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 
 class ToolsKeycardBenchmarkMessageSignView(View):
@@ -3037,7 +3037,7 @@ class ToolsKeycardBenchmarkMessageSignView(View):
             text=text,
             show_back_button=False,
         )
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 
 class ToolsKeycardChangePinView(View):
@@ -3081,7 +3081,7 @@ class ToolsKeycardChangePinView(View):
                     text="PIN update failed",
                     show_back_button=True,
                 )
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 
 class ToolsKeycardChangePukView(View):
@@ -3117,7 +3117,7 @@ class ToolsKeycardChangePukView(View):
                 text="PUK update failed",
                 show_back_button=True,
             )
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 
 class ToolsKeycardUnblockPinView(View):
@@ -3182,7 +3182,7 @@ class ToolsKeycardUnblockPinView(View):
                     text="PIN unblock failed",
                     show_back_button=True,
                 )
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 
 class ToolsKeycardSetNameView(View):
@@ -3225,7 +3225,7 @@ class ToolsKeycardSetNameView(View):
                     text="Name update failed",
                     show_back_button=True,
                 )
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 
 class ToolsKeycardRemoveSeedView(View):
@@ -3266,7 +3266,7 @@ class ToolsKeycardRemoveSeedView(View):
                 text="Remove seed failed",
                 show_back_button=True,
             )
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 
 class ToolsKeycardFactoryResetView(View):
@@ -3309,7 +3309,7 @@ class ToolsKeycardFactoryResetView(View):
                 text="Factory reset failed",
                 show_back_button=True,
             )
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 
 class ToolsSatochipLoadPsbtView(View):
@@ -3502,7 +3502,7 @@ class ToolsSatochipBenchmarkSignView(View):
             text=text,
             show_back_button=False,
         )
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 
 class ToolsSatochipBenchmarkMessageSignView(View):
@@ -3578,7 +3578,7 @@ class ToolsSatochipBenchmarkMessageSignView(View):
             text=text,
             show_back_button=False,
         )
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 
 class ToolsSatochipImportSeedView(View):
@@ -3620,7 +3620,7 @@ class ToolsSatochipImportSeedView(View):
                 text=_(f"{card_name} card already contains a seed."),
                 show_back_button=False,
             )
-            return Destination(MainMenuView)
+            return Destination(BackStackView)
 
         seeds = self.controller.storage.seeds
         button_data = []
@@ -3744,7 +3744,7 @@ class ToolsSatochipImportSeedView(View):
         elif button_data[selected_menu_num] == self.TYPE_ELECTRUM:
             return Destination(SeedElectrumMnemonicStartView)
         
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 class ToolsSatochipEnable2FAView(View):
     def run(self):
@@ -3804,7 +3804,7 @@ class ToolsSatochipEnable2FAView(View):
                 show_back_button=False,
             )
 
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 
 class SatochipExportXpubSigTypeView(View):
@@ -4375,6 +4375,12 @@ class SatochipLoadDescriptorDetailsView(View):
             show_back_button=False,
         )
 
+        # Deliberately Home, not BackStackView: this View is the tail of a
+        # multi-View chain (script type -> account number -> here), so "back"
+        # would land on the previous *chain* screen rather than on a menu. The
+        # chain also has several entry points -- ToolsSatochipView and
+        # ToolsKeycardView reach it with no resume_main_flow set -- so there is
+        # no single entry menu to name here either.
         return Destination(MainMenuView)
 
 
@@ -6233,7 +6239,7 @@ class ToolsDIYBuildAppletsView(View):
                 show_back_button=False,
             )
 
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 def _get_internal_cap_dir() -> Path:
     """Return the internal javacard-cap directory. Extracted as a module-level
@@ -6430,7 +6436,7 @@ class ToolsDIYInstallAppletView(View):
         finally:
             seedkeeper_utils.restart_pn532(self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES))
 
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 
 class ToolsDIYUninstallAppletView(View):

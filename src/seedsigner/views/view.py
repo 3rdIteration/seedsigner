@@ -204,11 +204,17 @@ class Destination:
 
     def __eq__(self, obj):
         """
-            Equality test IGNORES the skip_current_view and clear_history options
+            Equality test IGNORES the skip_current_view and clear_history options.
+
+            `view_args` of None and {} mean the same thing -- "no args" -- and must
+            compare equal: `_instantiate_view()` rewrites None to {} in place, so a
+            Destination that has already been run would otherwise stop matching the
+            equivalent Destination a View returns later. The Controller relies on
+            this comparison to spot a Destination it has been to before.
         """
         return (isinstance(obj, Destination) and 
             obj.View_cls == self.View_cls and
-            obj.view_args == self.view_args)
+            (obj.view_args or {}) == (self.view_args or {}))
     
 
     def __ne__(self, obj):

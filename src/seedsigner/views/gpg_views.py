@@ -523,7 +523,7 @@ class ToolsGPGAdvancedMenuView(View):
             return Destination(ToolsGPGExportBundleView)
         if choice == self.BIP85_META:
             return Destination(ToolsGPGBip85MetadataMenuView)
-        return Destination(ToolsGPGMenuView)
+        return Destination(BackStackView)
 
 
 # ---- GPG algorithm code → human-readable name map ---------------------------
@@ -1052,7 +1052,7 @@ class ToolsGPGExportBundleView(View):
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")],
             )
-            return Destination(MainMenuView)
+            return Destination(BackStackView)
 
         loading = LoadingScreenThread(text="Encoding...")
         loading.start()
@@ -1077,7 +1077,7 @@ class ToolsGPGExportBundleView(View):
             return Destination(BackStackView)
 
         self.run_screen(QRDisplayScreen, qr_encoder=qr_encoder)
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 
 class ToolsGPGBip85MetadataMenuView(View):
@@ -3208,7 +3208,7 @@ class ToolsGPGEncryptMessageView(View):
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")],
             )
-            return Destination(MainMenuView)
+            return Destination(BackStackView)
 
         loading = LoadingScreenThread(text="Encoding...")
         loading.start()
@@ -3233,7 +3233,7 @@ class ToolsGPGEncryptMessageView(View):
             return Destination(BackStackView)
 
         self.run_screen(QRDisplayScreen, qr_encoder=qr_encoder)
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 
 class ToolsGPGDecryptMessageView(View):
@@ -3649,14 +3649,14 @@ class ToolsGPGDecryptMessageView(View):
                     show_back_button=False,
                     button_data=[ButtonOption("I Understand")],
                 )
-            return Destination(MainMenuView)
+            return Destination(BackStackView)
 
         if button_data[selected_option] == SHOW:
             encoder = GenericStaticQrEncoder(data=plaintext)
             self.run_screen(QRDisplayScreen, qr_encoder=encoder)
-            return Destination(MainMenuView)
+            return Destination(BackStackView)
 
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 
 class ToolsGPGImportMenuView(View):
@@ -3776,7 +3776,7 @@ class ToolsGPGGenerateKeyOnCardView(View):
             show_back_button=False,
             button_data=[ButtonOption("Continue")],
         )
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 
 class ToolsGPGChangeAdminPinView(View):
@@ -3831,7 +3831,7 @@ class ToolsGPGChangeAdminPinView(View):
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")],
             )
-            return Destination(MainMenuView)
+            return Destination(BackStackView)
         self.run_screen(
             LargeIconStatusScreen,
             title="Success",
@@ -3840,7 +3840,7 @@ class ToolsGPGChangeAdminPinView(View):
             show_back_button=False,
             button_data=[ButtonOption("Continue")],
         )
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 
 class ToolsGPGChangeUserPinView(View):
@@ -3906,7 +3906,7 @@ class ToolsGPGChangeUserPinView(View):
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")],
             )
-            return Destination(MainMenuView)
+            return Destination(BackStackView)
         self.run_screen(
             LargeIconStatusScreen,
             title="Success",
@@ -3915,7 +3915,7 @@ class ToolsGPGChangeUserPinView(View):
             show_back_button=False,
             button_data=[ButtonOption("Continue")],
         )
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 
 class ToolsGPGEncryptFileView(View):
@@ -4115,7 +4115,7 @@ class ToolsGPGEncryptFileView(View):
             show_back_button=False,
             button_data=[ButtonOption("Done")],
         )
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 
 class ToolsGPGDecryptFileView(View):
@@ -4341,7 +4341,7 @@ class ToolsGPGDecryptFileView(View):
             show_back_button=False,
             button_data=[ButtonOption("Done")],
         )
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 
 class ToolsGPGVerifyFileView(View):
@@ -4435,7 +4435,7 @@ class ToolsGPGVerifyFileView(View):
                     text="Can't find\ncorresponding file for\nthis signature...",
                     show_back_button=True,
                 )
-                return Destination(MainMenuView)
+                return Destination(BackStackView)
             cmd = ["gpg", "--status-fd=1", "--verify", verify_file_name, filechecked]
         else:
             filechecked = verify_file_name
@@ -4679,7 +4679,7 @@ class ToolsGPGVerifyFileView(View):
             )
 
 
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 
 class ToolsGPGSignFileView(View):
@@ -4813,7 +4813,7 @@ class ToolsGPGSignFileView(View):
             button_data=[ButtonOption("Done")],
         )
 
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 
 class ToolsGPGSignManifestView(View):
@@ -4973,7 +4973,7 @@ class ToolsGPGSignManifestView(View):
             button_data=[ButtonOption("Done")],
         )
 
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 
 def _check_future_key_creation(view, key_blob: str) -> None:
@@ -7338,7 +7338,7 @@ class ToolsGPGGenerateKeyView(View):
                 button_data=[ButtonOption("I Understand")],
             )
 
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 
 class ToolsGPGExportPubkeyView(View):
@@ -7458,7 +7458,7 @@ class ToolsGPGExportPubkeyView(View):
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")],
             )
-            return Destination(MainMenuView)
+            return Destination(BackStackView)
         elif dest_selected == 1:
             exported = run(
                 ["gpg", "--armor", "--export", key["fpr"]],
@@ -7498,7 +7498,7 @@ class ToolsGPGExportPubkeyView(View):
                 return Destination(BackStackView)
 
             self.run_screen(QRDisplayScreen, qr_encoder=qr_encoder)
-            return Destination(MainMenuView)
+            return Destination(BackStackView)
         else:
             exported = run(
                 ["gpg", "--armor", "--export", key["fpr"]],
@@ -7586,7 +7586,7 @@ class ToolsGPGExportPubkeyView(View):
                     show_back_button=False,
                     button_data=[ButtonOption("Continue")],
                 )
-                return Destination(MainMenuView)
+                return Destination(BackStackView)
             except UnexpectedSW12Error as e:
                 self.loading_screen.stop()
                 if e.sw1 == 0x6A and e.sw2 == 0x84:
@@ -7776,7 +7776,7 @@ class ToolsGPGExportPrivkeyView(View):
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")],
             )
-            return Destination(MainMenuView)
+            return Destination(BackStackView)
         elif dest_selected == 1:
             exported = run(
                 ["gpg", "--armor", "--export-secret-keys", key["fpr"]],
@@ -7864,7 +7864,7 @@ class ToolsGPGExportPrivkeyView(View):
                     show_back_button=False,
                     button_data=[ButtonOption("Continue")],
                 )
-                return Destination(MainMenuView)
+                return Destination(BackStackView)
             except UnexpectedSW12Error as e:
                 self.loading_screen.stop()
                 if e.sw1 == 0x6A and e.sw2 == 0x84:

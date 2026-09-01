@@ -1,6 +1,8 @@
 import importlib.util
 import os
 import shutil
+import sys
+from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import MagicMock, patch, PropertyMock
 
@@ -74,6 +76,39 @@ def _patch_gpg_verify_file(view):
         p.start()
 
     view.controller.gpg_keys_imported = True
+
+
+class _FakePyGP:
+    """Stand-in for the ``pygp`` native module used by the Javacard DIY views.
+
+    Reports one installed applet (Satochip) so the uninstall flow reaches its
+    applet picker, and accepts every card operation without touching hardware.
+    """
+    SECURITY_LEVEL_C_MAC = 1
+
+    def terminal(self): pass
+    def card(self): pass
+    def auth(self, **kwargs): pass
+    def get_loaded_package_aids(self): return ["5361746F43686970"]
+    def get_package_module_map(self): return {}
+    def get_installed_application_aids(self): return []
+    def delete_package(self, aid): pass
+    def install_capfile(self, *args, **kwargs): return {}
+    def get_cap_info(self, path): raise AssertionError("not expected in this flow")
+
+
+def _patch_javacard_diy(cap_dir=None):
+    """Context managers that let the Javacard DIY views run without a card."""
+    patchers = [
+        patch.dict(sys.modules, {"pygp": _FakePyGP()}),
+        patch("seedsigner.helpers.seedkeeper_utils.restart_pn532"),
+    ]
+    if cap_dir is not None:
+        patchers += [
+            patch("seedsigner.views.smartcard_views._get_internal_cap_dir", return_value=cap_dir),
+            patch("seedsigner.hardware.microsd.MicroSD.get_microsd_dir", return_value=cap_dir.parent),
+        ]
+    return patchers
 
 
 class TestMenuNavigationFlows(FlowTest):
@@ -722,6 +757,104 @@ class TestMenuNavigationFlows(FlowTest):
                 FlowStep(ToolsSatochipDIYView, button_data_selection=ToolsSatochipDIYView.MOUNT_STATUS),
                 FlowStep(ToolsDIYMountStatusView, screen_return_value=RET_CODE__BACK_BUTTON),
                 FlowStep(ToolsSatochipDIYView),
+            ])
+
+
+    # ======================================================================
+    #  WORKFLOW COMPLETION / BACK STACK
+    # ======================================================================
+    #
+    #  A workflow that finishes by returning to the menu it was launched from
+    #  must not leave its own screens above that menu in the back stack. See
+    #  issue #423: "back" from the Javacard DIY menu re-ran the uninstall flow,
+    #  which then dead-ended on "No Applets to Uninstall" and looped forever.
+
+    def test_diy_uninstall_applet_back_leaves_the_menu(self):
+        """Tools → Smartcard → DIY Tools → Uninstall Applet → done → BACK.
+
+        BACK from the DIY menu must reach the Smartcard menu, not re-enter the
+        uninstall flow that just completed (issue #423).
+        """
+        from seedsigner.views.smartcard_views import (
+            ToolsSmartcardMenuView, ToolsSatochipDIYView, ToolsDIYUninstallAppletView,
+        )
+        with ExitStack() as stack:
+            for patcher in _patch_javacard_diy():
+                stack.enter_context(patcher)
+
+            self.run_sequence([
+                FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+                FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.SMARTCARD),
+                FlowStep(ToolsSmartcardMenuView, button_data_selection=ToolsSmartcardMenuView.Satochip_DIY),
+                FlowStep(ToolsSatochipDIYView, button_data_selection=ToolsSatochipDIYView.UNINSTALL_APPLET),
+                # Confirms the "this wipes ALL data" warning, then picks the first applet.
+                FlowStep(ToolsDIYUninstallAppletView, screen_return_value=0),
+                FlowStep(ToolsSatochipDIYView, screen_return_value=RET_CODE__BACK_BUTTON),
+                FlowStep(ToolsSmartcardMenuView),
+            ])
+
+    def test_diy_install_applet_returns_to_diy_menu(self):
+        """Tools → Smartcard → DIY Tools → Install Applet → done → DIY menu.
+
+        The flow used to end at Home; it now returns to the menu it was
+        launched from, and BACK from there still reaches the Smartcard menu.
+        """
+        import tempfile
+        from seedsigner.views.smartcard_views import (
+            ToolsSmartcardMenuView, ToolsSatochipDIYView, ToolsDIYInstallAppletView,
+        )
+
+        cap_dir = Path(tempfile.mkdtemp(prefix="javacard_cap_test_")) / "javacard-cap"
+        cap_dir.mkdir()
+        (cap_dir / "Satochip.cap").write_bytes(b"test")
+
+        with ExitStack() as stack:
+            for patcher in _patch_javacard_diy(cap_dir=cap_dir):
+                stack.enter_context(patcher)
+
+            self.run_sequence([
+                FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+                FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.SMARTCARD),
+                FlowStep(ToolsSmartcardMenuView, button_data_selection=ToolsSmartcardMenuView.Satochip_DIY),
+                FlowStep(ToolsSatochipDIYView, button_data_selection=ToolsSatochipDIYView.INSTALL_APPLET),
+                FlowStep(ToolsDIYInstallAppletView, screen_return_value=0),
+                FlowStep(ToolsSatochipDIYView, screen_return_value=RET_CODE__BACK_BUTTON),
+                FlowStep(ToolsSmartcardMenuView),
+            ])
+
+    def test_gpg_import_key_back_leaves_the_gpg_menu(self):
+        """Tools → GPG Tools → Import Keys → Public Key → From File → done → BACK.
+
+        The import views end on ``ToolsGPGMenuView``; BACK from there must reach
+        the Tools menu rather than walking back through the import screens the
+        user just completed.
+        """
+        import tempfile
+
+        if shutil.which("gpg") is None or importlib.util.find_spec("pgpy") is None:
+            pytest.skip("gpg binary and/or pgpy not available")
+
+        images_dir = Path(tempfile.mkdtemp(prefix="gpg_import_test_"))
+        (images_dir / "pubkey.asc").write_text("not a real key")
+        gnupg_home = Path(tempfile.mkdtemp(prefix="gpg_import_home_"))
+
+        with ExitStack() as stack:
+            # Keep the real `gpg --import` away from the host's keyring.
+            stack.enter_context(patch.dict(os.environ, {"GNUPGHOME": str(gnupg_home)}))
+            stack.enter_context(patch(
+                "seedsigner.views.gpg_views.resolve_microsd_images_dir",
+                return_value=images_dir,
+            ))
+
+            self.run_sequence([
+                FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+                FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.GPG),
+                FlowStep(tools_views.ToolsGPGMenuView, button_data_selection=tools_views.ToolsGPGMenuView.IMPORT),
+                FlowStep(tools_views.ToolsGPGImportMenuView, button_data_selection=tools_views.ToolsGPGImportMenuView.PUBKEY),
+                FlowStep(tools_views.ToolsGPGImportPubkeyMenuView, button_data_selection=tools_views.ToolsGPGImportPubkeyMenuView.LOAD_FILE),
+                FlowStep(tools_views.ToolsGPGImportPubkeyFileView, screen_return_value=0),
+                FlowStep(tools_views.ToolsGPGMenuView, screen_return_value=RET_CODE__BACK_BUTTON),
+                FlowStep(tools_views.ToolsMenuView),
             ])
 
 
