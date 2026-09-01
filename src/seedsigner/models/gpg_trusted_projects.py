@@ -47,7 +47,23 @@ TRUSTED_PROJECTS: Dict[str, TrustedProject] = {
         fingerprints=frozenset({
             "46739B74B56AD88F14B0882EC7EF709007260119",  # Keith Mukai
         }),
-        file_patterns=(_p(r"^seedsigner"),),
+        # The negative lookahead keeps the ShieldSigner fork's artifacts (which
+        # reuse the seedsigner_os. prefix) out of this project; those are
+        # attributed to "shieldsigner" below instead.
+        file_patterns=(
+            _p(r"^seedsigner(?!_os\..*-smartcard\.|-luckfox)"),
+        ),
+    ),
+    "shieldsigner": TrustedProject(
+        name="ShieldSigner",
+        fingerprints=frozenset({
+            "7C8172906B9A7EAF9F0BD8F162A1D33E233C8EA0",  # Steve Rothery (CryptoGuide)
+        }),
+        file_patterns=(
+            _p(r"^seedsigner_os\..*-smartcard\."),
+            _p(r"^seedsigner-luckfox"),
+            _p(r"^seedsigner_os\..*sha256sums"),
+        ),
     ),
     "sparrow": TrustedProject(
         name="Sparrow Wallet",

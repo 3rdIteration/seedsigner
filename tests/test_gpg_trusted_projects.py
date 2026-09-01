@@ -21,6 +21,13 @@ class TestProjectsForFilename:
                 "seedsigner.0.8.7.sha256.txt",
                 "Seedsigner-0.9.0.zip",
             ],
+            "shieldsigner": [
+                "seedsigner_os.SeSi-0.8.7_ShSi-B12_.pi4-smartcard.img",
+                "seedsigner_os.SeSi-0.8.7_ShSi-B12_.pi4-smartcard.img.zip",
+                "seedsigner_os.SS0.8.6_Satochip_Earthdiver-B7_.pi4-smartcard.img",
+                "seedsigner-luckfox-pico-max-sd-20260821_160451.img",
+                "seedsigner-luckfox-pico-pi-emmc-files-20260821_160433.zip",
+            ],
             "sparrow": [
                 "Sparrow-2.5.4.msi",
                 "sparrow-2.5.4-manifest.txt",
@@ -124,6 +131,22 @@ class TestProjectsForFilename:
         assert projects_for_filename("random.bin.asc") == []
         assert projects_for_filename("random.bin.sig") == []
 
+    def test_shieldsigner_images_do_not_match_upstream_seedsigner(self):
+        # Fork images reuse the seedsigner_os. prefix; they must attribute to
+        # ShieldSigner alone so an untrusted signer raises a warning.
+        name = "seedsigner_os.SeSi-0.8.7_ShSi-B12_.pi4-smartcard.img"
+        assert projects_for_filename(name) == [TRUSTED_PROJECTS["shieldsigner"]]
+
+    def test_shieldsigner_versioned_manifest_is_disambiguated_by_fingerprint(self):
+        # The versioned SHA256SUMS manifest matches both projects; attribution
+        # falls back to the signer's fingerprint (see gpg_views verify flow).
+        name = "seedsigner_os.SeSi-0.8.7_ShSi-B12_.SHA256SUMS"
+        matched = projects_for_filename(name)
+        assert TRUSTED_PROJECTS["seedsigner"] in matched
+        assert TRUSTED_PROJECTS["shieldsigner"] in matched
+        assert len(matched) == 2
+        assert project_for_filename(name) is None
+
 
 class TestProjectForFilename:
     def test_specter_manifest_variants(self):
@@ -156,6 +179,10 @@ class TestProjectsForFingerprint:
 
     def test_unknown_fingerprint(self):
         assert projects_for_fingerprint("0000000000000000000000000000000000000000") == []
+
+    def test_shieldsigner_signer(self):
+        matched = projects_for_fingerprint("7C8172906B9A7EAF9F0BD8F162A1D33E233C8EA0")
+        assert matched == [TRUSTED_PROJECTS["shieldsigner"]]
 
 
 class TestRecentReleaseSigners:
@@ -216,3 +243,6 @@ class TestWhitelistIntegrity:
     def test_every_project_has_patterns(self):
         for project in TRUSTED_PROJECTS.values():
             assert len(project.file_patterns) > 0, f"{project.name} has no file patterns"
+
+    def test_shieldsigner_key_file_is_bundled(self):
+        assert (GPG_KEYS_DIR / "ShieldSigner_CryptoGuide.asc").is_file()
