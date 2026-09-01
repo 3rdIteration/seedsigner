@@ -13,6 +13,7 @@ import importlib.util
 import os
 import shutil
 import subprocess
+import tempfile
 
 import pytest
 
@@ -34,9 +35,33 @@ GPG_AVAILABLE = shutil.which("gpg") is not None and importlib.util.find_spec("pg
 
 
 
+@pytest.fixture
+def gnupghome(monkeypatch):
+    """An isolated, *short*-path GNUPGHOME, exported to the environment.
+
+    gpg-agent listens on a unix socket at ``$GNUPGHOME/S.gpg-agent``, so the
+    homedir is bound by the ~108 byte ``sun_path`` limit.  pytest's ``tmp_path``
+    (``.../pytest-of-<user>/pytest-<n>/<long-test-name><n>/``) blows past that on
+    CI runners, and gpg then fails every secret-key operation with "failed to
+    start gpg-agent ...: General error".  Rooting the keyring directly under the
+    system temp dir keeps it well inside the limit.
+
+    Yields the path already converted for whichever gpg binary is on PATH, ready
+    to pass straight through as ``GNUPGHOME``.
+    """
+    from test_gpg_message import _msys2_path
+
+    # ignore_cleanup_errors: on Windows a lingering gpg-agent can still hold the
+    # keyring open when the test ends.
+    with tempfile.TemporaryDirectory(prefix="ss-gnupg-", ignore_cleanup_errors=True) as home:
+        home = _msys2_path(home)
+        monkeypatch.setenv("GNUPGHOME", home)
+        yield home
+
+
 class TestRealScreenFlows(FlowTest):
 
-    def test_gpg_bip85_derive_p256(self, tmp_path, monkeypatch):
+    def test_gpg_bip85_derive_p256(self, gnupghome):
         """Tools → GPG Tools → Import Keys → Private Key → Derive BIP85 → P-256.
 
         The user's original bug path: before the KEY_BACKSPACE_2 fix, constructing
@@ -51,12 +76,6 @@ class TestRealScreenFlows(FlowTest):
 
         from seedsigner.hardware.buttons import HardwareButtonsConstants as K
         from seedsigner.views.tools_views import BIP85_DATA
-        from test_gpg_message import _msys2_path
-
-        gnupghome = tmp_path / "gnupg"
-        gnupghome.mkdir()  # gpg won't create its own homedir
-        # Git-for-Windows' MSYS2 gpg (Windows CI) needs POSIX-style paths; native GPG keeps C:\...
-        monkeypatch.setenv("GNUPGHOME", _msys2_path(str(gnupghome)))
 
         self.controller.storage.seeds = [Seed(mnemonic=MNEMONIC)]
 
@@ -93,7 +112,7 @@ class TestRealScreenFlows(FlowTest):
             assert len(session.renderer.frames) > 0
 
             # The derived key really exists in the isolated GPG keyring with our UID
-            env = dict(os.environ, GNUPGHOME=_msys2_path(str(gnupghome)))
+            env = dict(os.environ, GNUPGHOME=gnupghome)
             listed = subprocess.run(
                 ["gpg", "--batch", "--with-colons", "--list-secret-keys"],
                 capture_output=True, text=True, env=env,
@@ -112,7 +131,7 @@ class TestRealScreenFlows(FlowTest):
                 del BIP85_DATA[fpr]
 
 
-    def test_gpg_generate_new_p256(self, tmp_path, monkeypatch):
+    def test_gpg_generate_new_p256(self, gnupghome):
         """Tools → GPG Tools → Import Keys → Private Key → Generate New → P-256.
 
         Same real-keyboard prompts as the BIP85 flow (name/email/expiration), but with a
@@ -123,12 +142,6 @@ class TestRealScreenFlows(FlowTest):
             pytest.skip("gpg binary and/or pgpy not available")
 
         from seedsigner.hardware.buttons import HardwareButtonsConstants as K
-        from test_gpg_message import _msys2_path
-
-        gnupghome = tmp_path / "gnupg"
-        gnupghome.mkdir()  # gpg won't create its own homedir
-        # Git-for-Windows' MSYS2 gpg (Windows CI) needs POSIX-style paths; native GPG keeps C:\...
-        monkeypatch.setenv("GNUPGHOME", _msys2_path(str(gnupghome)))
 
         name_script = plan_text_entry_script(ToolsTextQRTextEntryScreen, "Alice", title="Name")
         email_script = plan_text_entry_script(ToolsTextQRTextEntryScreen, "alice@example.com", title="Email")
@@ -156,7 +169,7 @@ class TestRealScreenFlows(FlowTest):
 
         assert len(session.renderer.frames) > 0
 
-        env = dict(os.environ, GNUPGHOME=_msys2_path(str(gnupghome)))
+        env = dict(os.environ, GNUPGHOME=gnupghome)
         listed = subprocess.run(
             ["gpg", "--batch", "--with-colons", "--list-secret-keys"],
             capture_output=True, text=True, env=env,
