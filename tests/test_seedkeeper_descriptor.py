@@ -15,6 +15,7 @@ These use a mocked connector so they run in CI without hardware.
 """
 
 import base
+import pytest
 from embit.descriptor import Descriptor
 from unittest.mock import MagicMock
 
@@ -180,3 +181,103 @@ def test_seedkeeper_ensure_capacity_tolerates_unsupported_status(monkeypatch):
     assert fits is True
     assert required_bytes > 0
     assert free_bytes is None
+
+
+# ---------------------------------------------------------------------------
+# #413 follow-up: the card's own out-of-memory answer (0x9C01)
+#
+# Skipping the capacity pre-check lets the write reach the card, which then
+# rejects a full card with SW_NO_MEMORY_LEFT. pysatochip's
+# seedkeeper_import_secret raises UnexpectedSW12Error *without* passing
+# sw1/sw2, so they default to 0x00 and every `exc.sw1 == ...` branch on that
+# path is dead code. The status word only survives in the message text.
+# ---------------------------------------------------------------------------
+
+
+class FakeSW12Error(Exception):
+    """Stands in for pysatochip's UnexpectedSW12Error.
+
+    tests/base.py replaces the pysatochip modules with MagicMocks, so the real
+    exception class is not importable here. This mirrors its constructor,
+    including the sw1/sw2 defaults of 0x00 that make attribute-based branches
+    on the import path useless.
+    """
+
+    def __init__(self, message, sw1=0x00, sw2=0x00):
+        super().__init__(message)
+        self.sw1 = sw1
+        self.sw2 = sw2
+
+
+def _import_error(status_word: int) -> FakeSW12Error:
+    """Build the exception exactly as pysatochip raises it on an import."""
+    return FakeSW12Error(
+        f"Unexpected error during secure secret import (error code {hex(status_word)})"
+    )
+
+
+def test_sw_from_exception_recovers_status_word_from_message():
+    # pysatochip leaves sw1/sw2 at their 0x00 defaults on this path...
+    exc = _import_error(0x9C01)
+    assert (exc.sw1, exc.sw2) == (0x00, 0x00)
+    # ...so the status word must come from the message instead.
+    assert seedkeeper_utils.sw_from_exception(exc) == 0x9C01
+
+
+def test_sw_from_exception_prefers_populated_attributes():
+    exc = FakeSW12Error("boom", 0x6A, 0x84)
+    assert seedkeeper_utils.sw_from_exception(exc) == 0x6A84
+
+
+def test_sw_from_exception_returns_none_when_unknowable():
+    assert seedkeeper_utils.sw_from_exception(ValueError("no status word here")) is None
+
+
+def test_describe_error_maps_9c01_to_a_space_message():
+    connector = MagicMock()
+    connector.card_get_status.return_value = (None, None, None, {"protocol_minor_version": 2})
+
+    text = seedkeeper_utils.describe_seedkeeper_error(_import_error(0x9C01), connector)
+
+    assert "Not enough space" in text
+    # A v2 card can free space by deleting a secret.
+    assert "Delete a secret" in text
+    assert "factory reset" not in text.lower()
+
+
+def test_describe_error_tells_v1_users_a_factory_reset_is_needed():
+    # v1 applets have no seedkeeper_reset_secret (INS 0xA5), so "delete a
+    # secret to free space" is not actionable advice for them.
+    connector = MagicMock()
+    connector.card_get_status.return_value = (None, None, None, {"protocol_minor_version": 1})
+
+    text = seedkeeper_utils.describe_seedkeeper_error(_import_error(0x9C01), connector)
+
+    assert "Not enough space" in text
+    assert "factory reset" in text.lower()
+    assert "Delete a secret" not in text
+
+
+def test_describe_error_maps_unsupported_instruction():
+    exc = FakeSW12Error("Error while fetching SeedKeeper status: (error code 0x6d00)")
+    assert "Not supported" in seedkeeper_utils.describe_seedkeeper_error(exc)
+
+
+def test_describe_error_falls_back_when_no_status_word():
+    exc = ValueError("something else went wrong")
+    assert seedkeeper_utils.describe_seedkeeper_error(exc) == "something else went wrong"
+    assert seedkeeper_utils.describe_seedkeeper_error(exc, fallback="Import Failed") == "Import Failed"
+
+
+def test_ensure_capacity_reraises_a_genuine_status_failure(monkeypatch):
+    """Only 'instruction unsupported' may be swallowed as 'capacity unknown'."""
+    monkeypatch.setattr(seedkeeper_utils, "UnexpectedSW12Error", FakeSW12Error)
+
+    connector = MagicMock()
+    connector.seedkeeper_get_status.side_effect = FakeSW12Error(
+        "Error while fetching SeedKeeper status: (error code 0x9c0f)"
+    )
+    secret_dic = {"header": "00" * 16, "secret_list": [0x01, 0x02]}
+
+    with pytest.raises(FakeSW12Error):
+        seedkeeper_utils.ensure_seedkeeper_capacity(connector, secret_dic)

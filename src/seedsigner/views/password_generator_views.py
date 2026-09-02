@@ -32,7 +32,6 @@ from seedsigner.gui.screens.tools_screens import (
     ToolsTextQRReviewTextScreen,
     ToolsTextQRTextEntryScreen,
 )
-from seedsigner.helpers.iso7816 import format_sw_error
 from seedsigner.helpers import password_generation, diceware, mnemonic_generation
 
 # Re-exported from tools_views.py (shared helpers used by password generation views)
@@ -1282,10 +1281,7 @@ def _save_password_to_seedkeeper(view: View, password: str) -> bool:
         return True
     except UnexpectedSW12Error as e:
         loading.stop()
-        if e.sw1 == 0x6A and e.sw2 == 0x84:
-            err_text = _("Not enough space on Seedkeeper for password")
-        else:
-            err_text = format_sw_error(e.sw1, e.sw2)
+        err_text = seedkeeper_utils.describe_seedkeeper_error(e, Satochip_Connector)
         view.run_screen(
             WarningScreen,
             title=_("Error"),

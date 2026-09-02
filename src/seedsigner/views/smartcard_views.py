@@ -605,7 +605,7 @@ class ToolsCommonNdefView(View):
             card_type = getattr(connector, "card_type", "Unknown")
             
             # Check that we're connected to Seedkeeper
-            if card_type != "Seedkeeper":
+            if card_type != "SeedKeeper":
                 self.run_screen(
                     WarningScreen,
                     title="Wrong Card",
@@ -712,7 +712,9 @@ class ToolsCommonNdefView(View):
                 WarningScreen,
                 title="Failed",
                 status_headline=None,
-                text=str(e)[:100],
+                # 200 rather than 100: the mapped messages below are bounded and
+                # the longest (the v1 out-of-space advice) would be cut mid-sentence.
+                text=seedkeeper_utils.describe_seedkeeper_error(e, connector)[:200],
                 show_back_button=True,
             )
             return Destination(self.__class__)
@@ -726,7 +728,7 @@ class ToolsCommonNdefView(View):
             card_type = getattr(connector, "card_type", "Unknown")
             
             # Check that we're connected to Seedkeeper to load from it
-            if card_type != "Seedkeeper":
+            if card_type != "SeedKeeper":
                 self.run_screen(
                     WarningScreen,
                     title="Wrong Card",
@@ -1587,11 +1589,13 @@ class ToolsSeedkeeperFreeSpaceView(View):
             try:
                 free_bytes = seedkeeper_utils.get_seedkeeper_free_memory(connector)
             except Exception as exc:
+                # v1 applets have no seedkeeper_get_status (INS 0xA7) and answer
+                # 0x6D00, so free space simply cannot be reported for them.
                 self.run_screen(
                     WarningScreen,
                     title="Error",
                     status_headline=None,
-                    text=str(exc),
+                    text=seedkeeper_utils.describe_seedkeeper_error(exc, connector),
                     show_back_button=True,
                 )
                 return Destination(BackStackView)
@@ -1857,7 +1861,7 @@ class ToolsSeedkeeperCloneSecretsView(View):
         except Exception as exc:
             if loading_screen:
                 loading_screen.stop()
-            return False, str(exc)
+            return False, seedkeeper_utils.describe_seedkeeper_error(exc, connector)
 
         finally:
             if loading_screen:
@@ -2219,7 +2223,9 @@ class ToolsSeedkeeperImportPasswordView(View):
                 WarningScreen,
                 title="Failed",
                 status_headline=None,
-                text=f"Password Import Failed",
+                text=seedkeeper_utils.describe_seedkeeper_error(
+                    e, Satochip_Connector, fallback="Password Import Failed"
+                ),
                 show_back_button=False,
             )
         
@@ -2229,6 +2235,9 @@ class ToolsSeedkeeperDeleteSecretView(View):
 
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
+        # Bound up front so the except handler can safely reference it even when
+        # init_satochip() itself is what raised.
+        Satochip_Connector = None
         try:
             Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
             
@@ -2332,7 +2341,7 @@ class ToolsSeedkeeperDeleteSecretView(View):
                 WarningScreen,
                 title="Error",
                 status_headline=None,
-                text=str(e),
+                text=seedkeeper_utils.describe_seedkeeper_error(e, Satochip_Connector),
                 show_back_button=True,
             )
             return Destination(BackStackView)
@@ -2459,6 +2468,9 @@ class ToolsSeedkeeperLoadDescriptorView(View):
 class ToolsSeedkeeperSaveDescriptorView(View):
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
+        # Bound up front so the except handler can safely reference it even when
+        # the failure happens before the card connection is established.
+        Satochip_Connector = None
         try:
             # Load
             descriptor = self.controller.multisig_wallet_descriptor
@@ -2631,7 +2643,7 @@ class ToolsSeedkeeperSaveDescriptorView(View):
                 WarningScreen,
                 title="Error",
                 status_headline=None,
-                text=str(e),
+                text=seedkeeper_utils.describe_seedkeeper_error(e, Satochip_Connector),
                 show_back_button=True,
             )
         
@@ -5757,12 +5769,8 @@ class ToolsJavacardSaveKeysView(View):
             msg = "Keys saved to Seedkeeper"
         except UnexpectedSW12Error as exc:
             loading.stop()
-            if exc.sw1 == 0x6A and exc.sw2 == 0x84:
-                err_text = "Not enough space on Seedkeeper"
-            else:
-                err_text = format_sw_error(exc.sw1, exc.sw2)
             screen = WarningScreen
-            msg = err_text
+            msg = seedkeeper_utils.describe_seedkeeper_error(exc, Satochip_Connector)
         except Exception:
             loading.stop()
             screen = WarningScreen
