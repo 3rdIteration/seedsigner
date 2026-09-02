@@ -6,7 +6,7 @@ from gettext import gettext as _
 
 #from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, WarningScreen, settings_screens)
 
-from seedsigner.gui.components import GUIConstants, SeedSignerIconConstants
+from seedsigner.gui.components import GUIConstants, SeedSignerIconConstants, reflow_text_into_pages
 from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, WarningScreen, settings_screens)
 from seedsigner.gui.screens.screen import ButtonOption
 from seedsigner.models.settings import Settings, SettingsConstants, SettingsDefinition
@@ -983,7 +983,16 @@ class HardeningTestView(View):
         "n/a": "[--]",
     }
 
-    def run(self):
+    def __init__(self, page_num: int = 0, paged_info: list[str] | None = None):
+        super().__init__()
+        self.page_num = page_num
+        # Carried across page turns so the probes run once per visit rather than
+        # once per page: re-running them would be wasted work, and could report a
+        # different answer halfway through the same walk.
+        self.paged_info = paged_info
+
+
+    def _build_report(self) -> str:
         from seedsigner.helpers import hardening
 
         results = hardening.run_checks()
@@ -1014,13 +1023,36 @@ class HardeningTestView(View):
             for result in results
         ]
 
-        self.run_screen(
+        # Blank line after the verdict so it reads as a heading rather than as
+        # the first check in the list.
+        return chr(10).join([verdict, ""] + result_lines)
+
+
+    def run(self):
+        if self.paged_info is None:
+            width, height = settings_screens.HardeningTestScreen.get_paging_dimensions()
+            self.paged_info = reflow_text_into_pages(
+                text=self._build_report(),
+                width=width,
+                height=height,
+            )
+
+        selected_menu_num = self.run_screen(
             settings_screens.HardeningTestScreen,
-            verdict=verdict,
-            result_lines=result_lines,
+            page_num=self.page_num,
+            paged_info=self.paged_info,
         )
 
-        return Destination(SettingsMenuView, view_args={"visibility": SettingsConstants.VISIBILITY__ADVANCED})
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if self.page_num >= len(self.paged_info) - 1:
+            return Destination(SettingsMenuView, view_args={"visibility": SettingsConstants.VISIBILITY__ADVANCED})
+
+        return Destination(
+            HardeningTestView,
+            view_args=dict(page_num=self.page_num + 1, paged_info=self.paged_info),
+        )
 
 class VersionView(View):
     def run(self):

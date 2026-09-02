@@ -14,7 +14,7 @@ from seedsigner.helpers.system_memory import format_kb, get_memory_stats
 from seedsigner.gui.components import Button, CheckboxButton, CheckedSelectionButton, FontAwesomeIconConstants, Fonts, GUIConstants, Icon, IconButton, IconTextLine, SeedSignerIconConstants, TextArea, resize_image_to_fit
 from seedsigner.gui.screens.scan_screens import ScanScreen
 from seedsigner.gui.keyboard import Keyboard
-from seedsigner.gui.screens.screen import BaseScreen, BaseTopNavScreen, ButtonListScreen, ButtonOption, KeyboardScreen
+from seedsigner.gui.screens.screen import BaseScreen, BaseTopNavScreen, ButtonListScreen, ButtonOption, KeyboardScreen, PagedTextScreen
 from seedsigner.models.threads import BaseThread
 from seedsigner.hardware.buttons import HardwareButtonsConstants
 from seedsigner.hardware.camera import Camera
@@ -712,37 +712,20 @@ class MemoryInfoScreen(BaseTopNavScreen):
 
 
 @dataclass
-class HardeningTestScreen(BaseTopNavScreen):
+class HardeningTestScreen(PagedTextScreen):
     """Per-check results from the runtime hardening self-test.
 
-    Follows SystemInfoScreen's TextArea list. Each line is prefixed with a
-    plain-text glyph rather than a coloured icon so the state survives a photo
-    of the screen and a monochrome display.
-    """
-    verdict: str = ""
-    result_lines: List[str] = None
+    A dozen checks with their detail text do not fit on one 240x240 screen -- the
+    original single-page layout simply ran off the bottom edge and the failing
+    check's detail, the whole point of the screen, was the part you could not
+    read. PagedTextScreen pages through it instead.
 
+    Each line is prefixed with a plain-text glyph rather than a coloured icon so
+    the state survives a photo of the screen and a monochrome display.
+    """
     def __post_init__(self):
         self.title = _("Test Hardening")
         super().__post_init__()
-
-        start_y = self.top_nav.height + 2 * GUIConstants.COMPONENT_PADDING
-        line_spacing = GUIConstants.COMPONENT_PADDING
-
-        lines = [self.verdict] if self.verdict else []
-        lines += self.result_lines or []
-
-        for line in lines:
-            text_area = TextArea(
-                text=line,
-                screen_x=GUIConstants.EDGE_PADDING,
-                width=self.canvas_width - 2 * GUIConstants.EDGE_PADDING,
-                is_text_centered=False,
-                auto_line_break=True,
-                screen_y=start_y,
-            )
-            self.components.append(text_area)
-            start_y += text_area.height + line_spacing
 
 
 @dataclass

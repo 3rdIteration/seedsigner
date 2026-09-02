@@ -236,6 +236,38 @@ def test_ttynull_console_counts_as_silenced(tmp_path, monkeypatch):
     assert hardening.check_serial_console().state == hardening.STATE_PASS
 
 
+def test_virtual_terminal_console_is_not_a_serial_exposure(tmp_path, monkeypatch):
+    """console=tty1 is the framebuffer VT, not a port. A Pi that names no console
+    in its cmdline.txt can still be handed one by the firmware/DTB, and calling
+    that an open serial port is a false alarm (seedsigner#422)."""
+    root = tmp_path / "vt"
+    _write(root / "proc/cmdline", "root=/dev/mmcblk0p2 console=tty1 rootwait\n")
+    _point_module_at(monkeypatch, root)
+    check = hardening.check_serial_console()
+    assert check.state == hardening.STATE_PASS
+    # Still named in the detail, so the Test hardening screen stays diagnostic.
+    assert "tty1" in check.detail
+    assert "serial" not in hardening.open_exposures()
+
+
+def test_uart_console_fails_even_alongside_a_virtual_terminal(tmp_path, monkeypatch):
+    root = tmp_path / "vt_and_uart"
+    _write(root / "proc/cmdline", "console=tty1 console=ttyAMA0,115200 rootwait\n")
+    _point_module_at(monkeypatch, root)
+    check = hardening.check_serial_console()
+    assert check.state == hardening.STATE_FAIL
+    assert "ttyAMA0" in check.detail
+    # The VT is not what is open, so it must not pad the failure detail.
+    assert "tty1" not in check.detail
+
+
+def test_8250_uart_console_fails(tmp_path, monkeypatch):
+    root = tmp_path / "uart8250"
+    _write(root / "proc/cmdline", "console=ttyS0,115200 root=/dev/mmcblk0p2\n")
+    _point_module_at(monkeypatch, root)
+    assert hardening.check_serial_console().state == hardening.STATE_FAIL
+
+
 def test_dev_tools_detected_on_path(tmp_path, monkeypatch):
     root = tmp_path / "tools"
     bindir = root / "bin"

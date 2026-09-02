@@ -542,14 +542,11 @@ class ToolsNetworkInfoView(View):
         if not network_info:
             return None
 
-        start_y = GUIConstants.TOP_NAV_HEIGHT + GUIConstants.COMPONENT_PADDING
-        end_y = self.renderer.canvas_height - GUIConstants.EDGE_PADDING - GUIConstants.BUTTON_HEIGHT - GUIConstants.COMPONENT_PADDING
-        info_height = end_y - start_y
-
+        width, height = ToolsNetworkInfoScreen.get_paging_dimensions()
         return reflow_text_into_pages(
             text=network_info,
-            width=self.renderer.canvas_width - 2 * GUIConstants.EDGE_PADDING,
-            height=info_height,
+            width=width,
+            height=height,
             font_name=GUIConstants.FIXED_WIDTH_FONT_NAME,
             font_size=GUIConstants.get_body_font_size(),
         )

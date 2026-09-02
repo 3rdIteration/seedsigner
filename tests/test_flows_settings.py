@@ -152,9 +152,32 @@ class TestSettingsFlows(FlowTest):
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SETTINGS),
             FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.ADVANCED),
             FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.TEST_HARDENING),
-            FlowStep(settings_views.HardeningTestView),
+            FlowStep(settings_views.HardeningTestView, screen_return_value=RET_CODE__BACK_BUTTON),
             FlowStep(settings_views.SettingsMenuView),
         ])
+
+
+    def test_test_hardening_advances_a_page_at_a_time(self):
+        """The report is paged; "More" moves to the next page, the last page exits.
+
+        Page count depends on what the probes can read, so drive the paging
+        directly rather than asserting a fixed number of screens.
+        """
+        pages = ["page one", "page two", "page three"]
+
+        view = settings_views.HardeningTestView(page_num=0, paged_info=pages)
+        with patch.object(settings_views.HardeningTestView, "run_screen", return_value=0):
+            dest = view.run()
+        assert dest.View_cls is settings_views.HardeningTestView
+        assert dest.view_args["page_num"] == 1
+        # Probes must not re-run mid-walk; the same pages are carried forward.
+        assert dest.view_args["paged_info"] is pages
+
+        last = settings_views.HardeningTestView(page_num=len(pages) - 1, paged_info=pages)
+        with patch.object(settings_views.HardeningTestView, "run_screen", return_value=0):
+            dest = last.run()
+        assert dest.View_cls is settings_views.SettingsMenuView
+        assert dest.view_args["visibility"] == SettingsConstants.VISIBILITY__ADVANCED
 
 
     def test_load_backup_files_submenu(self):
