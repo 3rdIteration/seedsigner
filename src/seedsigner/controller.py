@@ -629,13 +629,29 @@ class Controller(Singleton):
 
                 # The next_destination up always goes on the back_stack, even if it's the
                 #   one we just popped.
-                # Do not push a "new" destination if it is the same as the current one on
-                # the top of the stack.
-                if len(self.back_stack) == 0 or self.back_stack[-1] != next_destination:
-                    logger.info(f"Appending next destination: {next_destination}")
-                    self.back_stack.append(next_destination)
-                else:
-                    logger.info(f"NOT appending {next_destination}")
+                #
+                # If it is already somewhere in the stack then we have arrived back at a
+                # View we have been through before -- most often a completed workflow
+                # returning to the menu that launched it. Truncate the stack at that
+                # point instead of pushing a duplicate; otherwise "back" from that menu
+                # pops straight into the workflow we just finished, and flows that
+                # dead-end on re-entry (e.g. "Uninstall Applet" with no applets left)
+                # loop with no way out but a power cycle. See issue #423.
+                #
+                # Truncating at the last index and re-appending is a no-op, which also
+                # covers the older "don't re-push the current top of the stack" case.
+                try:
+                    unwind_index = self.back_stack.index(next_destination)
+                except ValueError:
+                    unwind_index = None
+
+                if unwind_index is not None:
+                    if unwind_index < len(self.back_stack) - 1:
+                        logger.info(f"Unwinding back_stack to {next_destination}")
+                    del self.back_stack[unwind_index:]
+
+                logger.info(f"Appending next destination: {next_destination}")
+                self.back_stack.append(next_destination)
 
         finally:
             from seedsigner.gui.renderer import Renderer

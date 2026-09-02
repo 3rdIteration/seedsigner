@@ -1,9 +1,11 @@
 import pytest
 
 # Must import this before the Controller
-from base import BaseTest
+from base import BaseTest, FlowTest, FlowStep
 
 from seedsigner.controller import Controller
+from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, ButtonListScreen, ButtonOption
+from seedsigner.views.view import BackStackView, Destination, View
 
 
 class TestController(BaseTest):
@@ -79,3 +81,141 @@ class TestController(BaseTest):
         # ...get a new copy of the instance and confirm change
         controller = Controller.get_instance()
         assert controller.unverified_address == "123abc"
+
+
+
+"""
+    Minimal Views used to exercise the Controller's back_stack handling in
+    isolation: a two-level menu tree (parent menu -> entry menu) plus the
+    workflows that an entry menu can launch.
+
+    Note that the Controller never pushes the *initial* Destination onto the
+    back_stack, so `BackStackRootView` is only a bootstrap and never appears in
+    the assertions below.
+"""
+class BackStackRootView(View):
+    def run(self):
+        self.run_screen(ButtonListScreen, button_data=[ButtonOption("Next")])
+        return Destination(BackStackParentMenuView)
+
+
+class BackStackParentMenuView(View):
+    def run(self):
+        self.run_screen(ButtonListScreen, button_data=[ButtonOption("Next")])
+        return Destination(BackStackEntryMenuView)
+
+
+class BackStackEntryMenuView(View):
+    """The menu a workflow is launched from, and that it returns to when done."""
+    def run(self):
+        ret = self.run_screen(ButtonListScreen, button_data=[ButtonOption("Next")])
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        return Destination([
+            BackStackWorkflowView,
+            BackStackClearHistoryView,
+            BackStackSkippedView,
+        ][ret])
+
+
+class BackStackWorkflowView(View):
+    """A complete workflow that ends by returning to the menu that launched it."""
+    def run(self):
+        self.run_screen(ButtonListScreen, button_data=[ButtonOption("Done")])
+        return Destination(BackStackEntryMenuView)
+
+
+class BackStackClearHistoryView(View):
+    def run(self):
+        self.run_screen(ButtonListScreen, button_data=[ButtonOption("Done")])
+        return Destination(BackStackEntryMenuView, clear_history=True)
+
+
+class BackStackSkippedView(View):
+    """Forwards straight through; should not be left in the back_stack."""
+    def run(self):
+        self.run_screen(ButtonListScreen, button_data=[ButtonOption("Next")])
+        return Destination(BackStackWorkflowView, skip_current_view=True)
+
+
+
+class TestBackStack(FlowTest):
+    """
+        A workflow that finishes by returning to the menu it was launched from must
+        not leave its own screens above that menu in the back_stack; "back" from the
+        menu would then re-enter the workflow that just completed. Flows that
+        dead-end on re-entry (e.g. "Uninstall Applet" with no applets left) loop with
+        no way out but a power cycle. See issue #423.
+    """
+
+    def view_classes(self) -> list:
+        return [d.View_cls for d in self.controller.back_stack]
+
+
+    def test_completed_workflow_unwinds_the_back_stack(self):
+        self.run_sequence([
+            FlowStep(BackStackRootView, screen_return_value=0),
+            FlowStep(BackStackParentMenuView, screen_return_value=0),
+            FlowStep(BackStackEntryMenuView, screen_return_value=0),
+            FlowStep(BackStackWorkflowView, screen_return_value=0),
+            FlowStep(BackStackEntryMenuView),
+        ])
+
+        # The workflow's View is gone; only the entry menu and its parent remain.
+        assert self.view_classes() == [BackStackParentMenuView, BackStackEntryMenuView]
+
+
+    def test_back_from_entry_menu_skips_the_completed_workflow(self):
+        """ "Back" from the entry menu must reach its parent, not re-run the workflow """
+        self.run_sequence([
+            FlowStep(BackStackRootView, screen_return_value=0),
+            FlowStep(BackStackParentMenuView, screen_return_value=0),
+            FlowStep(BackStackEntryMenuView, screen_return_value=0),
+            FlowStep(BackStackWorkflowView, screen_return_value=0),
+            FlowStep(BackStackEntryMenuView, screen_return_value=RET_CODE__BACK_BUTTON),
+            FlowStep(BackStackParentMenuView),
+        ])
+
+
+    def test_distinct_destinations_are_still_appended(self):
+        """ Unwinding must only trigger on a Destination we have actually been to """
+        self.run_sequence([
+            FlowStep(BackStackRootView, screen_return_value=0),
+            FlowStep(BackStackParentMenuView, screen_return_value=0),
+            FlowStep(BackStackEntryMenuView, screen_return_value=0),
+            FlowStep(BackStackWorkflowView),
+        ])
+
+        assert self.view_classes() == [
+            BackStackParentMenuView,
+            BackStackEntryMenuView,
+            BackStackWorkflowView,
+        ]
+
+
+    def test_clear_history_still_wipes_the_back_stack(self):
+        self.run_sequence([
+            FlowStep(BackStackRootView, screen_return_value=0),
+            FlowStep(BackStackParentMenuView, screen_return_value=0),
+            FlowStep(BackStackEntryMenuView, screen_return_value=1),
+            FlowStep(BackStackClearHistoryView, screen_return_value=0),
+            FlowStep(BackStackEntryMenuView),
+        ])
+
+        assert self.view_classes() == [BackStackEntryMenuView]
+
+
+    def test_skip_current_view_still_drops_the_forwarding_view(self):
+        self.run_sequence([
+            FlowStep(BackStackRootView, screen_return_value=0),
+            FlowStep(BackStackParentMenuView, screen_return_value=0),
+            FlowStep(BackStackEntryMenuView, screen_return_value=2),
+            FlowStep(BackStackSkippedView, screen_return_value=0),
+            FlowStep(BackStackWorkflowView),
+        ])
+
+        assert self.view_classes() == [
+            BackStackParentMenuView,
+            BackStackEntryMenuView,
+            BackStackWorkflowView,
+        ]

@@ -226,6 +226,37 @@ When moving or renaming an underscore-prefixed function:
 - Use the same patterns as existing tests: `object.__new__(ViewClass)` to create view instances without triggering `__init__`, then monkeypatch dependencies.
 - For views that reference symbols from split modules, ensure those symbols are accessible through `tools_views` (see star import caveat above).
 
+### Back stack and workflow completion
+
+`Controller.start()` keeps a `back_stack` of `Destination`s; the top entry is the View
+currently running, and the back arrow (`Destination(BackStackView)`) pops the current View plus
+the one beneath it. When a View returns a `Destination` that is **already in the stack**, the
+Controller truncates the stack at that point rather than pushing a duplicate — so a completed
+workflow returning to its entry menu removes its own screens instead of burying them under it.
+
+Follow these rules when a View ends a workflow (see issue #423 for what happens otherwise: back
+from the Javacard DIY menu re-ran the uninstall flow, which dead-ended and looped forever):
+
+- **The whole workflow lives in one View** (however many Screens it runs), reached directly from a
+  menu → return **`Destination(BackStackView)`**. The Controller pops the finished View and lands
+  on whichever menu launched it. No hard-coded coupling, and it stays correct for Views reachable
+  from more than one menu.
+- **The workflow spans several View classes** → the last one cannot use `BackStackView` (that
+  lands on the previous *flow screen*). Return the entry menu explicitly:
+  **`Destination(EntryMenuView)`**. The truncation above keeps this from stacking up.
+  If the chain has several entry points and no single menu to name, `MainMenuView` is an
+  acceptable fallback — add a comment saying why (see `SatochipLoadDescriptorDetailsView`).
+- **`Destination(MainMenuView)`** is reserved for workflows whose entry point genuinely *is* Home
+  (Scan, PSBT signing, top-level Seeds flows) and for error handlers that deliberately reset
+  navigation. **It is not a way to clear the back stack** — it only looks like one because the
+  Controller wipes the stack whenever it routes to Home.
+- **`clear_history=True`** is for flows that must not be re-enterable at all (error views, the
+  post-wipe / settings-changed paths). Prefer the rules above for ordinary completions; it
+  discards the parent menus too.
+
+Whenever you add or change a workflow-terminating return, add the matching back-navigation
+FlowStep to `tests/test_flows_menu_navigation.py` (see below).
+
 ### Navigation test maintenance
 
 `tests/test_flows_menu_navigation.py` (**60 tests**) walks every UI menu path to catch lazy-import errors and platform-crashes. **Whenever a menu tree (a View's button_data list) is changed, a new View is added, or a View's imports are modified, update this test file** to cover the new/changed path.

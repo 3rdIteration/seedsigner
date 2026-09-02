@@ -1278,11 +1278,11 @@ class TestSatochipImportSeedView(BaseTest):
         view.run_screen = Mock(return_value=0)
         destination = view.run()
 
-        # Should warn user and return to main menu without attempting import
+        # Should warn user and return to the menu that launched it, without attempting import
         assert view.run_screen.call_count == 1
         assert view.run_screen.call_args.args[0] is tools_views.WarningScreen
         assert "already" in view.run_screen.call_args.kwargs["text"].lower()
-        assert destination.View_cls == tools_views.MainMenuView
+        assert destination.View_cls == tools_views.BackStackView
 
     def test_xprv_seed_shows_unsupported_message(self, monkeypatch):
         from seedsigner.views import tools_views
@@ -1364,7 +1364,7 @@ class TestSatochipImportSeedView(BaseTest):
 
         warning_text = captured["warning_text"].lower()
         assert "import failed with sw=6a80" in warning_text
-        assert destination.View_cls == tools_views.MainMenuView
+        assert destination.View_cls == tools_views.BackStackView
 
     def test_import_seed_unseeded_post_status_shows_failed_warning(self, monkeypatch):
         from seedsigner.views import tools_views
@@ -1410,7 +1410,7 @@ class TestSatochipImportSeedView(BaseTest):
 
         warning_text = captured["warning_text"].lower()
         assert "seeded key" in warning_text
-        assert destination.View_cls == tools_views.MainMenuView
+        assert destination.View_cls == tools_views.BackStackView
 
     def test_import_seed_pysatochip_backend_shows_success(self, monkeypatch):
         """pysatochip's card_bip32_import_seed returns a single authentikey, not
@@ -1502,4 +1502,4 @@ class TestSatochipImportSeedView(BaseTest):
         destination = view.run()
 
         assert "import failed" in captured["warning_text"].lower()
-        assert destination.View_cls == tools_views.MainMenuView
+        assert destination.View_cls == tools_views.BackStackView
