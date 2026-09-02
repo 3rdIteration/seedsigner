@@ -291,6 +291,34 @@ The commands that the menu items run prompt you to choose how much storage to al
 
     java -jar /home/pi/Satochip-DIY/gp.jar --uninstall /home/pi/Satochip-DIY/build/SeedKeeper-official-3.0.4.cap
 
+#### Applet v0.1 ignores `--params`
+
+SeedKeeper **v0.1** hard-codes its object memory as a `final` 0xFFF (4095 bytes) and its
+`install()` discards the install parameters entirely. The overridable `OM_SIZE` only
+arrived in v0.2. Flashing a v0.1 applet with `--params 1FFF` therefore silently gives you
+a 4 KB card, not 8 KB.
+
+v0.1 also **cannot delete secrets**: `INS_RESET_SECRET` (0xA5) exists but throws
+`SW_UNSUPPORTED_FEATURE` (0x9C05) straight after its PIN check. Once a v0.1 card's object
+memory is full, imports fail with `SW_NO_MEMORY_LEFT` (0x9C01) and the only recovery is a
+factory reset or a re-flash of the applet. This was the cause of issue #413.
+
+To tell the versions apart, check the **protocol** minor version — both report *applet*
+version 0.1, so that is not a discriminator. v0.1 reports protocol 0.1, v0.2 reports
+protocol 0.2. SeedSigner does this in `seedkeeper_utils.is_seedkeeper_v1()`.
+
+Other instructions unimplemented on v0.1, all answering `0x6D00`:
+
+| INS | v0.2 meaning |
+| --- | --- |
+| 0xA3 | `GENERATE_RANDOM_SECRET` |
+| 0xA7 | `GET_SEEDKEEPER_STATUS` — free space and secret count cannot be read |
+| 0xA8 | `EXPORT_SECRET_TO_SATOCHIP` |
+| 0x3F | NDEF get/set |
+
+Both applet versions are exercised by the hardware test suite; see
+`tests/javacard-cap-legacy/README.md`.
+
 ## Javacard Management
 
 ### Javacard DIY Key Files

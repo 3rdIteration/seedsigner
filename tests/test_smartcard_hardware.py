@@ -180,6 +180,21 @@ def cap_dir():
     return p
 
 
+@pytest.fixture(scope="session")
+def legacy_cap_dir():
+    """CAP files for superseded applet versions.
+
+    Deliberately NOT in javacard-cap/: that directory feeds the on-device
+    "Install Applet" picker (ToolsDIYInstallAppletView globs it via
+    _get_internal_cap_dir()) and ships in the SeedSigner-OS image, whereas the
+    image build prunes tests/. A superseded applet must be flashable by this
+    suite and by nobody else. See tests/javacard-cap-legacy/README.md.
+    """
+    p = Path(__file__).resolve().parent / "javacard-cap-legacy"
+    assert p.is_dir(), f"legacy CAP directory not found: {p}"
+    return p
+
+
 # ======================================================================
 # Phase 0 — CAP install/uninstall verification (explicit lifecycle tests)
 # ======================================================================
@@ -427,25 +442,40 @@ class TestSeedKeeper:
     AID = "536565644B6565706572"
     CAP = "SeedKeeper-0.2-official.cap"
 
+    # -- cross-version knobs -------------------------------------------
+    # Subclasses for superseded applets override only these; the test bodies
+    # stay version-agnostic. Recipe: tests/javacard-cap-legacy/README.md.
+    CAP_DIR_FIXTURE = "cap_dir"        # "legacy_cap_dir" for superseded versions
+    INSTALL_PARAMS = "1FFF"            # None when the applet ignores install params
+    APPLET_LABEL = "v0.2"              # for log lines and assertion messages
+    EXPECTED_PROTOCOL_MINOR = 2        # the ONLY on-card discriminator (see below)
+    SUPPORTS_RESET_SECRET = True       # v0.1's resetSecret() throws 0x9C05
+
     _connector = None  # cached between methods in the class
 
     @pytest.fixture(scope="class", autouse=True)
-    def applet(self, gp, cap_dir):
-        result = gp.install_capfile(
-            str(cap_dir / self.CAP),
-            application_specific_parameters="1FFF",
-        )
-        logger.info(f"SeedKeeper install result: {result}")
+    def applet(self, request, gp):
+        cap_dir = request.getfixturevalue(self.CAP_DIR_FIXTURE)
+        # Never inherit a connector across a re-flash: CardConnector caches
+        # protocol_version and the authentikey, so a stale one would validate
+        # exports against the *previous* applet's key.
+        type(self)._connector = None
+        kwargs = {}
+        if self.INSTALL_PARAMS is not None:
+            kwargs["application_specific_parameters"] = self.INSTALL_PARAMS
+        result = gp.install_capfile(str(cap_dir / self.CAP), **kwargs)
+        logger.info(f"SeedKeeper {self.APPLET_LABEL} install result: {result}")
         gp.close()
         # Provision the card once per class (idempotent — skips if already setup)
         try:
             self._provision("1234")
-            logger.info(f"SeedKeeper provisioned with fixed PUK")
+            logger.info(f"SeedKeeper {self.APPLET_LABEL} provisioned with fixed PUK")
         except Exception as exc:
             logger.warning(f"SeedKeeper provisioning failed (non-fatal): {exc}")
         yield
         try:
             self._disconnect()
+            type(self)._connector = None
             gp.terminal()
             gp.card()
             gp.auth(
@@ -456,7 +486,9 @@ class TestSeedKeeper:
                 securitylevel=gp.SECURITY_LEVEL_C_MAC,
             )
             delete_result = gp.delete_package(self.AID)
-            logger.info(f"SeedKeeper uninstall result: {delete_result}")
+            logger.info(
+                f"SeedKeeper {self.APPLET_LABEL} uninstall result: {delete_result}"
+            )
         except BaseException as exc:
             logger.warning(f"SeedKeeper cleanup failed (non-fatal): {exc}")
 
@@ -573,6 +605,22 @@ class TestSeedKeeper:
         secret_hex = d["secret"]
         return _decode_seedkeeper_text(secret_hex)
 
+    def _cleanup_secret(self, sid: int):
+        """Free a test secret when the applet is capable of it.
+
+        v0.1 defines INS_RESET_SECRET at 0xA5, but resetSecret() throws
+        SW_UNSUPPORTED_FEATURE (0x9C05) immediately after the PIN check — it
+        never deletes and never exports. Calling it there would turn every
+        inherited test's teardown into an error.
+
+        Skipping the delete is safe: the class teardown uninstalls the package,
+        and the applet constructor allocates a fresh ObjectManager(OM_SIZE) on
+        the next install, so object memory is discarded wholesale.
+        """
+        if not self.SUPPORTS_RESET_SECRET:
+            return
+        self._connect().seedkeeper_reset_secret(sid)
+
     # -- tests ---------------------------------------------------------
 
     def test_provision(self):
@@ -581,6 +629,31 @@ class TestSeedKeeper:
         connector = self._connect()
         (_, _, _, status) = connector.card_get_status()
         assert status.get("setup_done") is True
+
+    def test_reports_expected_applet_version(self):
+        """Pin the version discriminator that the whole v1 code path depends on.
+
+        protocol_minor_version is the ONLY on-card difference between SeedKeeper
+        v0.1 and v0.2 — both report applet version 0.1. That is what
+        seedkeeper_utils.is_seedkeeper_v1() keys on, and what the fork's other
+        `protocol_minor_version == 1` gates rely on, so assert it against real
+        silicon in both directions rather than trusting the constant.
+        """
+        from seedsigner.helpers.seedkeeper_utils import is_seedkeeper_v1
+
+        connector = self._connect()
+        (_, _, _, status) = connector.card_get_status()
+
+        assert status["protocol_major_version"] == 0
+        assert status["protocol_minor_version"] == self.EXPECTED_PROTOCOL_MINOR, (
+            f"expected SeedKeeper {self.APPLET_LABEL}, but the card reports protocol "
+            f"{status['protocol_major_version']}.{status['protocol_minor_version']} "
+            f"— is the right CAP flashed?"
+        )
+        # Applet version cannot distinguish the two: both report 0.1.
+        assert (status["applet_major_version"], status["applet_minor_version"]) == (0, 1)
+
+        assert is_seedkeeper_v1(connector) is (self.EXPECTED_PROTOCOL_MINOR == 1)
 
     def test_get_status(self):
         connector = self._connect()
@@ -614,7 +687,7 @@ class TestSeedKeeper:
         assert recovered_mnemonic == mnemonic
         assert recovered_passphrase == passphrase
 
-        connector.seedkeeper_reset_secret(sid)
+        self._cleanup_secret(sid)
 
     def test_import_export_bip39_v2(self, test_seed_hex, test_entropy_hex):
         from embit import bip39
@@ -645,7 +718,7 @@ class TestSeedKeeper:
         sl = exported_list[0]
         recovered_seed = bytes(exported_list[1:1 + sl])
         assert recovered_seed == seed_bytes
-        connector.seedkeeper_reset_secret(sid)
+        self._cleanup_secret(sid)
 
     def test_import_export_xprv(self, test_seed_hex):
         from embit import bip32
@@ -668,7 +741,7 @@ class TestSeedKeeper:
         exported = connector.seedkeeper_export_secret(sid, None)
         decoded = _decode_seedkeeper_text(exported["secret"])
         assert decoded == xprv_str
-        connector.seedkeeper_reset_secret(sid)
+        self._cleanup_secret(sid)
 
     def test_import_export_electrum(self):
         mnemonic = "regular reject rare profit once math fringe chase until ketchup century escape"
@@ -690,7 +763,7 @@ class TestSeedKeeper:
         ml = exported_list[0]
         recovered = bytes(exported_list[1:1 + ml]).decode("utf-8")
         assert recovered == mnemonic
-        connector.seedkeeper_reset_secret(sid)
+        self._cleanup_secret(sid)
 
     def test_import_export_aezeed(self):
         mnemonic = ("absorb original enlist once climb erode kid thrive kitchen giant "
@@ -712,7 +785,7 @@ class TestSeedKeeper:
         decoded = _decode_seedkeeper_text(exported["secret"])
         assert decoded.startswith("aezeed:")
         assert mnemonic in decoded
-        connector.seedkeeper_reset_secret(sid)
+        self._cleanup_secret(sid)
 
     def test_import_export_slip39(self):
         share = ("duckling enlarge academic academic agency result length solution "
@@ -731,7 +804,7 @@ class TestSeedKeeper:
         exported = connector.seedkeeper_export_secret(sid, None)
         decoded = _decode_seedkeeper_text(exported["secret"])
         assert decoded == share
-        connector.seedkeeper_reset_secret(sid)
+        self._cleanup_secret(sid)
 
     def test_list_secrets(self):
         # Import 2 known secrets first
@@ -746,8 +819,8 @@ class TestSeedKeeper:
         found = [h for h in headers if h.get("label", "").startswith("list_test_")]
         assert len(found) >= 2
 
-        connector.seedkeeper_reset_secret(s1)
-        connector.seedkeeper_reset_secret(s2)
+        self._cleanup_secret(s1)
+        self._cleanup_secret(s2)
 
     def test_capacity(self):
         connector = self._connect()
@@ -762,7 +835,7 @@ class TestSeedKeeper:
         free_after = status["free_memory"]
         assert free_after < free_before  # memory decreased
 
-        connector.seedkeeper_reset_secret(sid)
+        self._cleanup_secret(sid)
 
     def test_ndef_roundtrip(self):
         import ndef as _ndeflib
@@ -792,7 +865,7 @@ class TestSeedKeeper:
         assert records[1]["record_type"] == "uri"
         assert records[1].get("uri", "") == "https://seedsigner.com"
 
-        connector.seedkeeper_reset_secret(sid)
+        self._cleanup_secret(sid)
 
     def test_card_ndef_get_set(self):
         """Round-trip the card's NFC NDEF buffer via card_set_ndef/card_get_ndef —
@@ -848,7 +921,7 @@ class TestSeedKeeper:
             assert isinstance(origin, str)
         finally:
             connector = self._connect()
-            connector.seedkeeper_reset_secret(sid)
+            self._cleanup_secret(sid)
 
     def test_save_javacard_keys(self):
         key_json = '{"ENC": "A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6", "MAC": "A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6", "DEK": "A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6"}'
@@ -870,7 +943,7 @@ class TestSeedKeeper:
         assert "ENC" in parsed
         assert "MAC" in parsed
         assert "DEK" in parsed
-        connector.seedkeeper_reset_secret(sid)
+        self._cleanup_secret(sid)
 
     def test_import_export_descriptor(self):
         """Round-trip a V2 "Descriptor" secret (type 0xC1, 2-byte length prefix).
@@ -902,7 +975,7 @@ class TestSeedKeeper:
             decoded = _decode_seedkeeper_text(exported["secret"])
             assert decoded == payload.decode("utf-8")
         finally:
-            connector.seedkeeper_reset_secret(sid)
+            self._cleanup_secret(sid)
 
     def test_change_pin(self):
         connector = self._connect()
@@ -985,6 +1058,226 @@ class TestSeedKeeper:
             pass
 
         self._disconnect()
+
+
+# ======================================================================
+# Phase 2b — SeedKeeper, legacy v0.1 applet (#413)
+# ======================================================================
+
+class TestSeedKeeperV1(TestSeedKeeper):
+    """Re-run the whole SeedKeeper suite against the v0.1 applet (#413).
+
+    The DIY card in #413 ran a v0.1 applet. Upstream commented out the Shamir
+    instructions, so INS 0xA7 — the byte v0.2 later assigned to
+    GET_SEEDKEEPER_STATUS — falls through to SW_INS_NOT_SUPPORTED (0x6D00).
+    That blocked the capacity pre-check and so blocked every write; once the
+    pre-check tolerated it, the card answered 0x9C01 on import because v0.1
+    hard-codes a 4095-byte object memory and ignores the install parameters.
+    None of it was caught because this suite only ever flashed v0.2.
+
+    Inheriting TestSeedKeeper is deliberate: every test added to the v0.2 suite
+    from now on is exercised against v0.1 for free. Override a test here only
+    when its *expected outcome* genuinely differs — and write the override as a
+    positive assertion on the older behaviour, not an xfail.
+
+    Runs unchanged on v0.1: provision, all six import/export round-trips,
+    list_secrets, ndef_roundtrip (a plain secret, not card NFC),
+    list_secrets_view_decode, save_javacard_keys, import_export_descriptor
+    (v0.1 does not validate the secret-type byte), change_pin, unblock_pin.
+    Self-skipping, no override needed: card_ndef_get_set (no INS 0x3F) and
+    factory_reset_new (its existing protocol_version < 2 guard).
+    """
+
+    CAP = "SeedKeeper-0.1-0.1.cap"
+    CAP_DIR_FIXTURE = "legacy_cap_dir"
+    INSTALL_PARAMS = None       # v0.1's install() discards bArray; OM_SIZE is final
+    APPLET_LABEL = "v0.1"
+    EXPECTED_PROTOCOL_MINOR = 1
+    SUPPORTS_RESET_SECRET = False
+
+    _connector = None           # shadow the parent's cache; never share across a re-flash
+
+    # -- overridden: outcome differs on v0.1 ---------------------------
+
+    def test_get_status(self):
+        """#413's trigger: v0.1 has no GET_SEEDKEEPER_STATUS, so free space is
+        simply unknowable.
+
+        Upstream comments out INS_IMPORT_SHAMIR_SHARED_SECRET at 0xA7, and v0.2
+        later reused that byte for GET_SEEDKEEPER_STATUS. On v0.1 it reaches
+        `default: ISOException.throwIt(SW_INS_NOT_SUPPORTED)`.
+
+        This also exercises sw_from_exception() on the path it exists for:
+        pysatochip raises UnexpectedSW12Error here *without* passing sw1/sw2,
+        so they sit at their 0x00 defaults and the status word survives only in
+        the message text.
+        """
+        from pysatochip.CardConnector import UnexpectedSW12Error
+        from seedsigner.helpers.seedkeeper_utils import (
+            describe_seedkeeper_error,
+            sw_from_exception,
+        )
+
+        connector = self._connect()
+        with pytest.raises(UnexpectedSW12Error) as excinfo:
+            connector.seedkeeper_get_status()
+
+        assert (excinfo.value.sw1, excinfo.value.sw2) == (0x00, 0x00), (
+            "pysatochip started populating sw1/sw2 on this path — "
+            "sw_from_exception()'s message fallback may no longer be needed"
+        )
+        assert sw_from_exception(excinfo.value) == 0x6D00
+        assert "Not supported" in describe_seedkeeper_error(excinfo.value, connector)
+
+    def test_capacity(self):
+        """#413's fix, against real silicon: an unknowable capacity must not
+        block the write.
+
+        This is the exact call the ToolsSeedkeeperSave* views make before every
+        import. Before the fix it raised and every write was refused.
+        """
+        from seedsigner.helpers.seedkeeper_utils import ensure_seedkeeper_capacity
+
+        connector = self._connect()
+        header = connector.make_header(
+            "Password", "Plaintext export allowed", "cap_probe"
+        )
+        secret_dic = {
+            "header": header,
+            "secret_list": _aead_to_seedkeeper_list(b"capacity probe payload"),
+        }
+
+        fits, required, available = ensure_seedkeeper_capacity(connector, secret_dic)
+
+        assert fits is True, "a v0.1 card must not be blocked by an unknowable capacity"
+        assert required > 0
+        assert available is None, "free space is not knowable on a v0.1 applet"
+
+        # ...and the write it green-lit must actually land on the card.
+        sid = self._import_secret(
+            "Password", "Plaintext export allowed", "cap_probe", b"capacity probe payload"
+        )
+        assert self._export_and_decode(sid) == "capacity probe payload"
+        self._cleanup_secret(sid)
+
+    # -- v0.1-specific regressions -------------------------------------
+
+    def test_reset_secret_is_refused_without_deleting(self):
+        """v0.1 cannot free space, which is why the v1 error message differs.
+
+        v0.1 *does* define INS_RESET_SECRET at 0xA5 (the commented-out line is
+        INS_EXPORT_ENCRYPTED_SECRET), but resetSecret() throws
+        SW_UNSUPPORTED_FEATURE (0x9C05) straight after the PIN check — it never
+        deletes and it never exports. So a full v0.1 card can only be recovered
+        by a factory reset or a re-flash, which is what
+        describe_seedkeeper_error() tells v1 users, and why _cleanup_secret()
+        is a no-op here.
+        """
+        from pysatochip.CardConnector import UnexpectedSW12Error
+        from seedsigner.helpers.seedkeeper_utils import sw_from_exception
+
+        connector = self._connect()
+        sid = self._import_secret(
+            "Password", "Plaintext export allowed", "v1_reset_probe", b"do not delete me"
+        )
+        before = len(connector.seedkeeper_list_secret_headers())
+
+        with pytest.raises(UnexpectedSW12Error) as excinfo:
+            connector.seedkeeper_reset_secret(sid)
+        assert sw_from_exception(excinfo.value) == 0x9C05
+
+        # The secret must still be there, and still readable.
+        assert len(connector.seedkeeper_list_secret_headers()) == before
+        assert self._export_and_decode(sid) == "do not delete me"
+
+    def test_v2_only_instructions_answer_6d00(self):
+        """Pin the INS-reassignment table to hardware.
+
+        v0.2 introduced these on bytes that v0.1 leaves commented out, so they
+        reach v0.1's `default: ISOException.throwIt(SW_INS_NOT_SUPPORTED)`.
+
+        Deliberately raw APDUs rather than the pysatochip wrappers: those do
+        extra work first (seedkeeper_export_secret_to_satochip fetches the
+        authentikey, seedkeeper_generate_random_secret validates its arguments),
+        which would let this test fail for reasons unrelated to the claim.
+        """
+        from pysatochip.JCconstants import JCconstants
+
+        connector = self._connect()
+        for ins, name in [
+            (0xA3, "GENERATE_RANDOM_SECRET"),
+            (0xA7, "GET_SEEDKEEPER_STATUS"),
+            (0xA8, "EXPORT_SECRET_TO_SATOCHIP"),
+        ]:
+            _resp, sw1, sw2 = connector.card_transmit(
+                [JCconstants.CardEdge_CLA, ins, 0x00, 0x00]
+            )
+            assert (sw1, sw2) == (0x6D, 0x00), (
+                f"{name} (INS {ins:#04x}) answered {256 * sw1 + sw2:#06x}; "
+                f"v0.1 should not implement it"
+            )
+
+    def test_object_memory_fills_and_reports_9c01(self):
+        """The write failure users actually hit. DESTRUCTIVE — keep this LAST.
+
+        With the capacity pre-check skipped, a v0.1 card keeps accepting imports
+        until its object memory runs out, then answers SW_NO_MEMORY_LEFT (0x9C01)
+        from om_secrets.createObject() during IMPORT_SECRET's OP_FINAL. v0.1
+        hard-codes OM_SIZE = 0xFFF (4095 bytes) as a `final` constant and its
+        install() discards the install parameters, so the "1FFF" the v0.2 fixture
+        passes would be silently ignored here.
+
+        Proves end-to-end that (1) a real v0.1 card produces 0x9C01, (2)
+        sw_from_exception() recovers it from the message, and (3)
+        describe_seedkeeper_error() renders the v1-specific advice.
+
+        Irreversible on v0.1: there is no working reset-secret, so the card stays
+        full. Recovery is this class's teardown (delete_package) plus the next
+        class's install, which re-runs the constructor's `new ObjectManager(OM_SIZE)`
+        and discards object memory. It must therefore be the LAST test in this
+        class — and must NOT carry @pytest.mark.order(-1), which would mean last
+        in the *session* and so run it after that teardown.
+        """
+        from pysatochip.CardConnector import UnexpectedSW12Error
+        from seedsigner.helpers.seedkeeper_utils import (
+            describe_seedkeeper_error,
+            sw_from_exception,
+        )
+
+        connector = self._connect()
+        # 240 bytes + 1 length byte pads to 256, + 13-byte header + label => ~281,
+        # inside the applet's 320-byte EXT_APDU_BUFFER_SIZE. ~14 of these exceed
+        # OM_SIZE (4095) even from an empty card, and the inherited tests have
+        # already consumed some, so expect the trip well before the bound.
+        payload = b"F" * 240
+        failure = None
+        for n in range(1, 40):  # bounded: a mis-sized applet must fail, not spin
+            header = connector.make_header(
+                "Password", "Plaintext export allowed", f"fill_{n:02d}"
+            )
+            try:
+                connector.seedkeeper_import_secret({
+                    "header": header,
+                    "secret_list": [len(payload)] + list(payload),
+                })
+            except UnexpectedSW12Error as exc:
+                failure = (n, exc)
+                break
+
+        assert failure is not None, (
+            "card accepted 39 x ~281-byte secrets without running out of memory; "
+            "its object memory is far larger than the 4095 bytes a v0.1 applet "
+            f"hard-codes — is {self.CAP} really flashed?"
+        )
+        n, exc = failure
+        logger.info(f"v0.1 object memory exhausted after {n} filler imports")
+
+        assert sw_from_exception(exc) == 0x9C01
+
+        text = describe_seedkeeper_error(exc, connector)
+        assert "Not enough space" in text
+        assert "factory reset" in text.lower()   # the v1 branch, via is_seedkeeper_v1
+        assert "Delete a secret" not in text     # v1 cannot free space
 
 
 # ======================================================================

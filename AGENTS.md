@@ -198,10 +198,28 @@ Some tests are skipped or fail on certain platforms due to missing hardware or d
 |-----------|---------------------|--------|
 | `test_flows_seed.py` (satochip tests) | All (without hardware) | Requires pysatochip + physical Satochip device |
 | `test_flows_tools.py` (satochip test) | All (without hardware) | Requires pysatochip + physical Satochip device |
+| `test_smartcard_hardware.py`, `test_flows_smartcard_hardware.py` | All (without hardware) | Requires `pygp` + a PC/SC reader with a blank JavaCard; skips cleanly |
 
 When reviewing test results, focus on **new** failures compared to the baseline. The current baseline on a typical development machine with GPG installed is **716 passing, 134 skipped, 7 failing** (satochip tests only — requires physical hardware). On machines without GPG, `test_gpg_message.py` and `test_gpg_time_update.py` will additionally fail — this is expected.
 
 **Note:** The `_msys2_path()` helper in `test_gpg_message.py` auto-detects whether the installed GPG binary is from Git-for-Windows (needs MSYS2-style `/c/...` paths) or native Windows Gpg4win (needs native `C:\...` paths). If GPG tests fail on Windows with a "no writable keyring found" error, check that `_msys2_path()` correctly identifies the installed GPG variant.
+
+### Hardware-in-the-loop smartcard tests
+
+`tests/test_smartcard_hardware.py` and `tests/test_flows_smartcard_hardware.py` are **local-only** — no CI job runs them. They self-skip when `pygp` is missing or no reader/card is present, so they are safe to leave in the default suite.
+
+They **install and uninstall applets on a single physical card** and factory-reset it, so:
+
+- Never run them under `pytest-xdist` or with randomised ordering. Classes run in file-definition order and each one's teardown uninstalls what it installed.
+- Put destructive tests last in their class body. Do **not** use `@pytest.mark.order(-1)` for this — that means last in the *session*, which would run the test after its own class teardown had already uninstalled the applet.
+
+The SeedKeeper suite runs **twice**: `TestSeedKeeper` against the bundled v0.2 CAP, and `TestSeedKeeperV1` — a subclass — against the v0.1 CAP. Adding a test to `TestSeedKeeper` automatically exercises it on v0.1 too; override it in the subclass only when the *expected outcome* differs.
+
+**Superseded applet CAPs go in `tests/javacard-cap-legacy/`, never in `javacard-cap/`.** That directory feeds the on-device "Install Applet" picker and ships in the OS image, while the image build prunes `tests/`. `tests/test_javacard_cap_manifest.py` enforces this and verifies both sha256 manifests; it needs no hardware. The recipe for adding another legacy version is in `tests/javacard-cap-legacy/README.md`.
+
+```bash
+pytest tests/test_smartcard_hardware.py -k SeedKeeper -v --tb=short --log-cli-level=INFO
+```
 
 ### Star import caveat for underscore-prefixed names
 

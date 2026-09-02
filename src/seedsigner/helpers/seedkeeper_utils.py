@@ -272,9 +272,16 @@ def sw_from_exception(exc) -> int | None:
 def is_seedkeeper_v1(connector) -> bool | None:
     """Return True for a v1 SeedKeeper applet, False for newer, None if unknown.
 
-    v1 applets predate several instructions we depend on: ``seedkeeper_get_status``
-    (INS 0xA7) and ``seedkeeper_reset_secret`` (INS 0xA5) both answer 0x6D00.
+    v1 applets refuse two instructions we depend on, by different means:
+    ``seedkeeper_get_status`` (INS 0xA7) is not implemented at all and answers
+    0x6D00, while ``seedkeeper_reset_secret`` (INS 0xA5) exists but throws
+    SW_UNSUPPORTED_FEATURE (0x9C05) straight after its PIN check — so a v1 card
+    can never free space, and a full one needs a factory reset. Both codes land
+    in the same "unsupported" bucket in :func:`describe_seedkeeper_error`.
+
     ``card_get_status`` (INS 0x3C) does work on v1, so it is safe to probe here.
+    Note the discriminator is the *protocol* version: v0.1 and v0.2 applets both
+    report applet version 0.1, and differ only in protocol minor version.
     """
 
     try:
