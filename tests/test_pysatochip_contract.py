@@ -154,12 +154,12 @@ def test_real_connector_import_seed_returns_single_value():
 
 
 @requires_real_pysatochip
-@pytest.mark.xfail(
-    reason="card_get_ndef_v2 (Satodime NDEF) needs 3rdIteration/pysatochip 0.6a+; "
-           "stale PyPI installs lack it",
-    strict=False,
-)
 def test_real_connector_has_satodime_ndef_v2():
+    # Was xfail("stale PyPI installs lack it") while requirements.txt pinned
+    # pysatochip==0.17.0. That release predates upstream master, so
+    # card_get_ndef_v2 was genuinely missing and smartcard_views.py's Satodime
+    # NDEF paths would have raised AttributeError. requirements.txt now pins the
+    # same build seedsigner-os ships, so this is a hard requirement, not a wish.
     result = _run_py(
         "from pysatochip.CardConnector import CardConnector\n"
         "assert callable(getattr(CardConnector, 'card_get_ndef_v2', None))\n"

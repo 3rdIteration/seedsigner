@@ -299,6 +299,36 @@ def require_hardware(readiness):
     pass
 
 
+def _open_card_with_retry(pygp, attempts: int = 5, delay: float = 1.0):
+    """Open the reader, retrying the first failure. Returns the last error, or None.
+
+    ``pygp.terminal()`` makes a single pass over the reader list and gives up if
+    ``card_connect`` does not succeed on the first try. That is too strict for
+    two reasons seen in practice:
+
+    * On Windows the Smart Card Resource Manager (SCardSvr) is demand-started
+      and stops when idle, so the first connect in a fresh process can fail with
+      "The Smart Card Resource Manager is not running" and then succeed
+      immediately afterwards.
+    * Some readers re-enumerate on the USB bus after a cold reset — which
+      ``gp.close()`` performs between phases — and are briefly unavailable.
+
+    Without this, a perfectly good reader intermittently skips the entire suite,
+    which looks identical to having no hardware attached at all.
+    """
+    last_exc = None
+    for attempt in range(attempts):
+        try:
+            pygp.terminal()
+            pygp.card()
+            return None
+        except BaseException as exc:  # pygp raises bare BaseException
+            last_exc = exc
+            if attempt < attempts - 1:
+                time.sleep(delay)
+    return last_exc
+
+
 @pytest.fixture(scope="session")
 def readiness():
     """
@@ -311,11 +341,9 @@ def readiness():
         import pygp  # noqa: F401
     except ImportError:
         pytest.skip("pygp not installed (pip install pygp)")
-    try:
-        pygp.terminal()
-        pygp.card()
-    except BaseException as exc:
-        pytest.skip(f"No PC/SC smartcard reader detected: {exc}")
+    failure = _open_card_with_retry(pygp)
+    if failure is not None:
+        pytest.skip(f"No PC/SC smartcard reader detected: {failure}")
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -960,9 +988,14 @@ class TestSeedKeeper:
         """
         payload = b"wsh(sortedmulti(2,aabbccddeeff00112233445566778899))"
         connector = self._connect()
-        header = connector.make_header("Descriptor", "Plaintext export allowed", "test_descriptor")
         secret_list = list(len(payload).to_bytes(2, "big")) + list(payload)
         try:
+            # make_header() must be inside the guard: on a stock
+            # pysatochip==0.17.0 SEEDKEEPER_DIC_TYPE has no 0xC1 entry, so this
+            # raises KeyError('Descriptor') before the card is ever touched.
+            header = connector.make_header(
+                "Descriptor", "Plaintext export allowed", "test_descriptor"
+            )
             (sid, _) = connector.seedkeeper_import_secret({
                 "header": header,
                 "secret_list": secret_list,
