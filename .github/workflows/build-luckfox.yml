@@ -12,16 +12,17 @@ run-name: >-
       github.event.inputs['os-ref'],
       github.event.inputs['testing-build'] == 'on' && ' TESTING' || ''
     )
-    || github.event_name == 'pull_request' && format(' Pico Pi hardened, PR #{0}', github.event.pull_request.number)
-    || github.event_name == 'push' && format(' Pico Pi hardened, push {0}', github.ref_name)
+    || github.event_name == 'pull_request' && format(' Pico Mini NAND hardened, PR #{0}', github.event.pull_request.number)
+    || github.event_name == 'push' && format(' Pico Mini NAND hardened, push {0}', github.ref_name)
     || ''
   }}
 
-# Automatic CI builds the hardened Luckfox Pico Pi image (EMMC) on every PR and
-# every push to main/dev, matching the Pi & Lafrite CI's trigger coverage. Each
-# run costs ~1-2h of runner time. Every other hardware/boot/variant combination
-# (Pico Mini, Pico Pro/Max, dev images, release uploads) is available on demand
-# via "Run workflow" (workflow_dispatch).
+# Automatic CI builds the hardened Luckfox Pico Mini image (SPI_NAND) on every
+# PR and every push to main/dev, matching the Pi & Lafrite CI's trigger
+# coverage. Each run costs ~1-2h of runner time. Every other hardware/boot/
+# variant combination (Pico Pi, Pico Pro/Max, SD_CARD images, dev images,
+# release uploads) is available on demand via "Run workflow"
+# (workflow_dispatch).
 on:
   pull_request:
   push:
@@ -135,6 +136,11 @@ on:
         description: The seedsigner-os ref (tag/branch/sha1) to use
         required: false
         default: main
+      build-rust-from-source:
+        description: 'Build Rust toolchain from source (ignore cached binary). Use when updating the Rust version'
+        required: false
+        type: boolean
+        default: 'false'
       release_tag:
         description: Upload artifacts to a GitHub Release with this tag (leave empty to skip release upload)
         required: false
@@ -145,10 +151,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Automatic CI build: Luckfox Pico Pi with every release hardening feature
-  # explicitly enabled. The hardening levers are pinned rather than left on
-  # "auto" so the image cannot silently soften if an upstream default changes.
-  ci-pico-pi:
+  # Automatic CI build: Luckfox Pico Mini on SPI_NAND with every release
+  # hardening feature explicitly enabled. The hardening levers are pinned
+  # rather than left on "auto" so the image cannot silently soften if an
+  # upstream default changes. Mini/SPI_NAND is the combination validated on
+  # hardware for the Docker build path (seedsigner-os PR #120); every other
+  # pairing stays available via "Run workflow".
+  ci-pico-mini:
     if: github.event_name != 'workflow_dispatch'
     permissions:
       # The reusable workflow's build job declares contents: write; a caller
@@ -158,9 +167,8 @@ jobs:
     uses: 3rdIteration/seedsigner-os/.github/workflows/build-luckfox.yml@main
     secrets: inherit
     with:
-      hardware_type: RV1106_Luckfox_Pico_Pi
-      # Pico Pi boots eMMC only; upstream rejects any other pairing.
-      boot_medium: EMMC
+      hardware_type: RV1103_Luckfox_Pico_Mini
+      boot_medium: SPI_NAND
       build_variant: non-dev
       usb_mode: host
       # 'on'/'off'/'true' stay quoted: unquoted they become YAML booleans and
@@ -171,13 +179,12 @@ jobs:
       readonly_rootfs: 'on'
       boot_log: 'off'
       testing_build: 'off'
-      # Unlike build-buildroot.yml, the app cannot be pinned to a commit sha
-      # here: the reusable workflow clones it with `git clone -b <ref>`, which
-      # takes a branch or tag only. On a pull_request, github.ref_name is
-      # "<PR#>/merge" and is not clonable, so pass the head repo + head branch
-      # instead — using the head *repo* is also what makes fork PRs work.
+      # Pin the exact commit rather than a moving branch tip: the reusable
+      # workflow's prepare-app-checkout.sh accepts a branch, tag or raw commit.
+      # On a pull_request the head SHA lives in the head repo — using the head
+      # *repo* is also what makes fork PRs work; on push it is github.sha.
       seedsigner_repo_url: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.clone_url || format('https://github.com/{0}', github.repository) }}
-      seedsigner_branch: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name }}
+      seedsigner_branch: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       seedsigner_os_repo: 3rdIteration/seedsigner-os
       seedsigner_os_ref: main
       release_tag: ''
@@ -207,6 +214,7 @@ jobs:
       testing_build: ${{ github.event.inputs['testing-build'] }}
       seedsigner_repo_url: https://github.com/${{ github.event.inputs['app-repo'] }}
       seedsigner_branch: ${{ github.event.inputs['source-ref'] }}
+      build_rust_from_source: ${{ github.event.inputs['build-rust-from-source'] }}
       seedsigner_os_repo: ${{ github.event.inputs['os-repo'] }}
       seedsigner_os_ref: ${{ github.event.inputs['os-ref'] }}
       release_tag: ${{ github.event.inputs.release_tag }}
