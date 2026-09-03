@@ -1422,6 +1422,18 @@ class SeedScanPassphraseView(View):
             if isinstance(self.seed, AezeedSeed):
                 return Destination(SeedFinalizeView)
             return Destination(SeedReviewPassphraseView)
+        elif decoder.is_invalid:
+            self.run_screen(
+                WarningScreen,
+                title=_("Invalid QR"),
+                status_headline=None,
+                text=_("The scanned QR code is not a valid passphrase QR."),
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            if isinstance(self.seed, AezeedSeed):
+                return Destination(SeedAezeedPassphraseModeView)
+            return Destination(BackStackView)
         elif decoder.is_nonUTF8:
             DireWarningScreen(
                 title=_("Error!"),
