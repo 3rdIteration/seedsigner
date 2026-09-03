@@ -84,7 +84,10 @@ class TestMaliciousPSBTFlows(FlowTest):
         """
         self.run_sequence(
             self.scan_and_select_seed("XTRAS.MIXED_INPUT_TYPES") + [
-                FlowStep(psbt_views.PSBTOverviewView, screen_return_value=0),
+                # The refusal redirects out of the overview before any transaction
+                # detail is rendered; PSBTRefusalView draws the screen.
+                FlowStep(psbt_views.PSBTOverviewView, is_redirect=True),
+                FlowStep(psbt_views.PSBTRefusalView, screen_return_value=0),
                 FlowStep(MainMenuView),
             ]
         )
@@ -99,7 +102,10 @@ class TestMaliciousPSBTFlows(FlowTest):
         """
         self.run_sequence(
             self.scan_and_select_seed("TX-08.SINGLE") + [
-                FlowStep(psbt_views.PSBTOverviewView, screen_return_value=0),
+                # The refusal redirects out of the overview before any transaction
+                # detail is rendered; PSBTRefusalView draws the screen.
+                FlowStep(psbt_views.PSBTOverviewView, is_redirect=True),
+                FlowStep(psbt_views.PSBTRefusalView, screen_return_value=0),
                 FlowStep(MainMenuView),
             ]
         )
@@ -116,7 +122,10 @@ class TestMaliciousPSBTFlows(FlowTest):
         """
         self.run_sequence(
             self.scan_and_select_seed("TX-01") + [
-                FlowStep(psbt_views.PSBTOverviewView, screen_return_value=0),
+                # The refusal redirects out of the overview before any transaction
+                # detail is rendered; PSBTRefusalView draws the screen.
+                FlowStep(psbt_views.PSBTOverviewView, is_redirect=True),
+                FlowStep(psbt_views.PSBTRefusalView, screen_return_value=0),
                 FlowStep(MainMenuView),
             ]
         )
