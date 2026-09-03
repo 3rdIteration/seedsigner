@@ -1,7 +1,7 @@
 import os
 from typing import Callable
 
-from unittest.mock import PropertyMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 # Must import test base before the Controller
 from base import FlowTest, FlowStep
@@ -264,3 +264,41 @@ class TestSettingsFlows(FlowTest):
             load_settingsqr_into_decoder=load_persistent_settingsqr_into_decoder,
             expected_setting_state=SettingsConstants.OPTION__DISABLED
         )
+
+
+    def test_settingsqr_color_inverted_applied_live(self):
+        """A SettingsQR that changes only 'Invert colors' must apply the new state
+        to the display immediately, without re-initializing the display driver."""
+        import seedsigner.gui as gui_module
+
+        # Enable inversion via QR (the default is disabled)
+        mock_renderer = MagicMock()
+        with patch.object(gui_module, "Renderer") as mock_renderer_cls:
+            mock_renderer_cls.get_instance.return_value = mock_renderer
+
+            settings_views.SettingsIngestSettingsQRView(data="settings::v1 rgb_inv=E")
+
+            assert self.settings.get_value(SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED) == SettingsConstants.OPTION__ENABLED
+            mock_renderer.disp.invert.assert_called_once_with(enabled=True)
+            mock_renderer.initialize_display.assert_not_called()
+
+        # Disable inversion via QR
+        mock_renderer = MagicMock()
+        with patch.object(gui_module, "Renderer") as mock_renderer_cls:
+            mock_renderer_cls.get_instance.return_value = mock_renderer
+
+            settings_views.SettingsIngestSettingsQRView(data="settings::v1 rgb_inv=D")
+
+            assert self.settings.get_value(SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED) == SettingsConstants.OPTION__DISABLED
+            mock_renderer.disp.invert.assert_called_once_with(enabled=False)
+            mock_renderer.initialize_display.assert_not_called()
+
+        # A QR that doesn't touch 'Invert colors' must not send any inversion command
+        mock_renderer = MagicMock()
+        with patch.object(gui_module, "Renderer") as mock_renderer_cls:
+            mock_renderer_cls.get_instance.return_value = mock_renderer
+
+            settings_views.SettingsIngestSettingsQRView(data="settings::v1 qr_density=M")
+
+            mock_renderer.disp.invert.assert_not_called()
+            mock_renderer.initialize_display.assert_not_called()

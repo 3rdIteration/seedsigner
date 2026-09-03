@@ -478,11 +478,17 @@ class SettingsIngestSettingsQRView(View):
         changes_display_driver = (
             SettingsConstants.SETTING__DISPLAY_CONFIGURATION in settings_update_dict and
             self.settings.get_value(SettingsConstants.SETTING__DISPLAY_CONFIGURATION) != settings_update_dict[SettingsConstants.SETTING__DISPLAY_CONFIGURATION])
-            
+        changes_color_inverted = (
+            SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED in settings_update_dict and
+            self.settings.get_value(SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED) != settings_update_dict[SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED])
+
         self.settings.update(settings_update_dict)
 
         if changes_display_driver:
+            # initialize_display() also re-applies the saved inversion state.
             self.renderer.initialize_display()
+        elif changes_color_inverted:
+            self.renderer.disp.invert(enabled=settings_update_dict[SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED] == SettingsConstants.OPTION__ENABLED)
 
         if MicroSD.get_instance().is_inserted and self.settings.get_value(SettingsConstants.SETTING__PERSISTENT_SETTINGS) == SettingsConstants.OPTION__ENABLED:
             self.status_message = _("Persistent Settings enabled. Settings saved to SD card.")

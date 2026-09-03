@@ -218,7 +218,6 @@ _ST7789_INIT_CMDS = (
     ( b'\xe0', b'\xd0\x00\x02\x07\x0a\x28\x32\x44\x42\x06\x0e\x12\x14\x17', 0),
                                             # Set gamma curve negative polarity
     ( b'\xe1', b'\xd0\x00\x02\x07\x0a\x28\x31\x54\x47\x0e\x1c\x17\x1b\x1e', 0),
-    ( b'\x21', b'\x00', 0),                 # Enable display inversion
     ( b'\x29', b'\x00', 120)                # Turn on the display
 )
 
