@@ -890,6 +890,11 @@ class LargeButtonScreen(BaseTopNavScreen):
 class QRDisplayScreen(BaseScreen):
     qr_encoder: BaseQrEncoder = None
 
+    # When True, exiting via the back key returns RET_CODE__BACK_BUTTON instead of
+    # None, so a View can treat "back" as cancellation. Off by default to preserve
+    # the existing "any input exits" contract for all other callers.
+    cancel_on_back: bool = False
+
     class QRDisplayThread(BaseThread):
         def __init__(self, qr_encoder: BaseQrEncoder, qr_brightness: ThreadsafeCounter, tips_start_time: ThreadsafeCounter):
             from seedsigner.gui.renderer import Renderer
@@ -1032,6 +1037,7 @@ class QRDisplayScreen(BaseScreen):
     def _run(self):
         from seedsigner.models.settings import Settings
 
+        exit_input = None
         while True:
             user_input = self.hw_inputs.wait_for(
                 [
@@ -1048,17 +1054,21 @@ class QRDisplayScreen(BaseScreen):
 
             elif user_input == HardwareButtonsConstants.KEY_UP:
                 # Incrase QR code background brightness
-                self.qr_brightness.set_value(min(self.qr_brightness.cur_count + 31, 255))
+                self.qr_brightness.set_value(min(255, self.qr_brightness.cur_count + 31))
                 self.tips_start_time.set_value(time.time_ns())
 
             else:
                 # Any other input exits the screen
+                exit_input = user_input
                 self.threads[-1].stop()
                 while self.threads[-1].is_alive():
                     time.sleep(0.01)
                 break
 
         Settings.get_instance().set_value(SettingsConstants.SETTING__QR_BRIGHTNESS, self.qr_brightness.cur_count)
+
+        if self.cancel_on_back and exit_input == HardwareButtonsConstants.KEY_LEFT:
+            return RET_CODE__BACK_BUTTON
 
 
 

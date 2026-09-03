@@ -3761,52 +3761,86 @@ class ToolsSatochipImportSeedView(View):
 class ToolsSatochipEnable2FAView(View):
     def run(self):
         from os import urandom
-        import binascii
-        from seedsigner.gui.screens.screen import LoadingScreenThread
-        key = urandom(20)
-        # Avoid logging the 2FA key value
-        logger.info("2FA key generated")
+        from seedsigner.gui.screens.screen import LoadingScreenThread, QRDisplayScreen
+        from seedsigner.models.encode_qr import GenericStaticQrEncoder
 
         Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
 
         if not Satochip_Connector:
             return Destination(BackStackView)
-        
+
+        # init_satochip() already called card_get_status(), which populates needs_2FA.
+        if getattr(Satochip_Connector, "needs_2FA", False):
+            self.run_screen(
+                WarningScreen,
+                title="Already Enabled",
+                status_headline=None,
+                text="2FA is already enabled on this card.",
+                show_back_button=False,
+            )
+            return Destination(BackStackView)
+
+        # Enabling 2FA cannot be undone from SeedSigner (there is no UI for
+        # card_reset_2FA_key), so require an explicit confirmation with the lockout
+        # risk spelled out before generating or writing any key.
+        confirm = self.run_screen(
+            WarningScreen,
+            title="Enable 2FA?",
+            status_headline=None,
+            text="Signing will require a code from your phone app. Losing it can lock you out.",
+            show_back_button=False,
+            button_data=[ButtonOption("Enable"), ButtonOption("Cancel")],
+        )
+        if confirm != 0:
+            return Destination(BackStackView)
+
+        key = urandom(20)
+        # Avoid logging the 2FA key value
+        logger.info("2FA key generated")
+
         try:
             self.run_screen(
                 WarningScreen,
                 title="Warning",
                 status_headline=None,
-                text=f"Scan the following QR code with the Satochip 2FA app before proceeding (You will not see this code again...)",
+                text="Scan with the Satochip 2FA app before proceeding.\nYou will not see this code again.",
                 show_back_button=False,
             )
-            from seedsigner.gui.screens.screen import QRDisplayScreen
-            from seedsigner.models.encode_qr import GenericStaticQrEncoder
 
             qr_encoder = GenericStaticQrEncoder(data=binascii.hexlify(key).decode())
 
-            self.run_screen(
+            # Back on the QR screen aborts before anything is written to the card.
+            if self.run_screen(
                 QRDisplayScreen,
                 qr_encoder=qr_encoder,
+                cancel_on_back=True,
+            ) == RET_CODE__BACK_BUTTON:
+                return self._show_2fa_cancelled()
+
+            # Final gate immediately before the irreversible write.
+            confirm = self.run_screen(
+                WarningScreen,
+                title="Confirm",
+                status_headline=None,
+                text="You scanned the pairing code. Enable 2FA on this card?",
+                show_back_button=False,
+                button_data=[ButtonOption("Enable"), ButtonOption("Cancel")],
             )
+            if confirm != 0:
+                return self._show_2fa_cancelled()
 
-            self.loading_screen = LoadingScreenThread(text="Enabling 2FA\n\n\n\n\n\n")
-            self.loading_screen.start()
-
-            Satochip_Connector.card_set_2FA_key(key, 0)
-
-            self.loading_screen.stop()
+            with LoadingScreenThread(text="Enabling 2FA\n\n\n\n\n\n"):
+                Satochip_Connector.card_set_2FA_key(key, 0)
 
             logger.info("Success: 2FA Key Imported and Enabled")
             self.run_screen(
                 LargeIconStatusScreen,
                 title="Success",
                 status_headline=None,
-                text=f"2FA Enabled",
+                text="2FA Enabled",
                 show_back_button=False,
             )
         except Exception as e:
-            self.loading_screen.stop()
             logger.info("Enable 2fa failed:", str(e))
             self.run_screen(
                 WarningScreen,
@@ -3816,6 +3850,16 @@ class ToolsSatochipEnable2FAView(View):
                 show_back_button=False,
             )
 
+        return Destination(BackStackView)
+
+    def _show_2fa_cancelled(self):
+        self.run_screen(
+            WarningScreen,
+            title="Cancelled",
+            status_headline=None,
+            text="2FA was not enabled. Remove the code from your phone app if you added it.",
+            show_back_button=False,
+        )
         return Destination(BackStackView)
 
 
