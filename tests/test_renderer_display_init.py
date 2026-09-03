@@ -58,15 +58,15 @@ def test_initialize_display_applies_inversion_when_enabled():
     init, not only when it is enabled."""
     mock_disp = _run_initialize_display(SettingsConstants.OPTION__ENABLED)
 
-    mock_disp.invert.assert_called_once_with(enabled=True)
+    mock_disp.set_color_inversion.assert_called_once_with(True)
 
 
 def test_initialize_display_applies_inversion_when_disabled():
-    """A saved 'disabled' value must explicitly turn inversion OFF; driver init
-    sequences may leave the panel inverted."""
+    """A saved 'disabled' value must be applied explicitly too; driver init
+    sequences may leave the panel in either state."""
     mock_disp = _run_initialize_display(SettingsConstants.OPTION__DISABLED)
 
-    mock_disp.invert.assert_called_once_with(enabled=False)
+    mock_disp.set_color_inversion.assert_called_once_with(False)
 
 
 def test_initialize_display_reapplies_inversion_on_driver_switch():
@@ -95,5 +95,64 @@ def test_initialize_display_reapplies_inversion_on_driver_switch():
         renderer.initialize_display()
         renderer.initialize_display()
 
-    mock_disp_a.invert.assert_called_once_with(enabled=True)
-    mock_disp_b.invert.assert_called_once_with(enabled=True)
+    mock_disp_a.set_color_inversion.assert_called_once_with(True)
+    mock_disp_b.set_color_inversion.assert_called_once_with(True)
+
+
+
+def _run_initialize_display_with_driver(driver, color_inverted_value: str):
+    """Run the real Renderer.initialize_display() against a concrete driver instance."""
+    renderer_module = _get_real_renderer_module()
+    renderer = object.__new__(renderer_module.Renderer)
+    renderer.lock = Lock()
+
+    mock_settings = MagicMock()
+    mock_settings.get_value.side_effect = lambda attr_name, default_if_none=False: {
+        SettingsConstants.SETTING__DISPLAY_CONFIGURATION: "st7789_240x240",
+        SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED: color_inverted_value,
+    }[attr_name]
+
+    with patch.object(renderer_module.Settings, "get_instance") as mock_settings_cls,          patch.object(renderer_module.DisplayDriverFactory, "instantiate_display_driver", return_value=driver):
+        mock_settings_cls.return_value = mock_settings
+        renderer.initialize_display()
+
+
+def _make_fake_driver(normal_colors_require_inversion: bool):
+    """A minimal BaseDisplayDriver subclass that records raw invert() calls."""
+    from seedsigner.hardware.displays.display_driver import BaseDisplayDriver
+
+    class FakeDriver(BaseDisplayDriver):
+        NORMAL_COLORS_REQUIRE_INVERSION = normal_colors_require_inversion
+
+        def invert(self, enabled: bool = True):
+            self.invert_calls.append(enabled)
+
+    driver = FakeDriver(_width=240, _height=240)
+    driver.invert_calls = []
+    return driver
+
+
+def test_default_setting_leaves_panel_that_needs_inversion_looking_normal():
+    """On panels that only look right with the controller's inversion mode on
+    (the ST7789s), the shipping default ('Disabled') must still send INVON, and
+    'Enabled' must flip them the other way.  Getting this backwards made stock
+    panels boot with inverted colors."""
+    driver = _make_fake_driver(normal_colors_require_inversion=True)
+    _run_initialize_display_with_driver(driver, SettingsConstants.OPTION__DISABLED)
+    assert driver.invert_calls == [True]
+
+    driver = _make_fake_driver(normal_colors_require_inversion=True)
+    _run_initialize_display_with_driver(driver, SettingsConstants.OPTION__ENABLED)
+    assert driver.invert_calls == [False]
+
+
+def test_default_setting_leaves_normal_panel_uninverted():
+    """Panels whose native state is already correct (ST7735, ILI9341) must not be
+    inverted at the default setting."""
+    driver = _make_fake_driver(normal_colors_require_inversion=False)
+    _run_initialize_display_with_driver(driver, SettingsConstants.OPTION__DISABLED)
+    assert driver.invert_calls == [False]
+
+    driver = _make_fake_driver(normal_colors_require_inversion=False)
+    _run_initialize_display_with_driver(driver, SettingsConstants.OPTION__ENABLED)
+    assert driver.invert_calls == [True]

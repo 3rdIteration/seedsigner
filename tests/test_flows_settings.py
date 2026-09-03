@@ -279,7 +279,7 @@ class TestSettingsFlows(FlowTest):
             settings_views.SettingsIngestSettingsQRView(data="settings::v1 rgb_inv=E")
 
             assert self.settings.get_value(SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED) == SettingsConstants.OPTION__ENABLED
-            mock_renderer.disp.invert.assert_called_once_with(enabled=True)
+            mock_renderer.disp.set_color_inversion.assert_called_once_with(True)
             mock_renderer.initialize_display.assert_not_called()
 
         # Disable inversion via QR
@@ -290,7 +290,7 @@ class TestSettingsFlows(FlowTest):
             settings_views.SettingsIngestSettingsQRView(data="settings::v1 rgb_inv=D")
 
             assert self.settings.get_value(SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED) == SettingsConstants.OPTION__DISABLED
-            mock_renderer.disp.invert.assert_called_once_with(enabled=False)
+            mock_renderer.disp.set_color_inversion.assert_called_once_with(False)
             mock_renderer.initialize_display.assert_not_called()
 
         # A QR that doesn't touch 'Invert colors' must not send any inversion command
@@ -300,5 +300,5 @@ class TestSettingsFlows(FlowTest):
 
             settings_views.SettingsIngestSettingsQRView(data="settings::v1 qr_density=M")
 
-            mock_renderer.disp.invert.assert_not_called()
+            mock_renderer.disp.set_color_inversion.assert_not_called()
             mock_renderer.initialize_display.assert_not_called()

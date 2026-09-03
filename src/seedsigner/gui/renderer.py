@@ -61,10 +61,12 @@ class Renderer(ConfigurableSingleton):
 
             self.disp = DisplayDriverFactory.instantiate_display_driver(self.display_type, width=int(width), height=int(height))
 
-            # Always set the inversion state explicitly from the saved setting;
-            # driver init sequences may leave the panel in either state.
+            # Always set the inversion state explicitly from the saved setting; driver
+            # init sequences may leave the panel in either state.  set_color_inversion()
+            # accounts for panels that need the controller's inversion mode on just to
+            # look normal, so "Disabled" always means "normal colors for this panel".
             inverted = Settings.get_instance().get_value(SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED, default_if_none=True) == SettingsConstants.OPTION__ENABLED
-            self.disp.invert(enabled=inverted)
+            self.disp.set_color_inversion(inverted)
 
             if self.display_type in [DISPLAY_TYPE__ST7789, DISPLAY_TYPE__DESKTOP]:
                 self.canvas_width = self.disp.width

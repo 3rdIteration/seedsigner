@@ -269,6 +269,9 @@ class ST7789(BaseDisplayDriver):
 
     """
 
+    # These panels only show correct colors with the controller's inversion mode on.
+    NORMAL_COLORS_REQUIRE_INVERSION = True
+
     def __post_init__(self):
         """
         Initialize display.
