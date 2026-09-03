@@ -271,7 +271,7 @@ def sw_from_exception(exc) -> int | None:
 
 def is_seedkeeper_v1(connector) -> bool | None:
     """Return True for a v1 SeedKeeper applet, False for newer, None if unknown.
-
+    
     v1 applets refuse two instructions we depend on, by different means:
     ``seedkeeper_get_status`` (INS 0xA7) is not implemented at all and answers
     0x6D00, while ``seedkeeper_reset_secret`` (INS 0xA5) exists but throws
