@@ -48,7 +48,6 @@ from seedsigner.gui.screens.tools_screens import (
     ToolsTranscribeTextQRConfirmQRPromptScreen,
 )
 from seedsigner.helpers import seedkeeper_utils
-from seedsigner.helpers.iso7816 import format_sw_error
 from seedsigner.hardware.microsd import MicroSD, resolve_microsd_images_dir
 from seedsigner.models.encode_qr import GenericStaticQrEncoder
 
@@ -1119,7 +1118,6 @@ class ToolsGPGSaveBip85DataView(View):
         from seedsigner.models.encode_qr import UrBytesQrEncoder
         from seedsigner.helpers import seedkeeper_utils
         from pysatochip.CardConnector import UnexpectedSW12Error
-        from seedsigner.helpers.iso7816 import format_sw_error
         import time
 
         button_data = [self.TO_MICROSD, self.TO_QR, self.TO_SEEDKEEPER]
@@ -1259,12 +1257,8 @@ class ToolsGPGSaveBip85DataView(View):
             msg = "BIP85 data saved"
         except UnexpectedSW12Error as e:
             loading.stop()
-            if e.sw1 == 0x6A and e.sw2 == 0x84:
-                err_text = "Not enough space on Seedkeeper"
-            else:
-                err_text = format_sw_error(e.sw1, e.sw2)
             screen = WarningScreen
-            msg = err_text
+            msg = seedkeeper_utils.describe_seedkeeper_error(e, Satochip_Connector)
         except Exception:
             loading.stop()
             screen = WarningScreen
@@ -3627,10 +3621,7 @@ class ToolsGPGDecryptMessageView(View):
                 )
             except UnexpectedSW12Error as e:
                 loading.stop()
-                if e.sw1 == 0x6A and e.sw2 == 0x84:
-                    err_text = "Not enough space on Seedkeeper for message"
-                else:
-                    err_text = format_sw_error(e.sw1, e.sw2)
+                err_text = seedkeeper_utils.describe_seedkeeper_error(e, Satochip_Connector)
                 self.run_screen(
                     WarningScreen,
                     title="Error",
@@ -7589,10 +7580,7 @@ class ToolsGPGExportPubkeyView(View):
                 return Destination(BackStackView)
             except UnexpectedSW12Error as e:
                 self.loading_screen.stop()
-                if e.sw1 == 0x6A and e.sw2 == 0x84:
-                    error_text = "Not enough space on Seedkeeper for key"
-                else:
-                    error_text = format_sw_error(e.sw1, e.sw2)
+                error_text = seedkeeper_utils.describe_seedkeeper_error(e, Satochip_Connector)
                 self.run_screen(
                     WarningScreen,
                     title="Error",
@@ -7867,10 +7855,7 @@ class ToolsGPGExportPrivkeyView(View):
                 return Destination(BackStackView)
             except UnexpectedSW12Error as e:
                 self.loading_screen.stop()
-                if e.sw1 == 0x6A and e.sw2 == 0x84:
-                    error_text = "Not enough space on Seedkeeper for key"
-                else:
-                    error_text = format_sw_error(e.sw1, e.sw2)
+                error_text = seedkeeper_utils.describe_seedkeeper_error(e, Satochip_Connector)
                 self.run_screen(
                     WarningScreen,
                     title="Error",

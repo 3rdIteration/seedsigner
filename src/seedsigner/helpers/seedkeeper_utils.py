@@ -20,7 +20,9 @@ from seedsigner.helpers.keycard_connector import KeycardSatochipConnector
 
 
 import os
+import re
 import time
+from gettext import gettext as _
 from os import urandom
 import platform
 import logging
@@ -205,10 +207,17 @@ def ensure_seedkeeper_capacity(connector, secret_dic: dict, free_memory: int | N
     if available_bytes is None:
         try:
             available_bytes = get_seedkeeper_free_memory(connector)
-        except UnexpectedSW12Error:
+        except UnexpectedSW12Error as exc:
+            status_word = sw_from_exception(exc)
+            # Only an "unsupported instruction" answer means the capacity is
+            # genuinely unknowable. Anything else is a real failure and must not
+            # be silently reinterpreted as "assume it fits". A status word we
+            # cannot parse stays lenient so that #413-style cards keep working.
+            if status_word is not None and status_word not in (0x6D00, 0x6E00, 0x9C05):
+                raise
             logger.warning(
-                "Seedkeeper does not support status (0x6D00); "
-                "skipping capacity pre-check"
+                "Seedkeeper status unsupported (%s); skipping capacity pre-check",
+                f"{status_word:#06x}" if status_word is not None else "unknown status word",
             )
             available_bytes = None
 
@@ -228,6 +237,79 @@ def format_seedkeeper_space_error(required_bytes: int, free_bytes: int) -> str:
         f"Requires {required_bytes} bytes\n"
         f"{free_bytes} bytes free"
     )
+
+
+# Matches the status word pysatochip embeds in its exception messages, e.g.
+# "Unexpected error during secure secret import (error code 0x9c01)".
+_SW_IN_MESSAGE_RE = re.compile(r"error code[:\s]*0x([0-9a-fA-F]{1,4})")
+
+
+def sw_from_exception(exc) -> int | None:
+    """Best-effort recovery of the status word behind a pysatochip exception.
+
+    ``UnexpectedSW12Error`` defaults ``sw1``/``sw2`` to ``0x00``, and the
+    SeedKeeper helpers we rely on (``seedkeeper_import_secret``,
+    ``seedkeeper_get_status``, ``seedkeeper_reset_secret``) all raise it
+    *without* passing them.  Any ``exc.sw1``/``exc.sw2`` branch on those paths
+    is therefore dead code.  Prefer the attributes when they carry a real value
+    and otherwise fall back to the status word embedded in the message text.
+
+    Returns the 16-bit status word, or ``None`` when it cannot be determined.
+    """
+
+    sw1 = getattr(exc, "sw1", 0) or 0
+    sw2 = getattr(exc, "sw2", 0) or 0
+    status_word = (sw1 << 8) | sw2
+    if status_word:
+        return status_word
+
+    match = _SW_IN_MESSAGE_RE.search(str(exc))
+    if match:
+        return int(match.group(1), 16)
+    return None
+
+
+def is_seedkeeper_v1(connector) -> bool | None:
+    """Return True for a v1 SeedKeeper applet, False for newer, None if unknown.
+
+    v1 applets predate several instructions we depend on: ``seedkeeper_get_status``
+    (INS 0xA7) and ``seedkeeper_reset_secret`` (INS 0xA5) both answer 0x6D00.
+    ``card_get_status`` (INS 0x3C) does work on v1, so it is safe to probe here.
+    """
+
+    try:
+        status = connector.card_get_status()[3]
+        return status.get("protocol_minor_version") == 1
+    except Exception:  # pragma: no cover - defensive, card may have gone away
+        logger.debug("Could not determine Seedkeeper applet version", exc_info=True)
+        return None
+
+
+def describe_seedkeeper_error(exc, connector=None, fallback: str | None = None) -> str:
+    """Return a user-facing message for a failed Seedkeeper card operation.
+
+    Handles the codes the SeedKeeper applet actually returns.  Most importantly
+    0x9C01 (``SW_NO_MEMORY_LEFT``), which is how a full card rejects an import;
+    on a v1 applet that is terminal, because v1 cannot delete secrets.
+    """
+
+    status_word = sw_from_exception(exc)
+
+    if status_word == 0x9C01:
+        if connector is not None and is_seedkeeper_v1(connector):
+            # v1 has no reset-secret instruction, so freeing space is impossible.
+            return _("Not enough space on Seedkeeper\nCard memory is full\n\n"
+                     "Seedkeeper v1 cannot delete secrets. A factory reset is required.")
+        return _("Not enough space on Seedkeeper\nCard memory is full\n\n"
+                 "Delete a secret to free space.")
+
+    if status_word in (0x6D00, 0x6E00, 0x9C05):
+        return _("Not supported by this Seedkeeper applet") + f"\n({status_word:#06x})"
+
+    if status_word is not None:
+        return format_sw_error(status_word >> 8, status_word & 0xFF)
+
+    return fallback or str(exc)
 
 
 def prompt_for_pin(

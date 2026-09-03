@@ -5120,6 +5120,9 @@ class SaveToSeedkeeperView(View):
 
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
+        # Bound up front so the except handler below can safely reference it
+        # even when init_satochip() itself is what raised.
+        Satochip_Connector = None
         try:
             Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
 
@@ -5287,14 +5290,14 @@ class SaveToSeedkeeperView(View):
             return Destination(SeedOptionsView, view_args={"seed": self.seed}, clear_history=True)
 
         except Exception as e:
-            print(e)
+            logger.info(e)
             self.loading_screen.stop()
             time.sleep(0.1) # Sleep for 100ms
             self.run_screen(
                 WarningScreen,
                 title="Error",
                 status_headline=None,
-                text=str(e),
+                text=seedkeeper_utils.describe_seedkeeper_error(e, Satochip_Connector),
                 show_back_button=True,
             )
             return Destination(BackStackView)
