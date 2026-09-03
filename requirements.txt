@@ -9,7 +9,11 @@ pgpy @ https://github.com/3rdIteration/PGPy/archive/7cdad000a76ced53c873211241d5
 pyasn1==0.6.2
 specter-card @ git+https://github.com/3rdIteration/specter-javacard.git@06dcde629cdc1057934b434afc46d822c2d2425d#subdirectory=py
 pygp @ https://github.com/3rdIteration/pygp/archive/e316f6b427b7d1020cf24d082f28bd7be7d3874c.zip
-pysatochip==0.17.0
+# tag 0.6a, byte-identical to Toporin/pysatochip master. Must match
+# seedsigner-os/opt/external-packages/python-pysatochip, which is what actually ships.
+# The PyPI release (pysatochip==0.17.0) predates master and lacks both secret type
+# 0xC1 'Descriptor' and card_get_ndef_v2(), which smartcard_views.py calls.
+pysatochip @ https://github.com/3rdIteration/pysatochip/archive/d77e311e0cd39193c9b2c03a1ab5f69421b8f4d5.zip
 ndeflib==0.3.3
 pyscard==2.3.1
 ecdsa==0.19.1
