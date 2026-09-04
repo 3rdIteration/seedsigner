@@ -321,6 +321,50 @@ class TypeKeys(DeferredInput):
 
 
 
+class Back(DeferredInput):
+    """
+    "Leave the running screen by its back arrow."
+
+    The plain BaseTopNavScreen info screens (Donate, Battery Info, System Info, Memory
+    Info, Version) have no button list for Select() to work with: they exit by moving
+    focus onto the top nav with KEY_LEFT/KEY_UP and clicking it
+    (see BaseTopNavScreen._run). Works on ButtonListScreen-style screens too, where it
+    is the "press BACK" gesture rather than choosing an option.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self._clicked = False
+
+    def __repr__(self):
+        return "Back()"
+
+    def _next_key(self, screen, watched_keys):
+        from seedsigner.hardware.buttons import HardwareButtonsConstants as K
+
+        if self._clicked:
+            return None
+
+        top_nav = getattr(screen, "top_nav", None)
+        if top_nav is None:
+            raise ScriptSelectionError(
+                f"Back() was scripted, but {type(screen).__name__} has no top nav to "
+                f"back out of."
+            )
+        if not getattr(top_nav, "show_back_button", False):
+            raise ScriptSelectionError(
+                f"Back() was scripted, but {type(screen).__name__} has no back button "
+                f"(show_back_button is False)."
+            )
+
+        if not top_nav.is_selected:
+            return K.KEY_UP
+
+        self._clicked = True
+        return K.KEY_PRESS
+
+
+
 def select(*options) -> list:
     """Shorthand for a run of Select() tokens: `select(A, B, C)`."""
     return [Select(option) for option in options]
@@ -448,6 +492,31 @@ class MockCameraFeed(MagicMock):
 
 
 
+def _assert_screen_can_exit(screen) -> None:
+    """
+    Fail fast on a screen that can never return.
+
+    BaseTopNavScreen._run() spins on time.sleep(0.1) when a screen has neither a back
+    nor a power button -- on device that is a screen you leave by other means, but in a
+    test it is an unkillable loop that never asks for input, so the run would hang
+    instead of failing. Name the problem instead.
+    """
+    from seedsigner.gui.screens.screen import BaseTopNavScreen
+
+    if type(screen)._run is not BaseTopNavScreen._run:
+        return  # has its own input loop; not the spinning case
+
+    top_nav = getattr(screen, "top_nav", None)
+    if top_nav is None:
+        return
+    if not getattr(top_nav, "show_back_button", False) and not getattr(top_nav, "show_power_button", False):
+        raise ScriptSelectionError(
+            f"{type(screen).__name__} has no back or power button, so its _run() loops "
+            f"forever without ever asking for input. It cannot be driven by a UISession."
+        )
+
+
+
 class UISession:
     """
     Context manager that swaps the hardware singletons for test stand-ins.
@@ -487,6 +556,7 @@ class UISession:
         session = self
 
         def display(screen_self, *args, **kwargs):
+            _assert_screen_can_exit(screen_self)
             previous = session.current_screen
             session.current_screen = screen_self
             try:
