@@ -162,6 +162,23 @@ def cap_dir():
     return p
 
 
+def _reinstall_blank(gp, cap_path, aid, **install_kwargs):
+    """
+    Install `cap_path` onto a card carrying no prior copy of `aid`.
+
+    install_capfile skips the load and install steps for a package that is
+    already on the card, so installing over a previous run leaves that run's PIN
+    and key material in place. Provisioning then short-circuits on setup_done,
+    the PIN this run expects never matches, and the seed import is refused with a
+    bare status word. Deleting first makes "install, initialise, test, uninstall"
+    mean what it says.
+    """
+    _reauth_and_delete(gp, aid)
+    result = gp.install_capfile(str(cap_path), **install_kwargs)
+    gp.close()
+    return result
+
+
 def _reauth_and_delete(gp, aid):
     """Re-establish GP auth and remove an applet package, tolerating absence."""
     try:
@@ -665,6 +682,19 @@ class CardPSBTSigningFlowTest(SmartcardFlowTest):
 
     CARD_BUTTON = None       # a PSBTSelectSeedView ButtonOption; set by the subclass
 
+    # Each concrete subclass carries its own `pytestmark = pytest.mark.order(N)`.
+    #
+    # pytest-order sorts globally rather than per class, and each applet lifecycle
+    # is a class-scoped fixture, so two classes sharing an order number interleave
+    # and one installs or deletes its applet out from under the other's tests. A
+    # distinct number per class keeps each class's install -> initialise -> tests
+    # -> uninstall contiguous, and tests within a class keep their definition
+    # order, which is the order they are written to run in.
+    #
+    # The number cannot be set here or derived per-test in this base: a marker
+    # applied in the base class body binds at definition time, so every subclass
+    # would inherit the same value and collide.
+
     # -- plumbing ------------------------------------------------------
 
     def prime_for_psbt(self, psbt):
@@ -697,19 +727,39 @@ class CardPSBTSigningFlowTest(SmartcardFlowTest):
             FlowStep(expected_view),
         ])
 
+    def reconnect(self):
+        """
+        Drop every open card session and start a new one.
+
+        Running a flow hands the card to init_satochip, which builds its own
+        connector and parks it on the controller. That leaves this class's cached
+        connector holding a session the card has already torn down, and the next
+        direct call fails with a bare status word (0x9C23) that names nothing
+        about the real problem. So every direct card access starts over rather
+        than trusting a connector that a flow may have invalidated.
+        """
+        parked = getattr(self.controller, "Satochip_Connector", None)
+        if parked is not None:
+            try:
+                parked.card_disconnect()
+            except Exception:
+                pass
+            self.controller.Satochip_Connector = None
+        self._disconnect()
+        return self._connect()
+
     def card_account_xpub(self) -> str:
-        return self._connect().card_bip32_get_xpub(ACCOUNT_PATH.replace("h", "'"),
-                                                   "p2wpkh", False)
+        return self.reconnect().card_bip32_get_xpub(ACCOUNT_PATH.replace("h", "'"),
+                                                    "p2wpkh", False)
 
     def card_master_fingerprint(self) -> bytes:
         from embit.bip32 import HDKey
 
         return HDKey.from_base58(
-            self._connect().card_bip32_get_xpub("", "p2wpkh", False)).my_fingerprint
+            self.reconnect().card_bip32_get_xpub("", "p2wpkh", False)).my_fingerprint
 
     # -- tests ---------------------------------------------------------
 
-    @pytest.mark.order(1)
     def test_card_holds_the_seed_these_tests_assume(self):
         """
         Everything below compares the card against keys derived from
@@ -729,7 +779,6 @@ class CardPSBTSigningFlowTest(SmartcardFlowTest):
         in_test = _regtest_root(BIP39_MNEMONIC).derive(ACCOUNT_PATH).to_public()
         assert on_card.key.sec() == in_test.key.sec()
 
-    @pytest.mark.order(2)
     def test_parse_runs_in_account_xpub_root_mode(self):
         """
         The card hands the parser an account-level xpub, not a master key. The
@@ -763,7 +812,6 @@ class CardPSBTSigningFlowTest(SmartcardFlowTest):
         assert parser.verified_output_derivation_paths == [
             None, bip32.parse_path(CHANGE_PATH)]
 
-    @pytest.mark.order(3)
     def test_card_parse_agrees_with_a_seed_parse(self):
         """
         Same psbt, same wallet, two ways of reaching the keys. Every number the
@@ -790,7 +838,6 @@ class CardPSBTSigningFlowTest(SmartcardFlowTest):
         assert from_card.fee_amount == from_seed.fee_amount
         assert from_card.destination_addresses == from_seed.destination_addresses
 
-    @pytest.mark.order(4)
     def test_forged_change_claim_is_refused(self):
         """
         The attack the ownership scan exists to stop, run against a real card: an
@@ -814,7 +861,6 @@ class CardPSBTSigningFlowTest(SmartcardFlowTest):
         assert self.controller.psbt_parser is None
         assert self.controller.psbt_sign_with_satochip is False
 
-    @pytest.mark.order(5)
     def test_forged_input_claim_is_refused(self):
         """
         The same false claim on an input. It cannot cost the user anything -- no
@@ -831,7 +877,6 @@ class CardPSBTSigningFlowTest(SmartcardFlowTest):
 
         assert self.controller.psbt_parser is None
 
-    @pytest.mark.order(6)
     def test_psbt_for_another_wallet_cannot_be_signed(self):
         """
         A psbt belonging to a different wallet must not verify against this card.
@@ -860,7 +905,6 @@ class CardPSBTSigningFlowTest(SmartcardFlowTest):
             )
         assert excinfo.value.code == RejectCode.SEED_CANNOT_SIGN
 
-    @pytest.mark.order(7)
     def test_verified_psbt_signs_on_the_card(self):
         """
         End to end: parse in card mode, then let PSBTFinalizeView drive the real
@@ -901,19 +945,22 @@ class TestSatochipPSBTSigningFlows(CardPSBTSigningFlowTest):
 
     AID = "5361746F43686970"
     CAP = "SatoChip-0.12-official.cap"
+    # Above TestSatochipImportSeedFlows' 1-2 so the two Satochip classes do not
+    # interleave their applet lifecycles.
+    pytestmark = pytest.mark.order(10)
 
     _connector = None
 
     @pytest.fixture(scope="class", autouse=True)
     def applet(self, gp, cap_dir):
-        result = gp.install_capfile(str(cap_dir / self.CAP))
-        logger.info(f"Satochip install result: {result}")
-        gp.close()
-        try:
-            self._provision()
-            self._seed_card()
-        except Exception as exc:
-            pytest.skip(f"Satochip could not be prepared for signing: {exc}")
+        # install -> initialise -> tests -> uninstall. Preparation failures are
+        # raised, not skipped: the card is present, so a card that will not
+        # provision or seed is a real failure and every test below would
+        # otherwise fail somewhere less informative.
+        logger.info("Satochip install result: %s",
+                    _reinstall_blank(gp, cap_dir / self.CAP, self.AID))
+        self._provision()
+        self._seed_card()
         yield
         self._disconnect()
         _reauth_and_delete(gp, self.AID)
@@ -975,10 +1022,19 @@ class TestSatochipPSBTSigningFlows(CardPSBTSigningFlowTest):
         connector.card_verify_PIN()
 
     def _seed_card(self):
+        """
+        Put BIP39_MNEMONIC on the card. See the Keycard version below for why the
+        import runs on a session of its own and why the result is re-read.
+        """
+        self._disconnect()
         connector = self._connect()
         (_, _, _, status) = connector.card_get_status()
         if not status.get("is_seeded"):
             connector.card_bip32_import_seed(list(Seed(mnemonic=BIP39_MNEMONIC).seed_bytes))
+            (_, _, _, status) = connector.card_get_status()
+            if not status.get("is_seeded"):
+                raise RuntimeError(
+                    "Satochip accepted the seed import but still reports no key: %s" % status)
         self._disconnect()
 
 
@@ -988,6 +1044,7 @@ class TestKeycardPSBTSigningFlows(CardPSBTSigningFlowTest):
     AID = "A0000008040001"
     CAP = "Keycard_v3.2.cap"
     PIN = "123456"
+    pytestmark = pytest.mark.order(20)
 
     _connector = None
 
@@ -998,14 +1055,10 @@ class TestKeycardPSBTSigningFlows(CardPSBTSigningFlowTest):
         except ImportError:
             pytest.skip("keycard-py not installed (pip install keycard-py)")
 
-        result = gp.install_capfile(str(cap_dir / self.CAP))
-        logger.info(f"Keycard install result: {result}")
-        gp.close()
-        try:
-            self._provision()
-            self._seed_card()
-        except Exception as exc:
-            pytest.skip(f"Keycard could not be prepared for signing: {exc}")
+        logger.info("Keycard install result: %s",
+                    _reinstall_blank(gp, cap_dir / self.CAP, self.AID))
+        self._provision()
+        self._seed_card()
         yield
         self._disconnect()
         _reauth_and_delete(gp, self.AID)
@@ -1016,7 +1069,13 @@ class TestKeycardPSBTSigningFlows(CardPSBTSigningFlowTest):
         return psbt_views.PSBTSelectSeedView.KEYCARD
 
     def prime_for_psbt(self, psbt):
+        from seedsigner.models.settings import SettingsConstants as SC
+
         super().prime_for_psbt(psbt)
+        # PSBTSelectSeedView offers each card only when its own support setting is
+        # on. Satochip's happens to default to enabled, Keycard's does not, so
+        # without this the menu has no Keycard button to select.
+        self.settings.set_value(SC.SETTING__KEYCARD_SUPPORT, SC.OPTION__ENABLED)
         # The Keycard applet has its own PIN, and its own backend: init_satochip
         # only prompts for a PIN when the controller has none cached, and picks
         # the connector class from smartcard_backend_preference.
@@ -1064,8 +1123,24 @@ class TestKeycardPSBTSigningFlows(CardPSBTSigningFlowTest):
         connector.card_verify_PIN()
 
     def _seed_card(self):
+        """
+        Put BIP39_MNEMONIC on the card, so the psbts built here are genuinely
+        this card's to sign.
+
+        The reconnect is load-bearing. Immediately after card_setup, the applet
+        accepts a LOAD KEY on the same session and reports success, but the key
+        does not stick: the next status read still says no key, and every later
+        derivation fails with a bare 0x6985. A fresh session makes the import
+        take. The status re-read afterwards turns a silent no-op into a loud
+        failure rather than a run of tests that all fail somewhere else.
+        """
+        self._disconnect()
         connector = self._connect()
         (_, _, _, status) = connector.card_get_status()
         if not (status.get("key_initialized") or status.get("is_seeded")):
             connector.card_bip32_import_seed(list(Seed(mnemonic=BIP39_MNEMONIC).seed_bytes))
+            (_, _, _, status) = connector.card_get_status()
+            if not (status.get("key_initialized") or status.get("is_seeded")):
+                raise RuntimeError(
+                    "Keycard accepted the seed import but still reports no key: %s" % status)
         self._disconnect()
