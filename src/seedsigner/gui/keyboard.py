@@ -228,6 +228,13 @@ class Keyboard:
         self.deactivated_background_color = GUIConstants.BACKGROUND_COLOR
         self.highlight_color = highlight_color
 
+        # `additional_keys` may arrive as a list of key dicts or as a code->key dict
+        # (Keyboard.ADDITIONAL_KEYS, which is what KeyboardScreen defaults to).
+        # Iterating the dict form yields code *strings*, so normalize to the key dicts
+        # once here rather than at each use below.
+        if isinstance(additional_keys, dict):
+            additional_keys = list(additional_keys.values())
+
         # Does the specified layout work?
         additional_key_spaces = 0
         for additional_key in additional_keys:
