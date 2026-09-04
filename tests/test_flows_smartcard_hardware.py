@@ -959,8 +959,7 @@ class TestSatochipPSBTSigningFlows(CardPSBTSigningFlowTest):
         # otherwise fail somewhere less informative.
         logger.info("Satochip install result: %s",
                     _reinstall_blank(gp, cap_dir / self.CAP, self.AID))
-        self._provision()
-        self._seed_card()
+        self._initialise()
         yield
         self._disconnect()
         _reauth_and_delete(gp, self.AID)
@@ -1003,12 +1002,17 @@ class TestSatochipPSBTSigningFlows(CardPSBTSigningFlowTest):
                 pass
             TestSatochipPSBTSigningFlows._connector = None
 
-    def _provision(self):
+    def _initialise(self):
+        """
+        Provision the applet and load the seed, on one session. See the Keycard
+        version for why setup and seeding must not be split across connectors.
+        """
         import os as _os
 
         connector = self._connect()
-        (_, _, _, status) = connector.card_get_status()
         pin_list = list(CARD_PIN.encode("utf-8"))
+
+        (_, _, _, status) = connector.card_get_status()
         if not status.get("setup_done"):
             connector.card_setup(
                 pin_tries0=5, ublk_tries0=1,
@@ -1021,20 +1025,14 @@ class TestSatochipPSBTSigningFlows(CardPSBTSigningFlowTest):
         connector.set_pin(0, pin_list)
         connector.card_verify_PIN()
 
-    def _seed_card(self):
-        """
-        Put BIP39_MNEMONIC on the card. See the Keycard version below for why the
-        import runs on a session of its own and why the result is re-read.
-        """
-        self._disconnect()
-        connector = self._connect()
         (_, _, _, status) = connector.card_get_status()
         if not status.get("is_seeded"):
             connector.card_bip32_import_seed(list(Seed(mnemonic=BIP39_MNEMONIC).seed_bytes))
             (_, _, _, status) = connector.card_get_status()
             if not status.get("is_seeded"):
                 raise RuntimeError(
-                    "Satochip accepted the seed import but still reports no key: %s" % status)
+                    "Satochip accepted the seed import but reports no key: %s" % status)
+
         self._disconnect()
 
 
@@ -1057,8 +1055,7 @@ class TestKeycardPSBTSigningFlows(CardPSBTSigningFlowTest):
 
         logger.info("Keycard install result: %s",
                     _reinstall_blank(gp, cap_dir / self.CAP, self.AID))
-        self._provision()
-        self._seed_card()
+        self._initialise()
         yield
         self._disconnect()
         _reauth_and_delete(gp, self.AID)
@@ -1104,10 +1101,25 @@ class TestKeycardPSBTSigningFlows(CardPSBTSigningFlowTest):
                 pass
             TestKeycardPSBTSigningFlows._connector = None
 
-    def _provision(self):
+    def _initialise(self):
+        """
+        Provision the applet and load the seed, on one session.
+
+        This is deliberately a single step. card_setup leaves the session that
+        ran it authenticated -- card_get_status returns the applet's full native
+        status -- and LOAD KEY is accepted there. A connector built afterwards
+        against the same, now set-up card comes back in a reduced state (status
+        answers with a four-field fallback rather than the native record) and the
+        applet refuses LOAD KEY with 0x6985. So the seed goes on while the card
+        is still talking to the session that set it up.
+
+        The class fixture installs a blank applet first, so this always runs the
+        full path rather than resuming a half-initialised card.
+        """
         connector = self._connect()
-        (_, _, _, status) = connector.card_get_status()
         pin_list = list(self.PIN.encode("utf-8"))
+
+        (_, _, _, status) = connector.card_get_status()
         if not status.get("setup_done"):
             if connector.needs_secure_channel:
                 connector.card_initiate_secure_channel()
@@ -1119,28 +1131,21 @@ class TestKeycardPSBTSigningFlows(CardPSBTSigningFlowTest):
                 secmemsize=0x0000, memsize=0,
                 create_object_ACL=0x01, create_key_ACL=0x01, create_pin_ACL=0x01,
             )
-        connector.set_pin(0, pin_list)
-        connector.card_verify_PIN()
+            connector.set_pin(0, pin_list)
 
-    def _seed_card(self):
-        """
-        Put BIP39_MNEMONIC on the card, so the psbts built here are genuinely
-        this card's to sign.
-
-        The reconnect is load-bearing. Immediately after card_setup, the applet
-        accepts a LOAD KEY on the same session and reports success, but the key
-        does not stick: the next status read still says no key, and every later
-        derivation fails with a bare 0x6985. A fresh session makes the import
-        take. The status re-read afterwards turns a silent no-op into a loud
-        failure rather than a run of tests that all fail somewhere else.
-        """
-        self._disconnect()
-        connector = self._connect()
         (_, _, _, status) = connector.card_get_status()
         if not (status.get("key_initialized") or status.get("is_seeded")):
-            connector.card_bip32_import_seed(list(Seed(mnemonic=BIP39_MNEMONIC).seed_bytes))
+            (_, sw1, sw2) = connector.card_bip32_import_seed(
+                list(Seed(mnemonic=BIP39_MNEMONIC).seed_bytes))
+            # card_bip32_import_seed reports failure in its status word rather
+            # than by raising, so an unchecked call looks like a success and only
+            # shows up later as an unexplained 0x6985 on every derivation.
+            if (sw1, sw2) != (0x90, 0x00):
+                raise RuntimeError(
+                    "Keycard refused the seed import: SW=%02X%02X" % (sw1, sw2))
             (_, _, _, status) = connector.card_get_status()
             if not (status.get("key_initialized") or status.get("is_seeded")):
                 raise RuntimeError(
-                    "Keycard accepted the seed import but still reports no key: %s" % status)
+                    "Keycard accepted the seed import but reports no key: %s" % status)
+
         self._disconnect()
