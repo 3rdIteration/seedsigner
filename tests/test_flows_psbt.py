@@ -321,6 +321,39 @@ class TestPSBTSatochip(FlowTest):
         assert controller.psbt_parser is None
         assert controller.psbt_sign_with_satochip is False
 
+    def test_satochip_2fa_enabled_blocks_signing(self, monkeypatch):
+        """A card with 2FA enabled should warn and return to selection without signing."""
+        from seedsigner.helpers import seedkeeper_utils
+
+        def load_psbt_into_decoder(view: scan_views.ScanView):
+            view.decoder.add_data(
+                "cHNidP8BAHECAAAAAX9/d6VyI7nvVTyhLBfqu05za2AJ2Z0dKMC0cUX+S2U7AQAAAAD9////AgeHAAAAAAAAFgAUOnNPuZMD1sQudt3+7LvHBUvGhyd//gAAAAAAABYAFGO9QLvu4V9/hz6ZjbIGMrqsEiIYAjQTAAABAR+ghgEAAAAAABYAFKawrgcT62jmIVQwyHPCV0thmJWbAQDBAQAAAAABAYeHL9UQlz/jEKUuNNY3LTeQRjudjBinsP2L0ppvgRt0AAAAAAD/////AnbP3rsPAAAAIlEgtgmCioGjfKwp6f8rOoI4OPb+ZV8db581J9IizZPskl2ghgEAAAAAABYAFKawrgcT62jmIVQwyHPCV0thmJWbAUDCBlMh9VjZN2NdU9Wabi0o3Ct1q9YHTsJRLAkLfUuIHB+BE+ucR4bdGAJG5nBhCWOmCXbpRwKP1INRYvkuQ2fHAAAAACIGA2+PEYHyVy6nhYwAx5SJKBIWXjsWgjhhf/2FEWqXgxnoEKNOC3gAAACAAAAAAAAAAAAAACICA0SBeeHxfHdny6rUnQJuteAnQ7shSydexjJCkSJarn3mEKNOC3gAAACAAQAAAAEAAAAA"
+            )
+
+        class MockConnector:
+            needs_2FA = True
+
+        monkeypatch.setattr(seedkeeper_utils, "init_satochip", lambda *args, **kwargs: MockConnector())
+
+        controller = Controller.get_instance()
+        controller.storage.seeds = []
+        controller.psbt_parser = None
+        controller.psbt_sign_with_satochip = False
+        controller.Satochip_Connector = None
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(scan_views.ScanView, before_run=load_psbt_into_decoder),
+            # No seeds loaded -> index 0 is the SATOCHIP option. screen_return_value (not
+            # button_data_selection) because the View shows a second, non-button Screen
+            # (the 2FA warning) during this step.
+            FlowStep(psbt_views.PSBTSelectSeedView, screen_return_value=0),
+            FlowStep(psbt_views.PSBTSelectSeedView),
+        ])
+
+        assert controller.psbt_parser is None
+        assert controller.psbt_sign_with_satochip is False
+
 
 class TestPSBTMultisigDescriptorMismatch(BaseTest):
 

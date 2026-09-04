@@ -74,6 +74,27 @@ def show_incorrect_pin_warning(parent_view, connector=None, sw1: int | None = No
     )
 
 
+def satochip_2fa_blocks_signing(parent_view, connector) -> bool:
+    """Show a warning and return True if signing must be refused because the card has 2FA enabled.
+
+    ``init_satochip()`` already calls ``card_get_status()``, which populates
+    ``needs_2FA`` on pysatochip connectors (True when status byte 8 is non-zero).
+    The keycard backend connector has no such attribute and older connectors may
+    leave it unset, so a falsy default keeps this safe for all of them.
+    """
+    if not getattr(connector, "needs_2FA", False):
+        return False
+
+    parent_view.run_screen(
+        WarningScreen,
+        title=_("2FA Enabled"),
+        status_headline=None,
+        text=_("Signing while 2FA is enabled\nis not currently supported."),
+        show_back_button=False,
+    )
+    return True
+
+
 def _requested_satochip_flow(init_card_filter) -> bool:
     if init_card_filter is None:
         return False

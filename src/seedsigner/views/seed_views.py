@@ -224,6 +224,11 @@ class SeedSelectSeedView(View):
             connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
             if not connector:
                 return Destination(BackStackView)
+
+            # A card with 2FA enabled cannot sign from SeedSigner (no phone-app code flow).
+            if seedkeeper_utils.satochip_2fa_blocks_signing(self, connector):
+                return Destination(BackStackView)
+
             self.controller.sign_message_with_satochip = True
             self.controller.sign_message_data["seed"] = None
             return Destination(SeedSignMessageConfirmMessageView)

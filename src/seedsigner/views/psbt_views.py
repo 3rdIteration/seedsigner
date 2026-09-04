@@ -181,6 +181,10 @@ class PSBTSelectSeedView(View):
             if not connector:
                 return Destination(PSBTSelectSeedView, clear_history=True)
 
+            # A card with 2FA enabled cannot sign from SeedSigner (no phone-app code flow).
+            if seedkeeper_utils.satochip_2fa_blocks_signing(self, connector):
+                return Destination(PSBTSelectSeedView, clear_history=True)
+
             psbt = self.controller.psbt
             is_multisig_psbt = False
             try:
