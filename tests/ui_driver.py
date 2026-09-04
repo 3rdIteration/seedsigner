@@ -16,6 +16,10 @@
       * ScriptedHardwareButtons: plays back a flat script of key presses, one per
         wait_for() call, across all screens in the flow. check_for_low() is served
         from a separate per-call poll feed for screens that poll instead of block.
+        An entry may also be a DeferredInput token (Select, TypeWord), resolved one
+        key at a time against the *live* Screen -- so a test says which option the
+        user picked or which word they typed, rather than a KEY_DOWN count that
+        silently rots when a menu or keyboard gains an entry.
       * MockCameraFeed: Camera stand-in playing back scripted frames (preview reads
         peek at the head; entropy reads consume).
 
@@ -46,6 +50,285 @@ from base import BaseTest  # noqa: F401
 class ScriptExhaustedError(Exception):
     """The screen asked for input (or a camera frame) the script didn't provide."""
     pass
+
+
+
+class ScriptSelectionError(Exception):
+    """A deferred script token couldn't be resolved against the screen asking for input."""
+    pass
+
+
+
+class DeferredInput:
+    """
+    A script entry that decides its keys from the *live* Screen rather than up front.
+
+    ScriptedHardwareButtons calls next_key() once per wait_for(); the token stays at
+    the head of the script until it returns None, at which point it is dropped and the
+    script moves on. Because each key is chosen after seeing the screen's real state,
+    these tokens self-correct instead of encoding a fixed key count that quietly means
+    something different the next time a menu or keyboard layout changes.
+    """
+
+    # Guards a token that can never reach its target against looping forever.
+    max_keys = 400
+
+    def __init__(self):
+        self._emitted = 0
+
+    def next_key(self, screen, watched_keys=None):
+        self._emitted += 1
+        if self._emitted > self.max_keys:
+            raise ScriptSelectionError(
+                f"{self} gave up after {self.max_keys} keys without reaching its target "
+                f"on {type(screen).__name__}"
+            )
+        return self._next_key(screen, watched_keys)
+
+    def _next_key(self, screen, watched_keys):
+        raise NotImplementedError
+
+
+
+class Select(DeferredInput):
+    """
+    "Pick this option on whatever ButtonListScreen is running."
+
+    `option` may be a ButtonOption (matched by identity, then by button_label), a
+    plain label string, or an int index.
+    """
+
+    def __init__(self, option, click_key: str = None):
+        super().__init__()
+        self.option = option
+        self.click_key = click_key
+        self._clicked = False
+
+    def __repr__(self):
+        return f"Select({getattr(self.option, 'button_label', self.option)!r})"
+
+    def _index_in(self, button_data: list) -> int:
+        option = self.option
+        if isinstance(option, int):
+            if not 0 <= option < len(button_data):
+                raise ScriptSelectionError(
+                    f"{self}: index out of range for {len(button_data)} buttons"
+                )
+            return option
+
+        for i, entry in enumerate(button_data):
+            if entry is option:
+                return i
+
+        label = getattr(option, "button_label", option)
+        matches = [i for i, entry in enumerate(button_data)
+                   if getattr(entry, "button_label", entry) == label]
+        if len(matches) == 1:
+            return matches[0]
+        if not matches:
+            available = [getattr(entry, "button_label", entry) for entry in button_data]
+            raise ScriptSelectionError(f"{self} is not on this screen; options are {available}")
+        raise ScriptSelectionError(f"{self} is ambiguous: matches indices {matches}")
+
+    def _next_key(self, screen, watched_keys):
+        from seedsigner.hardware.buttons import HardwareButtonsConstants as K
+
+        if self._clicked:
+            return None
+
+        button_data = getattr(screen, "button_data", None)
+        if button_data is None:
+            raise ScriptSelectionError(
+                f"{self} was scripted, but the screen asking for input is "
+                f"{type(screen).__name__}, which has no button_data. Only "
+                f"ButtonListScreen-style screens can be driven by Select(); script "
+                f"explicit key constants for the rest."
+            )
+
+        # ButtonListScreen owns the highlighted row, and some screens pre-select one,
+        # so read it rather than assuming the list starts at the top.
+        if getattr(getattr(screen, "top_nav", None), "is_selected", False):
+            # Focus sits on the BACK/power arrow; KEY_DOWN drops back into the list
+            # without moving the selection.
+            return K.KEY_DOWN
+
+        target = self._index_in(button_data)
+        current = getattr(screen, "selected_button", 0)
+
+        if target != current:
+            from seedsigner.gui.screens.screen import LargeButtonScreen
+            if isinstance(screen, LargeButtonScreen):
+                # 2-wide grid: UP/DOWN move by a whole row, LEFT/RIGHT within one.
+                if target // 2 != current // 2:
+                    return K.KEY_DOWN if target > current else K.KEY_UP
+                return K.KEY_RIGHT if target > current else K.KEY_LEFT
+            # ButtonListScreen: a flat list walked one row at a time.
+            return K.KEY_DOWN if target > current else K.KEY_UP
+
+        self._clicked = True
+        click = self.click_key or K.KEY_PRESS
+        if watched_keys is not None and click not in watched_keys:
+            usable = [k for k in watched_keys if k in K.KEYS__ANYCLICK]
+            if not usable:
+                raise ScriptSelectionError(
+                    f"{self}: screen isn't watching a click key ({watched_keys})"
+                )
+            click = usable[0]
+        return click
+
+
+
+class TypeWord(DeferredInput):
+    """
+    "Type this BIP-39 word on the running SeedMnemonicEntryScreen and select it."
+
+    Walks the real keyboard to each letter in turn and locks it in, then scrolls the
+    autocomplete list to the word and presses KEY2 to choose it. Every step is decided
+    from the screen's own live state (`letters`, `keyboard.selected_key`,
+    `possible_words`), so the letter-activation behaviour never has to be mirrored
+    here -- which is exactly the part that would go stale.
+    """
+
+    def __init__(self, word: str):
+        super().__init__()
+        self.word = word
+        self._selected = False
+
+    def __repr__(self):
+        return f"TypeWord({self.word!r})"
+
+    def _next_key(self, screen, watched_keys):
+        from seedsigner.hardware.buttons import HardwareButtonsConstants as K
+
+        if self._selected:
+            return None
+
+        keyboard = getattr(screen, "keyboard", None)
+        if keyboard is None or not hasattr(screen, "possible_words"):
+            raise ScriptSelectionError(
+                f"{self} was scripted, but the screen asking for input is "
+                f"{type(screen).__name__}, not a SeedMnemonicEntryScreen."
+            )
+
+        # The screen keeps locked-in letters in `letters[:-1]`; `letters[-1]` is
+        # whichever key the cursor is merely hovering over.
+        locked = "".join(screen.letters[:-1]) if screen.letters else ""
+
+        if len(locked) < len(self.word):
+            if not self.word.startswith(locked):
+                raise ScriptSelectionError(
+                    f"{self}: the screen already holds {locked!r}, which is not a prefix "
+                    f"of the word"
+                )
+            return self._key_toward(keyboard, self.word[len(locked)])
+
+        # Whole word is entered; pick it out of the autocomplete list.
+        possible = list(screen.possible_words)
+        if self.word not in possible:
+            raise ScriptSelectionError(
+                f"{self}: not among the screen's matches after typing it ({possible[:5]})"
+            )
+        target = possible.index(self.word)
+        current = screen.selected_possible_words_index
+        if current > target:
+            return K.KEY1   # scroll the matches list up
+        if current < target:
+            return K.KEY3   # scroll the matches list down
+
+        self._selected = True
+        return K.KEY2       # choose the highlighted match
+
+    def _key_toward(self, keyboard, letter: str):
+        """One step toward `letter`, or the click that locks it in."""
+        from seedsigner.hardware.buttons import HardwareButtonsConstants as K
+
+        target = _find_key(keyboard, letter)
+        if target is None:
+            raise ScriptSelectionError(f"{self}: {letter!r} is not on the keyboard")
+
+        return _step_toward(keyboard, target) or K.KEY_PRESS
+
+
+
+class TypeKeys(DeferredInput):
+    """
+    "Type this string on the running KeyboardScreen."
+
+    `text` is what the screen should end up holding, i.e. the *output* values -- for
+    ToolsDiceEntropyEntryScreen that is "1".."6", not the dice glyphs its keys display
+    (the screen's keys_to_values map is used to find the key for each value).
+
+    Presses KEY3 to save at the end when the screen has a save button; screens that
+    auto-return at return_after_n_chars (dice entropy) simply exit on the final press.
+    """
+
+    def __init__(self, text: str):
+        super().__init__()
+        self.text = text
+        self._pressed = 0
+        self._saved = False
+        self._done = False
+
+    def __repr__(self):
+        preview = self.text if len(self.text) <= 12 else self.text[:12] + "..."
+        return f"TypeKeys({preview!r})"
+
+    def _next_key(self, screen, watched_keys):
+        from seedsigner.hardware.buttons import HardwareButtonsConstants as K
+
+        if self._done:
+            return None
+
+        if self._pressed >= len(self.text):
+            # Everything is typed. A screen with a save button still needs the click;
+            # one that auto-returns on the last character has already exited, so by now
+            # `screen` is the next screen and this token is simply finished.
+            if not self._saved and getattr(screen, "show_save_button", False) and hasattr(screen, "user_input"):
+                self._saved = True
+                return K.KEY3
+            self._done = True
+            return None
+
+        keyboard = getattr(screen, "keyboard", None)
+        if keyboard is None or not hasattr(screen, "user_input"):
+            raise ScriptSelectionError(
+                f"{self} was scripted, but the screen asking for input is "
+                f"{type(screen).__name__}, not a KeyboardScreen."
+            )
+
+        value = self.text[self._pressed]
+        key_char = self._key_char_for(screen, value)
+        target = _find_key(keyboard, key_char)
+        if target is None:
+            raise ScriptSelectionError(f"{self}: no key produces {value!r} on this keyboard")
+
+        move = _step_toward(keyboard, target)
+        if move is None:
+            self._pressed += 1
+            return K.KEY_PRESS
+        return move
+
+    @staticmethod
+    def _key_char_for(screen, value: str) -> str:
+        """The key's display character for an output `value` (they differ on dice)."""
+        mapping = getattr(screen, "keys_to_values", None)
+        if not mapping:
+            return value
+        for key_char, mapped in mapping.items():
+            if mapped == value:
+                return key_char
+        raise ScriptSelectionError(f"{value!r} is not in this screen's keys_to_values map")
+
+
+
+def select(*options) -> list:
+    """Shorthand for a run of Select() tokens: `select(A, B, C)`."""
+    return [Select(option) for option in options]
+
+
+def type_words(words) -> list:
+    """Shorthand for a run of TypeWord() tokens, one per mnemonic word."""
+    return [TypeWord(word) for word in words]
 
 
 
@@ -83,10 +366,13 @@ class ScriptedHardwareButtons(MagicMock):
     check_for_low(), for screens that poll rather than block (e.g. image entropy).
     """
 
-    def __init__(self, script=None, poll_responses=None):
+    def __init__(self, script=None, poll_responses=None, screen_provider=None):
         super().__init__()
         self._script = list(script or [])
         self._polls = list(poll_responses or [])
+        # Returns the Screen currently asking for input, so DeferredInput tokens can
+        # be resolved against its real state. Supplied by UISession.
+        self._screen_provider = screen_provider or (lambda: None)
         self.override_ind = False
         # A real float: background threads (e.g. WipeTimerThread) read this and do
         # arithmetic on it; a bare MagicMock attribute would raise TypeError there.
@@ -106,12 +392,23 @@ class ScriptedHardwareButtons(MagicMock):
             self.override_ind = False
             from seedsigner.hardware.buttons import HardwareButtonsConstants
             return HardwareButtonsConstants.OVERRIDE
-        if not self._script:
-            raise ScriptExhaustedError(
-                "wait_for() called but the button script is exhausted; the screen is "
-                "waiting for input the test didn't provide"
-            )
-        return self._script.pop(0)
+
+        while True:
+            if not self._script:
+                raise ScriptExhaustedError(
+                    "wait_for() called but the button script is exhausted; the screen is "
+                    "waiting for input the test didn't provide"
+                )
+            entry = self._script[0]
+            if not isinstance(entry, DeferredInput):
+                return self._script.pop(0)
+
+            key = entry.next_key(self._screen_provider(), keys)
+            if key is None:
+                # Token is finished; drop it and serve whatever comes next.
+                self._script.pop(0)
+                continue
+            return key
 
     def check_for_low(self, key=None, keys=None):
         if not self._polls:
@@ -166,16 +463,48 @@ class UISession:
 
     def __init__(self, script=None, poll_responses=None, camera_frames=None, canvas_size=(240, 240)):
         self.renderer = make_test_renderer(*canvas_size)
-        self.buttons = ScriptedHardwareButtons(script=script, poll_responses=poll_responses)
+        # The Screen currently running, so DeferredInput tokens can be resolved
+        # against its real state (see _track_screen below).
+        self.current_screen = None
+        self.buttons = ScriptedHardwareButtons(
+            script=script,
+            poll_responses=poll_responses,
+            screen_provider=lambda: self.current_screen,
+        )
         self.camera = MockCameraFeed(camera_frames) if camera_frames is not None else None
+
+    @property
+    def remaining_script(self) -> list:
+        """
+        What the flow never consumed. A non-empty list at the end of a test means the
+        flow asked for less input than the test scripted -- i.e. it did not go where
+        the test says it went.
+        """
+        return self.buttons.remaining_script
+
+    def _track_screen(self, real_display):
+        """Wrap BaseScreen.display() so DeferredInput tokens can see the live Screen."""
+        session = self
+
+        def display(screen_self, *args, **kwargs):
+            previous = session.current_screen
+            session.current_screen = screen_self
+            try:
+                return real_display(screen_self, *args, **kwargs)
+            finally:
+                session.current_screen = previous
+
+        return display
 
     def __enter__(self):
         from seedsigner.gui.renderer import Renderer
+        from seedsigner.gui.screens.screen import BaseScreen
         from seedsigner.hardware.buttons import HardwareButtons, HardwareButtonsConstants
 
         self._patches = [
             patch.object(Renderer, "get_instance", return_value=self.renderer),
             patch.object(HardwareButtons, "get_instance", return_value=self.buttons),
+            patch.object(BaseScreen, "display", self._track_screen(BaseScreen.display)),
         ]
         if self.camera is not None:
             from seedsigner.hardware.camera import Camera
@@ -271,6 +600,40 @@ def _find_key(keyboard, char):
 
 
 
+def _step_toward(keyboard, target_key):
+    """
+    The single key press that moves the keyboard's selection toward `target_key`,
+    or None once it is already there.
+
+    Vertical moves keep the current column and skip any row that has no key in it
+    (Keyboard.get_key_below/above). So when the target row has no key in the column
+    we are standing in, going "down" jumps straight past that row and coming back
+    "up" jumps past it again -- an oscillation that never terminates. Step sideways
+    onto a column the target row actually has before moving vertically.
+
+    Callers apply the returned key to the real Keyboard (or let the real Screen do
+    it) and call again, so the walk always reflects the keyboard's actual state.
+    """
+    from seedsigner.hardware.buttons import HardwareButtonsConstants as K
+
+    if keyboard.get_selected_key() is target_key:
+        return None
+
+    cur_x = keyboard.selected_key["x"]
+    cur_y = keyboard.selected_key["y"]
+
+    if cur_y != target_key.index_y:
+        if keyboard.get_key_at(cur_x, target_key.index_y) is None:
+            # This column doesn't exist in the target row; slide along the current
+            # row first (these keyboards auto-wrap right, so this always terminates).
+            return K.KEY_RIGHT
+        return K.KEY_DOWN if target_key.index_y > cur_y else K.KEY_UP
+
+    # Right row: RIGHT cycles through it.
+    return K.KEY_RIGHT
+
+
+
 def plan_keyboard_script(keyboard, text) -> list:
     """
     Compute the joystick + KEY_PRESS sequence that types `text` on a single Keyboard.
@@ -285,30 +648,26 @@ def plan_keyboard_script(keyboard, text) -> list:
     if Keyboard.WRAP_RIGHT not in keyboard.auto_wrap:
         raise ValueError("plan_keyboard_script() requires a keyboard with WRAP_RIGHT auto-wrap")
 
+    # Any layout is crossed in far fewer moves than this; the cap turns a layout the
+    # walk cannot solve into a named error instead of a hang.
+    max_moves_per_char = 200
+
     script = []
     for char in text:
         target_key = _find_key(keyboard, char)
         if target_key is None:
             raise ValueError(f"Character {char!r} is not on this keyboard's layout")
 
-        # Move vertically toward the target row. We only ever move within range, so
-        # an EXIT here means the plan is wrong (e.g. a screen without vertical keys).
-        while keyboard.selected_key["y"] != target_key.index_y:
-            move = HardwareButtonsConstants.KEY_DOWN if target_key.index_y > keyboard.selected_key["y"] else HardwareButtonsConstants.KEY_UP
+        for _ in range(max_moves_per_char):
+            move = _step_toward(keyboard, target_key)
+            if move is None:
+                break
             ret = keyboard.update_from_input(move)
             if ret in Keyboard.EXIT_DIRECTIONS:
-                raise ValueError(f"Vertical navigation exited the keyboard while planning {char!r}")
+                raise ValueError(f"Navigation exited the keyboard while planning {char!r}")
             script.append(move)
-
-        # Move horizontally within the row; with WRAP_RIGHT, RIGHT cycles through every key.
-        row = keyboard.keys[keyboard.selected_key["y"]]
-        cur_pos = row.index(keyboard.get_selected_key())
-        tgt_pos = row.index(target_key)
-        for _ in range((tgt_pos - cur_pos) % len(row)):
-            ret = keyboard.update_from_input(HardwareButtonsConstants.KEY_RIGHT)
-            if ret in Keyboard.EXIT_DIRECTIONS:
-                raise ValueError(f"Horizontal navigation exited the keyboard while planning {char!r}")
-            script.append(HardwareButtonsConstants.KEY_RIGHT)
+        else:
+            raise ValueError(f"Could not navigate to {char!r} in {max_moves_per_char} moves")
 
         if _CHAR_TO_KEY_CODE.get(char, char) != keyboard.get_selected_key().code:
             raise ValueError(f"Keyboard simulation failed to land on {char!r}")
