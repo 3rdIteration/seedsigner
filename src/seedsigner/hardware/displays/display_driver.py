@@ -23,6 +23,14 @@ class BaseDisplayDriver:
     _width: int
     _height: int
 
+    # Some panels only render correct colors with the controller's inversion mode
+    # switched ON (the ST7789 panels SeedSigner ships with are wired that way).  The
+    # user-facing "Invert colors" setting is applied *relative* to this baseline, so
+    # its default (Disabled) always means "normal colors for this panel".
+    # Note: deliberately un-annotated so it stays a class attr, not a dataclass field.
+    NORMAL_COLORS_REQUIRE_INVERSION = False
+
+
     def __str__(self):
         return f"DisplayDriver(display_type={getattr(self, 'display_type', None)}, width={self.width}, height={self.height})"
 
@@ -39,10 +47,18 @@ class BaseDisplayDriver:
 
     def invert(self, enabled: bool = True):
         """
-        Invert how the display interprets colors.
+        Drive the controller's raw inversion mode (INVON/INVOFF).
         Implementation in child classes is optional.
         """
         pass
+
+
+    def set_color_inversion(self, inverted: bool):
+        """
+        Apply the user-facing "Invert colors" setting, accounting for whether this
+        panel needs the controller's inversion mode on to look normal.
+        """
+        self.invert(enabled=inverted != self.NORMAL_COLORS_REQUIRE_INVERSION)
 
 
     def show_image(self, image, x_start: int = 0, y_start: int = 0):

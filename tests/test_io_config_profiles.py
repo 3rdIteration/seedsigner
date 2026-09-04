@@ -402,6 +402,154 @@ def test_st7789_invert_triggers_lazy_init():
         assert mock_init.call_count == 1  # must not re-init
 
 
+def test_st7789_init_does_not_set_inversion():
+    """init() must NOT hardcode the inversion state (INVON/INVOFF).
+
+    The Renderer applies the saved 'Invert colors' setting explicitly after
+    driver creation; a hardcoded INVON in init() made the boot state ignore
+    the setting and made toggling it in Settings appear reversed.
+    """
+    from unittest.mock import patch
+
+    ST7789_INVOFF = 0x20
+    ST7789_INVON = 0x21
+
+    st7789_module = _import_st7789_with_mocked_periphery()
+    pin_mapping = _make_st7789_pin_mapping(cs="disabled")
+
+    commands_sent = []
+
+    def fake_command(self_inner, cmd):
+        commands_sent.append(cmd)
+
+    def fake_reset(self_inner):
+        pass  # skip RST toggling and its sleeps
+
+    with patch.object(st7789_module, "GPIO"), \
+         patch.object(st7789_module, "SPI"), \
+         patch.object(st7789_module, "Settings") as mock_settings, \
+         patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping), \
+         patch.object(st7789_module.ST7789, "reset", fake_reset), \
+         patch.object(st7789_module.ST7789, "command", fake_command):
+        mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
+        display = st7789_module.ST7789(_width=240, _height=240)
+        display.init()
+
+    assert ST7789_INVON not in commands_sent, "init() must not hardcode INVON (0x21)"
+    assert ST7789_INVOFF not in commands_sent, "init() must not hardcode INVOFF (0x20)"
+
+
+def test_st7789_invert_sends_invon_invoft():
+    """invert(True) must send INVON (0x21); invert(False) must send INVOFF (0x20)."""
+    from unittest.mock import patch
+
+    st7789_module = _import_st7789_with_mocked_periphery()
+    pin_mapping = _make_st7789_pin_mapping(cs="disabled")
+
+    with patch.object(st7789_module, "GPIO"), \
+         patch.object(st7789_module, "SPI"), \
+         patch.object(st7789_module, "Settings") as mock_settings, \
+         patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping):
+        mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
+        display = st7789_module.ST7789(_width=240, _height=240)
+
+        # Skip the lazy init so only invert()'s own command is captured.
+        display._display_initialized = True
+
+        with patch.object(display, "command") as mock_command:
+            display.invert(True)
+        assert [c.args[0] for c in mock_command.call_args_list] == [0x21]
+
+        mock_command.reset_mock()
+        with patch.object(display, "command") as mock_command:
+            display.invert(False)
+        assert [c.args[0] for c in mock_command.call_args_list] == [0x20]
+
+
+def test_st7789_set_color_inversion_maps_setting_to_panel_baseline():
+    """The stock ST7789 panels only show correct colors with INVON, so the
+    user-facing setting is applied relative to that: 'Invert colors' Disabled
+    (the shipping default) must send INVON, Enabled must send INVOFF.
+
+    Applying the setting literally instead made stock panels boot inverted and
+    made the Settings control look backwards.
+    """
+    from unittest.mock import patch
+
+    st7789_module = _import_st7789_with_mocked_periphery()
+    pin_mapping = _make_st7789_pin_mapping(cs="disabled")
+
+    with patch.object(st7789_module, "GPIO"),          patch.object(st7789_module, "SPI"),          patch.object(st7789_module, "Settings") as mock_settings,          patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping):
+        mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
+        display = st7789_module.ST7789(_width=240, _height=240)
+        display._display_initialized = True  # skip lazy init
+
+        assert display.NORMAL_COLORS_REQUIRE_INVERSION is True
+
+        with patch.object(display, "command") as mock_command:
+            display.set_color_inversion(False)
+        assert [c.args[0] for c in mock_command.call_args_list] == [0x21]
+
+        with patch.object(display, "command") as mock_command:
+            display.set_color_inversion(True)
+        assert [c.args[0] for c in mock_command.call_args_list] == [0x20]
+
+
+def test_st7735_set_color_inversion_is_literal():
+    """The ST7735 panel looks correct in its native (non-inverted) state, so the
+    setting maps straight through: Disabled -> INVOFF, Enabled -> INVON."""
+    from unittest.mock import patch
+
+    st7735_module = _import_st7735_with_mocked_periphery()
+    pin_mapping = _make_st7735_pin_mapping(cs="disabled")
+
+    with patch.object(st7735_module, "GPIO"),          patch.object(st7735_module, "SPI"),          patch.object(st7735_module, "Settings") as mock_settings,          patch.object(st7735_module, "get_hardware_pin_mapping", return_value=pin_mapping):
+        mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
+        display = st7735_module.ST7735(_width=128, _height=128)
+        display._display_initialized = True  # skip lazy init
+
+        assert display.NORMAL_COLORS_REQUIRE_INVERSION is False
+
+        with patch.object(display, "command") as mock_command:
+            display.set_color_inversion(False)
+        assert [c.args[0] for c in mock_command.call_args_list] == [0x20]
+
+        with patch.object(display, "command") as mock_command:
+            display.set_color_inversion(True)
+        assert [c.args[0] for c in mock_command.call_args_list] == [0x21]
+
+
+def _import_st7789_mpy_with_mocked_periphery():
+    """Import the st7789_mpy module with `periphery` mocked out (see
+    _import_st7789_with_mocked_periphery)."""
+    import sys
+    import types
+    from unittest.mock import MagicMock
+
+    if "periphery" not in sys.modules:
+        fake_periphery = types.ModuleType("periphery")
+        fake_periphery.GPIO = MagicMock()
+        fake_periphery.SPI = MagicMock()
+        sys.modules["periphery"] = fake_periphery
+
+    sys.modules.pop("seedsigner.hardware.displays.st7789_mpy", None)
+    import seedsigner.hardware.displays.st7789_mpy as st7789_mpy_module
+    return st7789_mpy_module
+
+
+def test_st7789_mpy_init_cmds_do_not_set_inversion():
+    """_ST7789_INIT_CMDS must NOT hardcode the inversion state; the Renderer
+    applies the saved 'Invert colors' setting explicitly after driver creation."""
+    st7789_mpy_module = _import_st7789_mpy_with_mocked_periphery()
+
+    init_commands = [command for command, data, delay in st7789_mpy_module._ST7789_INIT_CMDS]
+    assert b"\x21" not in init_commands, "_ST7789_INIT_CMDS must not hardcode INVON (0x21)"
+    assert b"\x20" not in init_commands, "_ST7789_INIT_CMDS must not hardcode INVOFF (0x20)"
+
+    # ...but the panel still needs INVON to look normal, so the baseline must say so.
+    assert st7789_mpy_module.ST7789.NORMAL_COLORS_REQUIRE_INVERSION is True
+
+
 def test_st7789_init_called_on_first_clear():
     """init() must be called on the first clear() call if not yet initialized."""
     from unittest.mock import patch

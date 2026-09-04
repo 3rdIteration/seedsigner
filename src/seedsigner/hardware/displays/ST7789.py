@@ -22,6 +22,9 @@ class ST7789(BaseDisplayDriver):
 
     class for ST7789  240*240 1.3inch OLED displays.
     """
+    # These panels only show correct colors with the controller's inversion mode on.
+    NORMAL_COLORS_REQUIRE_INVERSION = True
+
     def __post_init__(self):
         # Keep SPI transfers within conservative per-message kernel limits.
         self.CHUNK_SIZE = 4096
@@ -253,8 +256,6 @@ class ST7789(BaseDisplayDriver):
         self.data(0x20)
         self.data(0x23)
         
-        self.command(0x21)  # inversion ON; 0x20 = inversion OFF
-
         # SLPOUT (Sleep Out): wake the display from its post-reset sleep state.
         # The ST7789 datasheet requires at least 120 ms between SLPOUT and any
         # subsequent command (including DISPON).  Without this delay the display
