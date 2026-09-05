@@ -1,14 +1,3 @@
-# Runtime dependencies, pinned by version or by commit.
-#
-# NOT hash-locked, unlike l10n/requirements-l10n.txt. Upstream hash-locked this
-# file in SeedSigner/seedsigner#1018, but the fork cannot follow yet:
-# specter-card is a `git+` URL, and pip's hash-checking mode cannot verify a git
-# checkout at all. TODO: republish specter-card as a commit-pinned archive, then
-# hash-lock this file and tests/requirements.txt and collapse CI back to one
-# `pip install` invocation.
-#
-# Pillow and qrcode are deliberately pinned differently from upstream; don't
-# "resync" them without checking why.
 embit==0.8.0
 Pillow>=10.4.0
 pyzbar @ https://github.com/seedsigner/pyzbar/archive/c3c237821c6a20b17953efe59b90df0b514a1c03.zip
