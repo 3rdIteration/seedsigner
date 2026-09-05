@@ -2,7 +2,7 @@ from gettext import gettext as _
 from seedsigner.helpers.l10n import mark_for_translation as _mft
 
 from binascii import hexlify
-from binascii import hexlify
+from dataclasses import dataclass
 
 from embit import bip32
 import logging
@@ -10,7 +10,7 @@ import time
 
 from seedsigner.models.psbt_parser import InvalidPSBTError, PSBTParser, RejectCode, RiskWarning
 from seedsigner.models.settings import SettingsConstants
-from seedsigner.gui.components import FontAwesomeIconConstants, SeedSignerIconConstants
+from seedsigner.gui.components import FontAwesomeIconConstants, GUIConstants, SeedSignerIconConstants
 from seedsigner.gui.screens.screen import (
     RET_CODE__BACK_BUTTON,
     ButtonListScreen,
@@ -280,6 +280,15 @@ class PSBTSelectSeedView(View):
                         master_fingerprint=master_fp,
                         network=network,
                     )
+                except InvalidPSBTError as e:
+                    # A deliberate refusal. Card signing gets the same screens as
+                    # seed signing -- see REJECT_PRESENTATION.
+                    logger.info("Refusing psbt from %s: %s (%s)", card_label, e, e.code)
+                    self.controller.psbt_parser = None
+                    self.controller.psbt_sign_with_satochip = False
+                    loading.stop()
+                    loading_stopped = True
+                    return refusal_destination(e)
                 except Exception as e:
                     logger.exception("Failed to parse PSBT with %s data", card_label)
                     loading.stop()
@@ -438,24 +447,201 @@ class PSBTBIP38PassphraseView(View):
         self.controller.psbt_seed = key
         return Destination(PSBTOverviewView)
 
-class PSBTOverviewView(View):
-    # Refusals that the user can legitimately act on, rather than simply having
-    # to reject the transaction. Appended to the technical reason.
-    #
-    # Budget: the warning screen's text box fits five lines at the body font, and
-    # TextArea renders past the bottom edge rather than raising, so an overlong
-    # message silently draws over the button. Reason + tip must stay within that
-    # for the longest realistic values AND a verbose translation.
-    REJECT_TIPS = {
-        # TRANSLATOR_NOTE: Points the user at the setting that controls this check
-        RejectCode.CHANGE_INDEX_TOO_FAR: _mft("See Change Gap Limit in Settings."),
-    }
+@dataclass
+class RejectPresentation:
+    """
+    How one RejectCode is shown to the user, and where the flow goes afterwards.
 
+    Every refusal used to render as the same generic "Invalid PSBT" warning carrying
+    the parser's technical message. That is still the default -- `screen` is None and
+    the parser's message is the body -- but a code that deserves its own severity,
+    headline, or exit route gets an entry here instead of a special case in the flow.
+
+    * screen / title / headline / text / icon / color / button: what is drawn. `text`
+      of None means "use the parser's own message", which is right where the message
+      names a specific offending value and wrong where fixed prose reads better.
+    * tip: appended to the message, for refusals the user can actually act on.
+    * clear_psbt: whether the psbt itself is discarded. False only for
+      SEED_CANNOT_SIGN, which is a seed/psbt mismatch rather than a bad psbt.
+    * clear_history: whether the redirect INTO this screen wipes the back stack, so
+      BACK cannot walk into a half-parsed psbt. False only where the user is meant to
+      step back into the flow they came from.
+    * destination_name: which View to land on once the screen is dismissed. Named as a
+      string because the table sits above the Views it points at.
+    """
+    screen: type = None
+    title: str = "Invalid PSBT"
+    headline: str = None
+    text: str = None
+    icon: str = None
+    color: str = None
+    button_label: str = "Done"
+    tip: str = None
+    clear_psbt: bool = True
+    clear_history: bool = True
+    destination_name: str = "MainMenuView"
+
+
+# Keyed by RejectCode. Anything absent renders with RejectPresentation() defaults, so
+# adding a code to the parser never leaves the flow without a screen.
+#
+# Budget: the warning screen's text box fits five lines at the body font, and TextArea
+# renders past the bottom edge rather than raising, so an overlong message silently
+# draws over the button. Message + tip must stay within that for the longest realistic
+# values AND a verbose translation. tests/test_psbt_refusal_screens.py pins this.
+REJECT_PRESENTATION = {
+    # TRANSLATOR_NOTE: Points the user at the setting that controls this check
+    RejectCode.CHANGE_INDEX_TOO_FAR: RejectPresentation(tip=_mft("See Change Gap Limit in Settings.")),
+
+    RejectCode.FORGED_OUTPUT_OWNERSHIP: RejectPresentation(
+        screen=DireWarningScreen,
+        # TRANSLATOR_NOTE: Title of the screen shown when a psbt lies about owning an output
+        title=_mft("Suspicious Transaction"),
+        headline=_mft("Likely an Attack!"),
+        text=_mft("The transaction's change/self-transfer outputs are not going back to your wallet."),
+        button_label=_mft("Discard transaction"),
+    ),
+
+    RejectCode.FORGED_INPUT_OWNERSHIP: RejectPresentation(
+        screen=WarningScreen,
+        # TRANSLATOR_NOTE: Title of the screen shown when a psbt misstates who owns an input
+        title=_mft("Transaction Problem"),
+        text=_mft("This transaction incorrectly claims that its input(s) belong to this seed."),
+        button_label=_mft("Discard transaction"),
+    ),
+
+    RejectCode.SEED_CANNOT_SIGN: RejectPresentation(
+        # An informational mismatch, not a warning, so it uses the neutral info icon and
+        # color rather than WarningScreen's alarming yellow edges.
+        # TODO: give this its own InfoScreen (LargeIconStatusScreen with the INFO icon
+        # and color baked in) rather than customizing the base screen at each call site.
+        screen=LargeIconStatusScreen,
+        # TRANSLATOR_NOTE: Title of the screen shown when the chosen seed can't sign the psbt
+        title=_mft("Seed Can't Sign"),
+        text=_mft("None of the inputs in this transaction are controlled by this seed."),
+        icon=SeedSignerIconConstants.INFO,
+        color=GUIConstants.INFO_COLOR,
+        button_label=_mft("Select a different seed"),
+        # The user is choosing a different seed for this psbt, not starting over, so the
+        # psbt is kept and only the seed and its parser are cleared.
+        clear_psbt=False,
+        clear_history=False,
+        destination_name="PSBTSelectSeedView",
+    ),
+}
+
+
+
+class PSBTRefusalView(View):
+    """
+    Renders one refused psbt, per REJECT_PRESENTATION, and routes onward.
+
+    Reached by redirect from PSBTOverviewView, so each refusal is a real View: it can be
+    screenshotted, its strings extracted for translation, and its routing asserted in a
+    flow test. Subclasses below fix `code` so the named cases can be referred to
+    directly.
+    """
+    code: str = None
+
+    def __init__(self, code: str = None, message: str = None):
+        super().__init__()
+        self.code = code if code is not None else self.code
+        self.message = message
+        self.presentation = REJECT_PRESENTATION.get(self.code, RejectPresentation())
+
+
+    def run(self):
+        p = self.presentation
+
+        if p.text is not None:
+            text = _(p.text)
+        else:
+            # The parser's own message, which names the offending value.
+            text = self.message or _("This transaction could not be verified.")
+            if p.tip:
+                # Single newline, not a blank line: the warning screen's text box fits
+                # about five lines and a blank one costs a whole line.
+                text += "\n" + _(p.tip)
+
+        kwargs = dict(
+            title=_(p.title),
+            status_headline=_(p.headline) if p.headline else None,
+            text=text,
+            button_data=[ButtonOption(p.button_label)],
+            show_back_button=False,
+        )
+        if p.icon:
+            kwargs["status_icon_name"] = p.icon
+        if p.color:
+            kwargs["status_color"] = p.color
+
+        self.run_screen(p.screen or WarningScreen, **kwargs)
+
+        if p.clear_psbt:
+            self.controller.psbt = None
+        self.controller.psbt_parser = None
+        self.controller.psbt_seed = None
+        # Whichever signer was selected, it isn't signing this psbt.
+        self.controller.psbt_sign_with_satochip = False
+
+        # Named rather than referenced directly so the table can sit above the Views it
+        # points at. test_every_reject_code_has_a_reachable_destination resolves them all.
+        return Destination(globals()[p.destination_name], clear_history=True)
+
+
+
+class PSBTOutputOwnershipClaimFailedView(PSBTRefusalView):
+    """
+    An output claims a key this seed does not derive -- how a fake change output is
+    dressed up as the user's own. Shows a dire warning and discards the psbt.
+    """
+    code = RejectCode.FORGED_OUTPUT_OWNERSHIP
+    DISCARD = ButtonOption("Discard transaction")
+
+
+
+class PSBTInputOwnershipClaimFailedView(PSBTRefusalView):
+    """
+    An input claims a key this seed does not derive. Unsignable rather than dangerous,
+    so a plain warning; the psbt is still discarded.
+    """
+    code = RejectCode.FORGED_INPUT_OWNERSHIP
+    DISCARD = ButtonOption("Discard transaction")
+
+
+
+class PSBTSeedCannotSignView(PSBTRefusalView):
+    """
+    This seed can't sign any of the psbt's inputs. Routes back to seed selection, keeping
+    the psbt, so the user can pick another.
+    """
+    code = RejectCode.SEED_CANNOT_SIGN
+    SELECT_DIFFERENT_SEED = ButtonOption("Select a different seed")
+
+
+# The named subclasses above, keyed by the code each one fixes. A code without one is
+# rendered by PSBTRefusalView itself; give a code its own subclass when it is worth
+# naming in a flow test or a screenshot, and it lands here automatically.
+REFUSAL_VIEWS = {cls.code: cls for cls in PSBTRefusalView.__subclasses__()}
+
+
+def refusal_destination(error: InvalidPSBTError) -> Destination:
+    """Where a refused psbt goes: the View for its code, carrying its message."""
+    presentation = REJECT_PRESENTATION.get(error.code, RejectPresentation())
+    return Destination(
+        REFUSAL_VIEWS.get(error.code, PSBTRefusalView),
+        view_args=dict(code=error.code, message=str(error)),
+        # Set clear_history to disable returning via BACK button
+        clear_history=presentation.clear_history,
+    )
+
+
+
+class PSBTOverviewView(View):
     def __init__(self):
         super().__init__()
 
         self.loading_screen = None
-        self.parse_error: InvalidPSBTError = None
 
         if not self.controller.psbt_parser or self.controller.psbt_parser.seed != self.controller.psbt_seed:
             # The PSBTParser takes a while to read the PSBT. Run the loading screen while
@@ -474,40 +660,18 @@ class PSBTOverviewView(View):
                     block_anchor=(_Controller.RELEASE_BLOCK_HEIGHT, _Controller.RELEASE_BLOCK_TIME),
                 )
             except InvalidPSBTError as e:
-                # A deliberate refusal, not a crash: the psbt is parseable but
-                # unsafe to present. run() turns this into a warning screen.
-                self.loading_screen.stop()
-                self.loading_screen = None
+                # A deliberate refusal, not a crash: the psbt is parseable but unsafe to
+                # present, or not this seed's to sign. Redirect to the View that renders
+                # this code -- see REJECT_PRESENTATION.
                 logger.info("Refusing psbt: %s (%s)", e, e.code)
-                self.parse_error = e
-            except Exception as e:
+                self.set_redirect(refusal_destination(e))
+                return
+            finally:
                 self.loading_screen.stop()
-                raise e
 
 
     def run(self):
         from seedsigner.gui.screens.psbt_screens import PSBTOverviewScreen
-
-        if self.parse_error:
-            text = str(self.parse_error)
-            tip = self.REJECT_TIPS.get(self.parse_error.code)
-            if tip:
-                # Single newline, not a blank line: the warning screen's text box
-                # fits about five lines and a blank one costs a whole line.
-                text += "\n" + _(tip)
-
-            self.run_screen(
-                WarningScreen,
-                title=_("Invalid PSBT"),
-                status_headline=None,
-                text=text,
-                button_data=[ButtonOption("Done")],
-                show_back_button=False,
-            )
-            self.controller.psbt = None
-            self.controller.psbt_parser = None
-            self.controller.psbt_seed = None
-            return Destination(MainMenuView, clear_history=True)
 
         psbt_parser = self.controller.psbt_parser
 
@@ -532,10 +696,6 @@ class PSBTOverviewView(View):
                 num_change_outputs += 1
             else:
                 num_self_transfer_outputs += 1
-
-        # Everything is set. Stop the loading screen
-        if self.loading_screen:
-            self.loading_screen.stop()
 
         # Run the overview screen
         selected_menu_num = self.run_screen(
@@ -986,10 +1146,14 @@ class PSBTChangeDetailsView(View):
             from seedsigner.views.seed_views import LoadMultisigWalletDescriptorView
             self.controller.resume_main_flow = Controller.FLOW__PSBT
             return Destination(LoadMultisigWalletDescriptorView)
-            
+
 
 
 class PSBTAddressVerificationFailedView(View):
+    """
+    Reached when a change or self-transfer output fails address verification. Shows a dire
+    warning and discards the psbt to the main menu.
+    """
     def __init__(self, is_change: bool = True, is_multisig: bool = False):
         super().__init__()
         self.is_change = is_change
@@ -1013,8 +1177,9 @@ class PSBTAddressVerificationFailedView(View):
             show_back_button=False,
         )
 
-        # We're done with this PSBT. Route back to MainMenuView which always
-        #   clears all ephemeral data (except in-memory seeds).
+        # We're done with this PSBT. Route back to MainMenuView, which clears all ephemeral
+        # data (except in-memory seeds).
+        # Set clear_history to disable returning via BACK button.
         return Destination(MainMenuView, clear_history=True)
 
 
