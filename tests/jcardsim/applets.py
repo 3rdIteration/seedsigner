@@ -33,13 +33,37 @@ class AppletSpec:
     sources_rel: str               # package root of the .java sources, within the repo
     sdk_rel: str = "sdks/jc304_kit/lib/api_classic.jar"
     revision: str | None = None    # git tag/sha; None means the repo's working tree
-    install_params: str = ""       # hex, passed through to the applet's install()
+    install_params: str = ""       # hex, the "applet data" section of the install block
+    # How install() expects its parameters laid out. "gp" is the full GlobalPlatform
+    # [aidLen][aid][ctrlLen][ctrl][dataLen][data] that SeedKeeper and Satochip parse;
+    # "aid_only" is the [aidLen][aid] Keycard's install() expects (and is what
+    # status-keycard's own JUnit tests pass).
+    install_style: str = "gp"
+    # The AID jcardsim registers the applet under. Usually the same as `aid`, but
+    # Keycard registers under its *package* AID while its install block carries the
+    # *instance* AID -- which is exactly what status-keycard's own tests do.
+    install_aid: str = ""
     prebuilt_classes_rel: str | None = None  # use these if present and no revision pinned
+    # Jars/dirs the applet needs to compile and to load, e.g. Keycard's keycard-math.jar,
+    # a prebuilt JavaCard library the repo ships with no sources.
+    extra_classpath_rel: tuple[str, ...] = ()
     env_var: str = ""              # per-applet override for the repo location
 
     @property
     def repo_env_var(self) -> str:
         return self.env_var or f"SEEDSIGNER_APPLET_{self.name.upper()}_REPO"
+
+    @property
+    def registration_aid(self) -> str:
+        return self.install_aid or self.aid
+
+    def install_block(self) -> str:
+        """The install parameter block for this applet, as hex."""
+        aid = bytes.fromhex(self.aid)
+        data = bytes.fromhex(self.install_params) if self.install_params else b""
+        if self.install_style == "aid_only":
+            return (bytes([len(aid)]) + aid).hex()
+        return (bytes([len(aid)]) + aid + bytes([0, len(data)]) + data).hex()
 
 
 # SeedKeeper's install() recovers OM_SIZE from the install parameters and indexes into
@@ -94,15 +118,25 @@ APPLETS: dict[str, AppletSpec] = {
         aid="A000000804000101",
         sources_rel="src/main/java/im/status/keycard",
         prebuilt_classes_rel="build/classes/java/main",
+        extra_classpath_rel=("keycard-math/keycard-math.jar",),
+        install_style="aid_only",
+        install_aid="A0000008040001",  # package AID; the block carries the instance AID
     ),
-    # Only the built CAPs ship in javacard-cap/; the source has to be cloned. See
-    # docs/gpg_tools.md, which names ANSSI-FR/SmartPGP as the upstream.
+    # Only the built CAPs ship in javacard-cap/; the source has to be cloned from
+    # ANSSI-FR/SmartPGP (named in docs/gpg_tools.md).
+    #
+    # Not currently simulatable: its sources import javacard.security.NamedParameterSpec
+    # and XECKey, which are JavaCard 3.1, and jcardsim 3.0.5 implements 3.0.x and has
+    # neither class. Kept here so the plumbing is ready for a jcardsim with 3.1 support
+    # or an older SmartPGP revision -- see test_jcardsim_keycard.py.
     "smartpgp": AppletSpec(
         name="smartpgp",
         repo="SmartPGP",
         applet_class="fr.anssi.smartpgp.SmartPGPApplet",
-        aid="D276000124010304000000000000000000",
+        aid="D276000124010304AFAF000000000000",
+        install_aid="D27600012401",
         sources_rel="src/fr/anssi/smartpgp",
+        sdk_rel="oracle_javacard_sdks/jc310r20210706_kit/lib/api_classic.jar",
     ),
 }
 
@@ -146,7 +180,12 @@ def _java_sources(root: Path) -> list[str]:
     return [str(p) for p in sorted(root.rglob("*.java"))]
 
 
-def _compile(sources_root: Path, sdk_jar: Path, out: Path) -> None:
+def extra_classpath(spec: AppletSpec, repo: Path) -> list[Path]:
+    """Absolute paths for the spec's extra classpath entries that actually exist."""
+    return [repo / rel for rel in spec.extra_classpath_rel if (repo / rel).exists()]
+
+
+def _compile(sources_root: Path, sdk_jar: Path, out: Path, extra: list[Path] | None = None) -> None:
     """
     Compile the applet with javac directly.
 
@@ -160,12 +199,13 @@ def _compile(sources_root: Path, sdk_jar: Path, out: Path) -> None:
         raise JCardSimUnavailable(f"no .java sources under {sources_root}")
 
     out.mkdir(parents=True, exist_ok=True)
+    classpath = os.pathsep.join(str(p) for p in [sdk_jar, *(extra or [])])
     result = _run([
         "javac",
         # JavaCard applets are Java 1.x source; -source/-target 7 is the oldest modern
         # JDKs still accept, and is enough for this bytecode.
         "-source", "7", "-target", "7", "-nowarn",
-        "-cp", str(sdk_jar),
+        "-cp", classpath,
         "-d", str(out),
         *sources,
     ])
@@ -173,6 +213,22 @@ def _compile(sources_root: Path, sdk_jar: Path, out: Path) -> None:
         raise JCardSimUnavailable(
             f"javac failed for {sources_root.name}:\n{result.stderr.strip()[:2000]}"
         )
+
+
+def open_card(name: str, **kwargs):
+    """
+    A ready-to-start `SimulatedCard` for `name`, with its classpath worked out.
+
+    Prefer this over calling resolve_applet() and constructing the card by hand: some
+    applets need extra classpath entries to load at all, and forgetting them shows up as
+    a confusing failure inside the JVM.
+    """
+    from .simulator import SimulatedCard
+
+    spec, classes = resolve_applet(name)
+    repo = repo_path(spec)
+    extra = extra_classpath(spec, repo) if repo else []
+    return SimulatedCard(spec, classes, extra_classpath=extra, **kwargs)
 
 
 def resolve_applet(name: str) -> tuple[AppletSpec, Path]:
@@ -223,6 +279,6 @@ def resolve_applet(name: str) -> tuple[AppletSpec, Path]:
             f"JavaCard SDK jar not at {sdk_jar} (is the repo's sdks/ submodule checked out?)"
         )
 
-    _compile(sources_root, sdk_jar, out)
+    _compile(sources_root, sdk_jar, out, extra_classpath(spec, repo))
     marker.write_text(stamp, encoding="utf-8")
     return spec, out

@@ -49,6 +49,31 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             tests/requirements.txt
+      # The jcardsim tests run the real JavaCard applets. Without a JDK and the applet
+      # sources they skip with a reason rather than failing, so this is additive.
+      - name: Set up JDK 11
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "11"
+      - name: Check out JavaCard applet sources
+        run: |
+          mkdir -p "$HOME/applet-repos"
+          # Satochip-DIY is the aggregator: it carries the Satochip/SeedKeeper/Satodime
+          # sources *and* the JavaCard SDKs as submodules, so it needs --recursive.
+          git clone --recursive --depth 1 \
+            https://github.com/3rdIteration/Satochip-DIY.git \
+            "$HOME/applet-repos/Satochip-DIY"
+          # SeedKeeper is built at two tags (v0.1 and v0.2), so this one needs full
+          # history -- git archive cannot export a tag that was not fetched.
+          git clone --recursive \
+            https://github.com/Toporin/Seedkeeper-Applet.git \
+            "$HOME/applet-repos/Seedkeeper-Applet"
+          # Provides the jcardsim jar the simulator runs on, as well as the Keycard
+          # applet sources.
+          git clone --recursive --depth 1 \
+            https://github.com/status-im/status-keycard.git \
+            "$HOME/applet-repos/status-keycard"
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -67,6 +92,9 @@ jobs:
       - name: Test with pytest
         run: |
           mkdir -p artifacts
+          # Where the applet checkouts above landed. The jcardsim harness looks here for
+          # them and skips with a reason if any are missing, so this never breaks the run.
+          export SEEDSIGNER_APPLET_ROOT="$HOME/applet-repos"
           python -m pytest \
             --color=yes \
             --cov=seedsigner \

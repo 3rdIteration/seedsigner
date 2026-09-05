@@ -19,4 +19,4 @@ from .simulator import (  # noqa: F401
     simulator_available,
     why_unavailable,
 )
-from .applets import APPLETS, AppletSpec, resolve_applet  # noqa: F401
+from .applets import APPLETS, AppletSpec, open_card, resolve_applet  # noqa: F401

@@ -102,9 +102,12 @@ class SimulatedCard:
     SeedSigner's client code.
     """
 
-    def __init__(self, applet, classes_dir: Path, port: int | None = None, timeout: float = 30.0):
+    def __init__(self, applet, classes_dir: Path, port: int | None = None, timeout: float = 30.0,
+                 extra_classpath=()):
         self.applet = applet
         self.classes_dir = Path(classes_dir)
+        # Anything else the applet needs to load, e.g. Keycard's keycard-math.jar.
+        self.extra_classpath = [Path(p) for p in extra_classpath]
         self.port = port or _free_port()
         self.timeout = timeout
         self._proc: subprocess.Popen | None = None
@@ -120,16 +123,17 @@ class SimulatedCard:
         if not self.classes_dir.is_dir():
             raise JCardSimUnavailable(f"applet classes not built at {self.classes_dir}")
 
-        spec = f"{self.applet.aid}:{self.applet.applet_class}"
-        if self.applet.install_params:
-            spec += f":{self.applet.install_params}"
+        spec = (f"{self.applet.registration_aid}:{self.applet.applet_class}"
+                f":{self.applet.install_block()}")
 
         cmd = [
             "java", "-noverify",
             "-cp", os.pathsep.join([str(_launcher_classes()), str(jcardsim_jar())]),
             "SimLauncher",
             "--port", str(self.port),
-            "--classes", str(self.classes_dir),
+            "--classes", os.pathsep.join(
+                str(p) for p in [self.classes_dir, *self.extra_classpath]
+            ),
             "--applet", spec,
         ]
         self._proc = subprocess.Popen(

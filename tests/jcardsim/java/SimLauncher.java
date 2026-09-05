@@ -55,38 +55,27 @@ public class SimLauncher {
         return out;
     }
 
-    /**
-     * The install parameter block a JavaCard applet's install() receives:
-     * [aidLen][aid...][ctrlLen][ctrl...][dataLen][data...]
-     * Applets that ignore parameters are unaffected; the ones that parse them need this
-     * shape to exist at all, which is the whole reason for this class.
-     */
-    private static byte[] installBlock(byte[] aid, byte[] data) {
-        byte[] block = new byte[1 + aid.length + 1 + 1 + data.length];
-        int i = 0;
-        block[i++] = (byte) aid.length;
-        System.arraycopy(aid, 0, block, i, aid.length);
-        i += aid.length;
-        block[i++] = 0;                      // control info length
-        block[i++] = (byte) data.length;     // applet data length
-        System.arraycopy(data, 0, block, i, data.length);
-        return block;
-    }
-
     private static class AppletSpec {
         final byte[] aid;
         final String className;
-        final byte[] params;
+        final byte[] installBlock;
 
         AppletSpec(String spec) {
-            // AID:class[:paramsHex]
+            // AID:class[:installBlockHex]
+            //
+            // The block is passed in whole rather than assembled here, because its shape
+            // is applet-specific: SeedKeeper and Satochip parse the full GlobalPlatform
+            // [aidLen][aid][ctrlLen][ctrl][dataLen][data], while Keycard's install()
+            // expects only [aidLen][aid]. Building it in Python keeps that decision
+            // somewhere legible instead of hidden in a Java helper.
             String[] parts = spec.split(":", 3);
             if (parts.length < 2) {
-                throw new IllegalArgumentException("--applet wants AID:class[:paramsHex], got " + spec);
+                throw new IllegalArgumentException(
+                    "--applet wants AID:class[:installBlockHex], got " + spec);
             }
             this.aid = hexToBytes(parts[0]);
             this.className = parts[1];
-            this.params = parts.length == 3 ? hexToBytes(parts[2]) : new byte[0];
+            this.installBlock = parts.length == 3 ? hexToBytes(parts[2]) : new byte[0];
         }
     }
 
@@ -104,13 +93,21 @@ public class SimLauncher {
             }
         }
         if (port == 0 || classesDir == null || applets.isEmpty()) {
-            System.err.println("usage: SimLauncher --port N --classes DIR --applet AID:class[:paramsHex] ...");
+            System.err.println("usage: SimLauncher --port N --classes CLASSPATH --applet AID:class[:paramsHex] ...");
             System.exit(2);
         }
 
         // The applet's own classes are loaded from the build output of its repo, so the
         // bytecode under test is exactly what would be converted into a CAP.
-        URL[] urls = { new File(classesDir).toURI().toURL() };
+        //
+        // This is a classpath, not one directory: Keycard's Crypto references
+        // BigNumberMath from keycard-math.jar, a prebuilt JavaCard library that has no
+        // sources in the repo, so the applet cannot be loaded without it alongside.
+        String[] entries = classesDir.split(java.io.File.pathSeparator);
+        URL[] urls = new URL[entries.length];
+        for (int i = 0; i < entries.length; i++) {
+            urls[i] = new File(entries[i]).toURI().toURL();
+        }
         ClassLoader loader = new URLClassLoader(urls, SimLauncher.class.getClassLoader());
 
         CardSimulator simulator = new CardSimulator();
@@ -118,9 +115,18 @@ public class SimLauncher {
         for (AppletSpec spec : applets) {
             AID aid = AIDUtil.create(spec.aid);
             Class<?> cls = loader.loadClass(spec.className);
-            byte[] block = installBlock(spec.aid, spec.params);
-            simulator.installApplet(aid, cls.asSubclass(javacard.framework.Applet.class),
-                                    block, (short) 0, (byte) block.length);
+            byte[] block = spec.installBlock;
+            try {
+                simulator.installApplet(aid, cls.asSubclass(javacard.framework.Applet.class),
+                                        block, (short) 0, (byte) block.length);
+            } catch (javacard.framework.CardRuntimeException e) {
+                // The applet's install() rejected us. The reason code is the only useful
+                // detail -- a bare SystemException says nothing about which resource or
+                // algorithm jcardsim could not provide.
+                System.err.println("install of " + spec.className + " failed: "
+                                   + e.getClass().getName() + " reason=" + e.getReason());
+                throw e;
+            }
             if (firstAid == null) {
                 firstAid = aid;
             }
