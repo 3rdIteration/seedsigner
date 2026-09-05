@@ -889,6 +889,7 @@ class TestEncryptedQRFlow(SeedFlowTest):
         )
 
     def test_typed_encryption_key_and_mnemonic_id(self):
+        from seedsigner.hardware.buttons import HardwareButtonsConstants as K
         from seedsigner.gui.screens.scan_screens import ScanTypeEncryptionKeyScreen
         from seedsigner.gui.screens.seed_screens import SeedEncryptedQRMnemonicIDScreen
         from ui_driver import plan_text_entry_script
@@ -911,7 +912,9 @@ class TestEncryptedQRFlow(SeedFlowTest):
             + select(0)          # accept the reviewed encryption key
             + select("Assign custom ID")
             + id_script
-            + select(0)          # accept the reviewed mnemonic ID
+            + select("Proceed")   # accept the reviewed mnemonic ID
+            + select("Transcribe mode")
+            + [K.KEY_PRESS]       # the zoomed-in transcription view exits on any click
         ))
 
         self.run_sequence(
@@ -926,6 +929,9 @@ class TestEncryptedQRFlow(SeedFlowTest):
                 FlowStep(seed_views.SeedEncryptedQRMnemonicIDPromptView, real_screens=True),
                 FlowStep(seed_views.SeedEncryptedQRMnemonicIDEntryView, real_screens=True),
                 FlowStep(seed_views.SeedEncryptedQRReviewMnemonicIDView, real_screens=True),
+                FlowStep(seed_views.SeedEncryptedQRTranscribeModePromptView, real_screens=True),
+                FlowStep(seed_views.SeedEncryptedQRTranscribeModeView, real_screens=True),
+                FlowStep(seed_views.SeedTranscribeEncryptedQRZoomedInView, real_screens=True),
             ],
             initial_destination_view_args=dict(seed=seed),
             ui_session=session,
