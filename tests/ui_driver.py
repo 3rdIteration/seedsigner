@@ -260,11 +260,18 @@ class TypeKeys(DeferredInput):
 
     Presses KEY3 to save at the end when the screen has a save button; screens that
     auto-return at return_after_n_chars (dice entropy) simply exit on the final press.
+
+    `clear_first` backspaces the screen empty before typing. Some KeyboardScreens are
+    pre-filled with the current value (e.g. SettingPBFDK2IterationsScreen shows the
+    stored iteration count), so without it the typed text is *appended* to what is
+    already there.
     """
 
-    def __init__(self, text: str):
+    def __init__(self, text: str, clear_first: bool = False):
         super().__init__()
         self.text = text
+        self.clear_first = clear_first
+        self._cleared = not clear_first
         self._pressed = 0
         self._saved = False
         self._done = False
@@ -296,6 +303,13 @@ class TypeKeys(DeferredInput):
                 f"{type(screen).__name__}, not a KeyboardScreen."
             )
 
+        if not self._cleared:
+            # Latch once empty: user_input becomes non-empty again as soon as we start
+            # typing, and without the latch that would restart the clearing.
+            if screen.user_input:
+                return self._key_toward_code(keyboard, "DEL")
+            self._cleared = True
+
         value = self.text[self._pressed]
         key_char = self._key_char_for(screen, value)
         target = _find_key(keyboard, key_char)
@@ -307,6 +321,19 @@ class TypeKeys(DeferredInput):
             self._pressed += 1
             return K.KEY_PRESS
         return move
+
+    def _key_toward_code(self, keyboard, code: str):
+        """One step toward the key with this `code` (e.g. the DEL key), or its press."""
+        from seedsigner.hardware.buttons import HardwareButtonsConstants as K
+
+        target = next(
+            (key for row in keyboard.keys for key in row if key.code == code), None
+        )
+        if target is None:
+            raise ScriptSelectionError(
+                f"{self}: this keyboard has no {code!r} key to clear with"
+            )
+        return _step_toward(keyboard, target) or K.KEY_PRESS
 
     @staticmethod
     def _key_char_for(screen, value: str) -> str:
