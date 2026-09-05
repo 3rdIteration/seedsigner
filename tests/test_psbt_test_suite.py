@@ -294,14 +294,14 @@ class TestEvidenceCannotBeForged:
     gets its own test.
     """
 
-    def _tx01_with(self, mutate):
+    def _tx01_with(self, mutate, expected_code=None):
         from psbt_suite_util import RejectCode
 
         psbt = load_psbt("TX-01")
         mutate(psbt)
         with pytest.raises(InvalidPSBTError) as excinfo:
             PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK)
-        assert excinfo.value.code == RejectCode.UNREACHABLE_CHANGE_PATH
+        assert excinfo.value.code == (expected_code or RejectCode.UNREACHABLE_CHANGE_PATH)
 
     def test_self_consistent_input_path_lie_is_rejected(self):
         """
@@ -331,13 +331,22 @@ class TestEvidenceCannotBeForged:
         The cheaper attack: supply no input derivations at all, so no evidence
         can be gathered and a naive check has nothing to compare against. No
         evidence must not read as permission.
+
+        The refusal now comes from the ownership scan rather than from the change
+        binding check, and says so: with every input derivation stripped, the seed
+        provably owns nothing on any input, which is what SEED_CANNOT_SIGN means. It
+        runs first, so it answers before the change path is ever examined. The
+        invariant this test exists to protect is unchanged -- the psbt is refused,
+        never displayed -- and the diagnosis is the more accurate of the two.
         """
+        from psbt_suite_util import RejectCode
+
         def strip(psbt):
             for inp in psbt.inputs:
                 inp.bip32_derivations.clear()
                 inp.taproot_bip32_derivations.clear()
 
-        self._tx01_with(strip)
+        self._tx01_with(strip, RejectCode.SEED_CANNOT_SIGN)
 
     def test_cosigner_derivations_are_not_treated_as_our_evidence(self):
         """
