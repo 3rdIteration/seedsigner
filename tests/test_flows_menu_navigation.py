@@ -697,6 +697,36 @@ class TestMenuNavigationFlows(FlowTest):
             FlowStep(ToolsSmartcardMenuView),
         ])
 
+    def test_smartcard_satochip_advanced_enable_2fa(self, monkeypatch):
+        """Tools → Smartcard → Satochip → Advanced → Enable 2FA → Cancel.
+
+        Exercises ToolsSatochipEnable2FAView.run() (which references the pysatochip
+        connector via init_satochip) and verifies cancelling at the first confirmation
+        returns to the Advanced menu without writing a key to the card.
+        """
+        from seedsigner.helpers import seedkeeper_utils
+        from seedsigner.views.smartcard_views import (
+            ToolsSmartcardMenuView, ToolsSatochipView, ToolsSatochipAdvancedView,
+            ToolsSatochipEnable2FAView,
+        )
+
+        class MockConnector:
+            needs_2FA = False
+            def card_set_2FA_key(self, *args):
+                raise AssertionError("card_set_2FA_key should not be called on cancel")
+
+        monkeypatch.setattr(seedkeeper_utils, "init_satochip", lambda *a, **k: MockConnector())
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.SMARTCARD),
+            FlowStep(ToolsSmartcardMenuView, button_data_selection=ToolsSmartcardMenuView.SATOCHIP),
+            FlowStep(ToolsSatochipView, button_data_selection=ToolsSatochipView.ADVANCED),
+            FlowStep(ToolsSatochipAdvancedView, button_data_selection=ToolsSatochipAdvancedView.ENABLE_2FA),
+            FlowStep(ToolsSatochipEnable2FAView, screen_return_value=1),  # "Cancel" at first confirmation
+            FlowStep(ToolsSatochipAdvancedView),
+        ])
+
     def test_smartcard_keycard(self):
         """Tools → Smartcard → KeyCard → BACK."""
         from seedsigner.views.smartcard_views import (
