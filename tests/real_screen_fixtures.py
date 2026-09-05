@@ -85,6 +85,50 @@ def satochip_connector(monkeypatch, **kwargs):
     yield connector
 
 
+@contextmanager
+def simulated_satochip(monkeypatch, applet: str = "satochip", setup_pin: str = "1234"):
+    """
+    Put a *real* Satochip applet behind `init_satochip`, running in jcardsim.
+
+    This is the upgrade `satochip_connector` was written to allow: the flows under test
+    are unchanged, but the connector they get is pysatochip talking to actual applet
+    bytecode rather than a stand-in returning canned values. Status words, PIN state and
+    on-card derivation are all the applet's own.
+
+    Skips (via JCardSimUnavailable) when Java or the applet sources are absent.
+    """
+    import sys
+    from unittest.mock import MagicMock as _MagicMock
+
+    # base.py stubs pysatochip so the ordinary suite runs cardless; we need it real.
+    for name in [m for m in sys.modules if m == "pysatochip" or m.startswith("pysatochip.")]:
+        if isinstance(sys.modules[name], _MagicMock):
+            del sys.modules[name]
+
+    from jcardsim import open_card
+    from jcardsim.pcsc_shim import patched_pcsc
+
+    from seedsigner.helpers import seedkeeper_utils
+
+    with open_card(applet) as card:
+        card.select()
+        with patched_pcsc(card):
+            from pysatochip.CardConnector import CardConnector
+
+            connector = CardConnector(card_filter=[applet])
+            if setup_pin:
+                pin = list(setup_pin.encode())
+                connector.card_setup(5, 1, pin, pin, 5, 1, pin, pin, 32, 32, 0x01, 0x01, 0x01)
+                connector.set_pin(0, pin)
+                connector.card_verify_PIN()
+
+            monkeypatch.setattr(
+                seedkeeper_utils, "init_satochip", lambda *a, **kw: connector
+            )
+            yield connector
+
+
+
 class FakePyGP:
     """
     Stand-in for the ``pygp`` native module used by the JavaCard DIY views.

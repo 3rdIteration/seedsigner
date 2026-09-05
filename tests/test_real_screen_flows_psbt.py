@@ -229,3 +229,259 @@ class TestPSBTSigningFlow(PSBTFlowTest):
             ],
             ui_session=session,
         )
+
+
+def force_parser(**attrs):
+    """
+    A `before_run` hook that shapes the parsed PSBT to select a review branch.
+
+    PSBTOverviewView routes on three properties of the parse -- outstanding risk
+    warnings, a policy it cannot represent, and change of zero -- and the corpus in
+    tests/data/psbt_test_suite does not contain a vector that lands on any of them
+    without being refused earlier. Whether a given transaction *produces* those
+    properties is the parser's business and is covered by its own tests; what was
+    untested is the three Views they select, which had never been constructed. Setting
+    the attribute directly drives the real routing decision through the real View.
+
+    Safe because PSBTOverviewView builds the parser in __init__, so `before_run` runs
+    after it exists and before run() reads it.
+    """
+    def hook(view):
+        for name, value in attrs.items():
+            setattr(view.controller.psbt_parser, name, value)
+
+    return hook
+
+
+
+class TestPSBTReviewBranches(PSBTFlowTest):
+    """
+    The three branches out of the overview that are not the happy path.
+
+    All were mocked-only before: the Views existed, were routed to, and had never been
+    rendered. On a signing device the refusal paths deserve at least as much attention
+    as the approval path.
+    """
+
+    def scan_to_overview(self, before_run=None) -> list:
+        return [
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(scan_views.ScanView, before_run=load_psbt),
+            FlowStep(psbt_views.PSBTSelectSeedView, real_screens=True),
+            FlowStep(psbt_views.PSBTOverviewView, real_screens=True, before_run=before_run),
+        ]
+
+    def test_outstanding_risk_warning_is_shown(self):
+        """
+        A risk the parser flagged must reach the user before any approval screen.
+
+        HIGH_FEE rather than RBF: RBF is in RiskWarning.INFORMATIONAL, which the
+        overview deliberately does not interrupt for -- it is shown on the approval
+        screen instead.
+        """
+        from seedsigner.models.psbt_parser import RiskWarning
+
+        self.load_signing_seed()
+        session = UISession(script=select(0) + select(0) + select(0))
+
+        self.run_sequence(
+            self.scan_to_overview(force_parser(risk_warnings={RiskWarning.HIGH_FEE})) + [
+                FlowStep(psbt_views.PSBTRiskWarningView, real_screens=True),
+            ],
+            ui_session=session,
+        )
+        assert session.renderer.frames
+
+    def test_unsupported_script_type_warning(self):
+        """
+        A policy the parser cannot represent (legacy multisig, p2pkh) skips the maths
+        screen entirely, so the user is told rather than shown a blank breakdown.
+        """
+        self.load_signing_seed()
+        session = UISession(script=select(0) + select(0) + select(0))
+
+        self.run_sequence(
+            self.scan_to_overview(force_parser(policy=None)) + [
+                FlowStep(psbt_views.PSBTUnsupportedScriptTypeWarningView, real_screens=True),
+            ],
+            ui_session=session,
+        )
+
+    def test_no_change_warning(self):
+        """Sweeping a whole balance means no change output; the user is warned."""
+        self.load_signing_seed()
+        session = UISession(script=select(0) + select(0) + select(0))
+
+        self.run_sequence(
+            self.scan_to_overview(force_parser(change_amount=0)) + [
+                FlowStep(psbt_views.PSBTNoChangeWarningView, real_screens=True),
+            ],
+            ui_session=session,
+        )
+
+
+
+class TestPSBTOpReturn(PSBTFlowTest):
+    """A PSBT carrying an OP_RETURN payload shows it before approval."""
+
+    # 2 inputs / 2 outputs, one of which is an OP_RETURN carrying readable text.
+    OP_RETURN_PSBT = (
+        "cHNidP8BAIYCAAAAATpQ10o+gKdZ8ThpKsbfHiHYn3NhvUrQ5DvW0ZWX8jKLAAAAAAD9////AujC"
+        "9QUAAAAAFgAUY61+2BcXt+tsWoxV1nVw20kVb1UAAAAAAAAAACtqTChDaGFuY2VsbG9yIG9uIHRo"
+        "ZSBicmluayBvZiB0aGlyZCBiYWlsb3V0aQAAAE8BBDWHzwNXmUmVgAAAANRFa7R5gYD84Wbha3d1"
+        "QnjgfYPOBw87on6cXS32WoyqAsPFtPxB7PRTdbujUnBPUVDh9YUBtwrl4nc0OcRNGvIyEA+4gv9U"
+        "AACAAQAAgAAAAIAAAQB0AgAAAAGNFK/1X0fP5q+nu5XX7Tk2VRa0EL+jkGI9CHiJvsjZCgAAAAAA"
+        "/f///wKMw/UFAAAAABYAFIpZMNnUU6cQt8Q0YpZ0pnvsSA5fAAAAAAAAAAAZakwWYml0Y29pbiBp"
+        "cyBmcmVlIHNwZWVjaGgAAAABAR+Mw/UFAAAAABYAFIpZMNnUU6cQt8Q0YpZ0pnvsSA5fAQMEAQAA"
+        "ACIGAvxDI0eNI1oQ2AU69R7A0jf+hUdilWCgrWHgdzkqlaXMGA+4gv9UAACAAQAAgAAAAIAAAAAA"
+        "AQAAAAAiAgK9qKtzGWyiRrpmupdA99NVLriz3GQy6cENbyD19sfl/hgPuIL/VAAAgAEAAIAAAACA"
+        "AAAAAAIAAAAAAA=="
+    )
+    OP_RETURN_SEEDQR = "114006021552133507590698063102151531110102551496"
+
+    def test_op_return_payload_is_shown_before_approval(self):
+        def load_op_return(view):
+            view.decoder.add_data(self.OP_RETURN_PSBT)
+
+        def load_seed(view):
+            view.decoder.add_data(self.OP_RETURN_SEEDQR)
+
+        self.settings.set_value(
+            SettingsConstants.SETTING__NETWORK, SettingsConstants.MAINNET
+        )
+
+        session = UISession(script=(
+            select(psbt_views.PSBTSelectSeedView.SCAN_SEED)
+            + select(seed_views.SeedFinalizeView.FINALIZE)
+            + select(0)          # overview
+            + select(0)          # maths
+            + select(psbt_views.PSBTChangeDetailsView.NEXT)
+            + select(0)          # the OP_RETURN payload
+        ))
+
+        self.run_sequence(
+            [
+                FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+                FlowStep(scan_views.ScanView, before_run=load_op_return),
+                FlowStep(psbt_views.PSBTSelectSeedView, real_screens=True),
+                FlowStep(scan_views.ScanSeedQRView, before_run=load_seed),
+                FlowStep(seed_views.SeedFinalizeView, real_screens=True),
+                FlowStep(seed_views.SeedOptionsView, is_redirect=True),
+                FlowStep(psbt_views.PSBTOverviewView, real_screens=True),
+                FlowStep(psbt_views.PSBTMathView, real_screens=True),
+                FlowStep(psbt_views.PSBTChangeDetailsView, real_screens=True),
+                FlowStep(psbt_views.PSBTOpReturnView, real_screens=True),
+                FlowStep(psbt_views.PSBTFinalizeView),
+            ],
+            ui_session=session,
+        )
+
+
+
+class TestPSBTAlternativeSigners(PSBTFlowTest):
+    """
+    Signing with a bare key rather than a seed.
+
+    `PSBTWIFEntryView` and `PSBTBIP38EntryView` were among the views never named in any
+    test at all, despite being two of the ways a user can reach the signing flow.
+    """
+
+    def build_single_key_psbt(self, priv):
+        """A one-input PSBT that `priv` alone can sign."""
+        import base64
+
+        from embit import psbt, script
+        from embit.transaction import Transaction, TransactionInput, TransactionOutput
+
+        spk = script.p2wpkh(priv.get_public_key())
+        tx = Transaction(1, [TransactionInput(b"\x00" * 32, 0)], [TransactionOutput(900, spk)], 0)
+        p = psbt.PSBT(tx)
+        p.inputs[0].witness_utxo = TransactionOutput(1000, spk)
+        return base64.b64encode(p.serialize()).decode()
+
+    def test_typed_wif_key_reaches_the_overview(self):
+        import os
+
+        from embit import ec
+
+        from seedsigner.gui.screens.seed_screens import SeedAddPassphraseScreen
+        from ui_driver import plan_text_entry_script
+
+        self.settings.set_value(
+            SettingsConstants.SETTING__WIF_KEYS, SettingsConstants.OPTION__ENABLED
+        )
+        self.settings.set_value(
+            SettingsConstants.SETTING__NETWORK, SettingsConstants.MAINNET
+        )
+
+        priv = ec.PrivateKey(os.urandom(32))
+        psbt_b64 = self.build_single_key_psbt(priv)
+
+        def load(view):
+            view.decoder.add_data(psbt_b64)
+
+        wif_script = plan_text_entry_script(
+            SeedAddPassphraseScreen, priv.wif(), passphrase="", title="WIF"
+        )
+        session = UISession(script=(
+            select(psbt_views.PSBTSelectSeedView.TYPE_WIF) + wif_script
+        ))
+
+        self.run_sequence(
+            [
+                FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+                FlowStep(scan_views.ScanView, before_run=load),
+                FlowStep(psbt_views.PSBTSelectSeedView, real_screens=True),
+                FlowStep(psbt_views.PSBTWIFEntryView, real_screens=True),
+                FlowStep(psbt_views.PSBTOverviewView),
+            ],
+            ui_session=session,
+        )
+
+    def test_typed_bip38_key_asks_for_its_passphrase(self):
+        """
+        A BIP38 key is encrypted, so entry is two screens: the key, then the passphrase
+        that unlocks it. Neither View had ever been constructed.
+        """
+        import base64
+
+        from seedsigner.gui.screens.seed_screens import SeedAddPassphraseScreen
+        from seedsigner.models.bip38 import BIP38Key
+        from ui_driver import plan_text_entry_script
+
+        self.settings.set_value(
+            SettingsConstants.SETTING__BIP38_KEYS, SettingsConstants.OPTION__ENABLED
+        )
+        self.settings.set_value(
+            SettingsConstants.SETTING__NETWORK, SettingsConstants.MAINNET
+        )
+
+        encrypted = "6PRVWUbkzzsbcVac2qwfssoUJAN1Xhrg6bNk8J7Nzm5H7kxEbn2Nh2ZoGg"
+        passphrase = "TestingOneTwoThree"
+        priv = BIP38Key(encrypted).decrypt(passphrase).privkey
+        psbt_b64 = self.build_single_key_psbt(priv)
+
+        def load(view):
+            view.decoder.add_data(psbt_b64)
+
+        key_script = plan_text_entry_script(
+            SeedAddPassphraseScreen, encrypted, passphrase="", title="BIP38"
+        )
+        pass_script = plan_text_entry_script(
+            SeedAddPassphraseScreen, passphrase, passphrase="", title="Passphrase"
+        )
+        session = UISession(script=(
+            select(psbt_views.PSBTSelectSeedView.TYPE_BIP38) + key_script + pass_script
+        ))
+
+        self.run_sequence(
+            [
+                FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+                FlowStep(scan_views.ScanView, before_run=load),
+                FlowStep(psbt_views.PSBTSelectSeedView, real_screens=True),
+                FlowStep(psbt_views.PSBTBIP38EntryView, real_screens=True),
+                FlowStep(psbt_views.PSBTBIP38PassphraseView, real_screens=True),
+                FlowStep(psbt_views.PSBTOverviewView),
+            ],
+            ui_session=session,
+        )
