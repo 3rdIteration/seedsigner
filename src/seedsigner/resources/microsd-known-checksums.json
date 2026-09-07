@@ -1,0 +1,2766 @@
+{
+  "prefix_size": 4194304,
+  "updated": "2026-09-07",
+  "images": {
+    "bb9f8df61474d25e71fa00722318cd387396ca1736605e1248821cc0de3d3af8": {
+      "name": "Zero Wiped (First 26MB)",
+      "source_repo": "manual",
+      "tag": "",
+      "size_bytes": 27262976,
+      "sha256": "5809d4ec68138c737b1b000db4c6ec60983e94544efd893bdfa40ebf19af60f4",
+      "volatile_offsets": [],
+      "alt_prefix_hashes": []
+    },
+    "e36078f836278c7201f51bac3d21583df30a0cf58ed476f5aa8c2aa4260dbd28": {
+      "name": "seedsigner_os.0.6.0.pi0.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.6.0",
+      "size_bytes": 35652096,
+      "sha256": "881813e798ca13f9de17f3958a565973e727827c51e9d5b470c2e4a04db209fe",
+      "volatile_offsets": [
+        577,
+        1512,
+        1513,
+        1514,
+        1515,
+        1516,
+        1517,
+        1518,
+        1519
+      ],
+      "alt_prefix_hashes": [
+        "8d00bf28f48b63699cbccfb41eb67aebdf028dbc377927be0680246484660f0b"
+      ]
+    },
+    "3ee6250a718eb8e333eb750edb88d4b89c76311dfe7b4b09c0d02b0241effe57": {
+      "name": "seedsigner_os.0.6.0.pi02w.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.6.0",
+      "size_bytes": 35652096,
+      "sha256": "790017569869bdecbc00d8ea63b361ca5faadfda48d0b2b2a15eb2d4b1ecf8ce",
+      "volatile_offsets": [
+        577,
+        1512,
+        1513,
+        1514,
+        1515,
+        1516,
+        1517,
+        1518,
+        1519
+      ],
+      "alt_prefix_hashes": [
+        "cf26c599e5e2e75a3dffa1ecca9138b3726ca0c5cfb8f61391011c3eb3c6c65c"
+      ]
+    },
+    "472741ca6d06bab721a3f3d87b57bdc99dc0d1c8fe0a404e8b0fdcc592b19b5d": {
+      "name": "seedsigner_os.0.6.0.pi2.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.6.0",
+      "size_bytes": 35652096,
+      "sha256": "e7c61ee39c9f9932095d394dae2fea89e968be4c067f0a22692b12c337ddcb89",
+      "volatile_offsets": [
+        577,
+        1512,
+        1513,
+        1514,
+        1515,
+        1516,
+        1517,
+        1518,
+        1519
+      ],
+      "alt_prefix_hashes": [
+        "5a4d0fba68034798ade28ee830fd41e6bb40c5a8c00ca20a7f328644a803a7be"
+      ]
+    },
+    "7ab933c7aff11f3bbebebd8a3507db24ce47219e7b30be4932022de00945bb7c": {
+      "name": "seedsigner_os.0.6.0.pi4.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.6.0",
+      "size_bytes": 42992128,
+      "sha256": "dca43110aacaf30519f029d27bb292631492b11e2e3cab0b191aa8c795d1313a",
+      "volatile_offsets": [
+        577,
+        1512,
+        1513,
+        1514,
+        1515,
+        1516,
+        1517,
+        1518,
+        1519
+      ],
+      "alt_prefix_hashes": [
+        "c623bab8097aa972401388fb432f57995dce6ecdf651d51f07139d002b7369d7"
+      ]
+    },
+    "3d02f97ffc26dd6db7f0d6d3c8fd8dd453740abaf0da0a674c42c83ecba60088": {
+      "name": "seedsigner_os.0.7.0+Satochip-Beta1.pi0-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "0.7.0+Satochip-Beta1",
+      "size_bytes": 268435456,
+      "sha256": "0d16ee2a50a79d85e90b8d6c010b5d120b36b24080f0fb17dc5900a666e90013",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "6c096151713b49e171f931b0982fb7fd7729cf021db27e4d41ee013eaf1fe79a"
+      ]
+    },
+    "6ad74ced1e5c805a4d24172d62e3d8185066f25b6e9d769f067226cbf4802aad": {
+      "name": "seedsigner_os.0.7.0+Satochip-Beta1.pi02w-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "0.7.0+Satochip-Beta1",
+      "size_bytes": 268435456,
+      "sha256": "74598b92bd3765f270e9f819af2b528afbb809a02ebe9481b99380da944272a0",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "07ba0fca0d3aed949e5656530d651e319d638811eda1ba989f8db2a6ef298d0b"
+      ]
+    },
+    "292e87be8e229420551e7c96bb94b8937971f3c0e07c9eb61af1db0af0259f5d": {
+      "name": "seedsigner_os.0.7.0+Satochip-Beta1.pi2-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "0.7.0+Satochip-Beta1",
+      "size_bytes": 268435456,
+      "sha256": "176817d75afa5647e6bc85a75ed3ef47d2c66b61c4998f86b4183a470da854be",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "22d2a389ef3ef303c3c136927cdee6278419f9b80f7f3ec71e23ce121df44c3b"
+      ]
+    },
+    "05ee2b94af9d785aab57e5f557a10e35fe8d76fd97ca4da9394329d477719411": {
+      "name": "seedsigner_os.0.7.0+Satochip-Beta1.pi4-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "0.7.0+Satochip-Beta1",
+      "size_bytes": 268435456,
+      "sha256": "07546004f8be11e6369004302ba12e9ca23ce0504773e9165e0cda334f1959bc",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "9de6e5c59025a6f250d81208234d1a3b1916a53c556af6fb3ad4bf5ec08e6403"
+      ]
+    },
+    "f4127c3e7b0a2e913d96eeedb9bcd448360e1874cf9e02e151e879e4c9d937ca": {
+      "name": "seedsigner_os.0.7.0+Satochip-Beta2.pi0-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "0.7.0+Satochip-Beta2",
+      "size_bytes": 268435456,
+      "sha256": "5ed5f79b2408763cbd8485febd3f6cb125416556b39e6add9e45d1393a62eed1",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "b2fe5127c7964cfd6f200b22ef92ecdb79747684564fa42ca195d255b7e108d3"
+      ]
+    },
+    "82355879352fb0c93f3b73720ad90820eb383d51d3985b9b9f842aa5bb3de6f6": {
+      "name": "seedsigner_os.0.7.0+Satochip-Beta2.pi02w-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "0.7.0+Satochip-Beta2",
+      "size_bytes": 268435456,
+      "sha256": "d7aa0b464a300b97d067a7b9a6124b31afd8f40a96751ac0ba56c39dbdf154f7",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "42d0a6de62c670556e0baee940d11abe2fdae44373995bc2ebcf608213bffc86"
+      ]
+    },
+    "068150ad8473cf79839c1ec2c3d63909b85796e9a9375d600c4caaad04001e78": {
+      "name": "seedsigner_os.0.7.0+Satochip-Beta2.pi2-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "0.7.0+Satochip-Beta2",
+      "size_bytes": 268435456,
+      "sha256": "b14c8af5c05dfe41a4c51186fc530a4021cd10c83e11eed2c82489f113ded131",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "110409a548c6049957c356bda47750b55f3ba88b024f0cf2c13cbc6e5ea8f2db"
+      ]
+    },
+    "68426117c1b49136e048ae43833da540249edc02fa05c2c4c272487991f67e83": {
+      "name": "seedsigner_os.0.7.0+Satochip-Beta2.pi4-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "0.7.0+Satochip-Beta2",
+      "size_bytes": 268435456,
+      "sha256": "72e9e9f0876145ccf3a6953223db728962b2bbc896c70b23397e0ef847beea1a",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "cb1feb1a59e147040a920b5cfdbf8f9fcfc8752b2652f2ef887a1b0df2cda723"
+      ]
+    },
+    "ce618eb3aef276e0aafaa7cf8e81b38ddce66269d84856d549d29638b3cee786": {
+      "name": "seedsigner_os.0.7.0.pi0.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.7.0",
+      "size_bytes": 27262976,
+      "sha256": "05253fc7963234ad9e906e045fbda5eced1cc68ed11a4c64d52c33775566816d",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "be9721d8d814a895f5fa6fb3202fa9b2ecf3130541542e2b6da1a2978d0fea25"
+      ]
+    },
+    "fe580f04183a2b47bbfdb5ac532ee315d00f64324e90b0e0fe77f23077350f28": {
+      "name": "seedsigner_os.0.7.0.pi02w.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.7.0",
+      "size_bytes": 27262976,
+      "sha256": "c38611c992cfc9d18601f7e3d304ae8856af6ed0ceb78792b19199d876122841",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "b67c949989cc9d636dfe707bce6295ba92af4cd861d8d14c22f400ed44d07445"
+      ]
+    },
+    "94572cb59c4ec2ac309e4eb6dcb63488f937621398d8e5c043fd8d6a0c25ac9f": {
+      "name": "seedsigner_os.0.7.0.pi2.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.7.0",
+      "size_bytes": 27262976,
+      "sha256": "2525815b9c1bde5fd9be461f0065f91c9174933e5cc326f14133b5e9a18034d6",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "1bcffc35081fce53a72c286c49a291fa4863de0d785924b103fb8a348c1608a4"
+      ]
+    },
+    "ece8669e0c3b593b16bec547ac70d0d0c8d1521f48b65c83cc80fe617110e18a": {
+      "name": "seedsigner_os.0.7.0.pi4.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.7.0",
+      "size_bytes": 27262976,
+      "sha256": "155106de4681376b1eec770f213260eb193210a39b9a6ffdc69330206183dc0b",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "b9d07c6eae040871862e4a2b94ca3d751c741e2277f75a2ef2e9c24d1f8733a9"
+      ]
+    },
+    "feb28e55204b5db23f03d74e2262372cdfb0de337845d0083647e53825dc7d5d": {
+      "name": "seedsigner_os.0.8.0.pi0.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.8.0",
+      "size_bytes": 27262976,
+      "sha256": "a4268f528a6b523974eb1fbdb0135fd6c3777b8943b24e76cb5522d7bee67895",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "d7c88c67709b60138a3df0bbfe5cc95827c6ef8b577450c0b87698f2acf66cb0"
+      ]
+    },
+    "fefa46297a7198695452a9824020ea92859ac4666b7f7501a32ae41ac50fb618": {
+      "name": "seedsigner_os.0.8.0.pi02w.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.8.0",
+      "size_bytes": 27262976,
+      "sha256": "f1d2dd7db02e85fcfa446846add28359f18b955bea5cd82fb138d0b488cc442d",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "ca940ebcec655493e12bb205c1ebfdbcbd847b854941aae8abbda5b096ec7988"
+      ]
+    },
+    "616129f840bb84f08d91bf6d7ecd0bb191c7f66085e370de9e05be880528cefa": {
+      "name": "seedsigner_os.0.8.0.pi2.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.8.0",
+      "size_bytes": 27262976,
+      "sha256": "08f95e048f90e394abe4e93e78921512a9b4c9a82447c5498df679d481cfd5de",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "e1669f4cd1a46c0bd0aa0a852403aae408faef2ccbd83329ee2f1e54fd08a9de"
+      ]
+    },
+    "a319d088bf148cf8fe7d9a96012aeaef645779d4c610067ea03187a1d9b9b96a": {
+      "name": "seedsigner_os.0.8.0.pi4.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.8.0",
+      "size_bytes": 27262976,
+      "sha256": "2df5337b5752d334114c4be5ad06fe478caee99556242b36d2d4d41667a78f44",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "c1cff7700a64261315356b05a67951f73164ebe9db95284bbfebb87b6bd32612"
+      ]
+    },
+    "9fbd13951a0d09ad9d2142cdc4d6f54072a9cabe2b0fac348e24add3eb5dbd92": {
+      "name": "seedsigner_os.0.8.5-rc1.pi0.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.8.5-rc1",
+      "size_bytes": 26214400,
+      "sha256": "bb74ec73d40cfa3543c8da44a268f1f72591ec456c270979f1da57a89a2e71a1",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "876003aea8752ff9d80441f8b7b7d93bc6fc2a2d62f5238a5f710f67699a0e92"
+      ]
+    },
+    "c4f079e98b478da0f1589edbb3c8416d2fc70668e4fb852e991bec42f3c7a656": {
+      "name": "seedsigner_os.0.8.5-rc1.pi02w.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.8.5-rc1",
+      "size_bytes": 27262976,
+      "sha256": "ce7ee5588c2b1981c2c26231c7e2c7201c3e4ba05d3fbe2f039e0afe3d8e3de3",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "82d2c6b8478e87bfb95138725c2e21d32ea1588df7f82243a63b1082f7145570"
+      ]
+    },
+    "d5dc820618063d05b33308cfcc19e8e1cf3e38d567e20bfaa2164d60fdabb106": {
+      "name": "seedsigner_os.0.8.5-rc1.pi2.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.8.5-rc1",
+      "size_bytes": 27262976,
+      "sha256": "11bcfd57801851ecbb3237a1eefaf95ba90bb44a91fbf4bd8e430ca2eabb430e",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "36bce6f8f8417c9076ac63a26fce0e7138cf4e823ec289d81f03f4ca3521da93"
+      ]
+    },
+    "7acd598969220689d5df0e85d1c3ae5581740868b2714d5658365ea1ab1de449": {
+      "name": "seedsigner_os.0.8.5-rc1.pi4.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.8.5-rc1",
+      "size_bytes": 27262976,
+      "sha256": "e03f33139fecaec56e27175122402887fecb3162954b7c9b18ec8161130ac0be",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "980efd498ebbc870126625883035c5d622e7ee1af2ae9cdfa8195f43a9bfe6f6"
+      ]
+    },
+    "1abe3bd1d7d129918147e7672806bfd34fab70542791cf7474502bcd1d23ba64": {
+      "name": "seedsigner_os.0.8.5.pi0.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.8.5",
+      "size_bytes": 26214400,
+      "sha256": "15f5260dd467be7606fd07188405d492006b03e3fff45ba157215e84d2a6e745",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "392a5d7e4af28f1c728979f34775f40a1727a918517985d4fcc8bebfc6fbb3d9"
+      ]
+    },
+    "1dab30f3dc830626dc980ff6bdf4633ea4262b12c17c13cfc7b8adb88d051fb1": {
+      "name": "seedsigner_os.0.8.5.pi02w.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.8.5",
+      "size_bytes": 27262976,
+      "sha256": "570ff46637aa91864533ee4394d438cd781f15129d86673bf38846a4d227373a",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "390df4fdc6677b0ec607cc5d259c468303ad729430c6d7234f3b03d9bae9b8fe"
+      ]
+    },
+    "de062ffd5dd4ecb673458537ac99b3c46fce9d173858ffb19a940c257301c910": {
+      "name": "seedsigner_os.0.8.5.pi2.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.8.5",
+      "size_bytes": 27262976,
+      "sha256": "2dda404e0de783c9e8a176b8ca398d887bf5b558c76c50736344f5f1dc866552",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "ce27fb496c078be14fc1aee92d302be9dfd170502e10de0c763ed62137773e3b"
+      ]
+    },
+    "68036d1f176777e3438f37f6d6ea2766b552fb3479a7bd7bf644450485ada0fd": {
+      "name": "seedsigner_os.0.8.5.pi4.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.8.5",
+      "size_bytes": 27262976,
+      "sha256": "9f8f5597d7f307a363b2219c94f029489943b1e1ae8550f7d32028608e79e0df",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "6ff55a92f6d9d057b122e7f5cfe181283fbb6e4291b746d041dc95f3fb4cf9ba"
+      ]
+    },
+    "e191c89db930eb78fffa0ddcb745678079fed117d925f062596ff3be2a64d23e": {
+      "name": "seedsigner_os.0.8.6.pi0.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.8.6",
+      "size_bytes": 41943040,
+      "sha256": "89caa7134f08145820857753b383ddc152782e9bf44ced0543f74b3bf8fb1961",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "d306129dbc8a13499fda7b28075d2b62ae078fae1877708d60d3aa7dddf5e378"
+      ]
+    },
+    "1543620ecf4988bd8354516036958b654d4165b2602d4d4a7e5a6f3b9a0bc485": {
+      "name": "seedsigner_os.0.8.6.pi02w.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.8.6",
+      "size_bytes": 41943040,
+      "sha256": "359b2691941ee10e799f593f537ce7d0b9d902c3bd38a324a335c59f4414b5b6",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "6af49062f17f4f08c2d523899bbbff31b0b4ab76ed164d2765c263a8cb583df8"
+      ]
+    },
+    "d336cb1ac7cf2d17253ebc4f32ab8798b62beb51b40744e7f1dce6427b5e3cc5": {
+      "name": "seedsigner_os.0.8.6.pi2.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.8.6",
+      "size_bytes": 41943040,
+      "sha256": "f69d2cd9bcd9b8c1a4d5ff2356b38591075ef18eb8f25bb2cf440ac4f440d8e1",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "ae1eb9f122dc13d9c80c489458ba59d9eabb48f66ee9915cf9be1113e53913d0"
+      ]
+    },
+    "cb2296957028f1baf0518b110e6bfc0b25fa59d4ed62bf2124e062a5f8a356f1": {
+      "name": "seedsigner_os.0.8.6.pi4.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.8.6",
+      "size_bytes": 41943040,
+      "sha256": "e7935aae4d587cbb9ce168c9f70dc9ad6840d249fdf0ca2aadec06e21fe51754",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "bef6aa0721d9bfd284dac2620c874d742147833facc8142991958bbb8e0cf084"
+      ]
+    },
+    "2f9dd4da8cbec3a156a3d3bd8fdcec30078d1b262f0e68ec09d25f7340de9afd": {
+      "name": "seedsigner_os.0.8.7.pi0.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.8.7",
+      "size_bytes": 52428800,
+      "sha256": "d9a49df9ecfef9a5a2b67ba78d13671b70c252bad5daeee7fe661f5d70a63b64",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "96edd2c7ff1c984ac6a363cd8f08d1d014cbf4fcdd1a82250997ed1610b82555"
+      ]
+    },
+    "968147c99b27e3c20cf0403f83edbbefe6c3ea19c61ca20cdc1cff280c8181bf": {
+      "name": "seedsigner_os.0.8.7.pi02w.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.8.7",
+      "size_bytes": 52428800,
+      "sha256": "b90c9cd28b8022dd610c052790e6a51a71bde820dc568938792304a0d2015e04",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "bb0c764d35fdb0d918eceb65ad03c250510f0a3f5c8c51da1b17a00ba77536d0"
+      ]
+    },
+    "150c03c80a78c266836f90cb98f1bcc29c2df36440e59cd930c860c00f85a728": {
+      "name": "seedsigner_os.0.8.7.pi2.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.8.7",
+      "size_bytes": 52428800,
+      "sha256": "d5b723f4fe7c6bef27cc7b60d784aa86215d2b81b69fc878adeb0beaace375d4",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "72365f94c9bb8fa575669bf2fe65f410b05b90369420dffbace59321bdb1896e"
+      ]
+    },
+    "81479f157315f505b050378395f9216d7cd9f0ac1636056a06a868f862d353e2": {
+      "name": "seedsigner_os.0.8.7.pi4.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.8.7",
+      "size_bytes": 52428800,
+      "sha256": "8e323eb426f3889551d1abb8039c1ffb7200651a21234f4abd4b8e23dc0ace70",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "ad67df828d9f1b3770d4e7ae3a03c4265e0ed7e87b5a9414b4c13fa15007b731"
+      ]
+    },
+    "60a6d33aebf2a3e6c88fb288738221199817d72f291ed8a88fae0942bd7a0d81": {
+      "name": "seedsigner_os.SS0.8.6_Satochip_Earthdiver-B7_.pi0-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.8.6+Satochip+Earthdiver-B7",
+      "size_bytes": 536870912,
+      "sha256": "54a631aaca971fa4c10b4546b744b058937acee32d5e1ff9c48f196f7d2983ca",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "f4bc55a2280a306b4bc652f8e6f9ea276cd097fc84a9925826177e70ad890132"
+      ]
+    },
+    "6f7ab77ff0f602db62cd5f5a7a00d221adbb65972c28fedb387c54a20957d28b": {
+      "name": "seedsigner_os.SS0.8.6_Satochip_Earthdiver-B7_.pi02w-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.8.6+Satochip+Earthdiver-B7",
+      "size_bytes": 536870912,
+      "sha256": "a62184f1b71da71588b0d985075041e08b4d7a4bd7b6ccd1cc43274ec3d8c710",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "f71b5fabadcf27b2d1b7fc4df70a4b3b6e6b81a9206b4b1f7cc331d2800d77af"
+      ]
+    },
+    "d7b2d861067a5dd9b7eeeb43b84f538b7778780a29b2cc0f38b5087f35e5da2c": {
+      "name": "seedsigner_os.SS0.8.6_Satochip_Earthdiver-B7_.pi2-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.8.6+Satochip+Earthdiver-B7",
+      "size_bytes": 536870912,
+      "sha256": "7ee41ae1ab4ac8a387cebcf107e53d2388e2a5ab5b2e64251860dfc06dcc2fcb",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "8d80b5dcfee3bb6dcb33fe3194e7eee799bc9cc4ef43345168c854e21b8cfbc3"
+      ]
+    },
+    "3eb6b1184bf50454631752fe952c05b9b66949c99f00232903dcd46776d0146f": {
+      "name": "seedsigner_os.SS0.8.6_Satochip_Earthdiver-B7_.pi4-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.8.6+Satochip+Earthdiver-B7",
+      "size_bytes": 536870912,
+      "sha256": "63956e51d1e8ac8fcce041ac731e680ffc0998505e2a8d8d3e1367346132f8b0",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "8ca77749b0548479cf93d5716c090200c63e4724a6afcdc0d32b7ff1d371f161"
+      ]
+    },
+    "497242b5e1bd524e3c551eaf81580f5ab24ed8e0a57186e567d387d59df85026": {
+      "name": "seedsigner_os.SS0.85+Satochip+earthdriver-b1.pi0-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b1",
+      "size_bytes": 268435456,
+      "sha256": "541bf6cd4880395a9e2ab4a97f7b48cffc5ffdc198920989dc4358668f30a270",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "eff726f651e28ddd89f5ea89190de3f40c7a27e38e480d63233eb36a18109275"
+      ]
+    },
+    "96b0e960341bd6836fc8278240a89e912927aa85fc81a0e21b9008ed428640f4": {
+      "name": "seedsigner_os.SS0.85+Satochip+earthdriver-b1.pi02w-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b1",
+      "size_bytes": 268435456,
+      "sha256": "ed266728265589a56e35891b5ba2e51ab517f4774ecdb5736e8bbe3cef3b1f20",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "c1ed7a24d62dec13eb904ed5c9462b3b8e9e04b05610f9f5515296d8d750ce0e"
+      ]
+    },
+    "78634c38e7ec0d6959175be9d8e8f280d2602fb51a7ce5d4b5d3abd2fad3cfe4": {
+      "name": "seedsigner_os.SS0.85+Satochip+earthdriver-b1.pi2-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b1",
+      "size_bytes": 268435456,
+      "sha256": "935c8b4516b5c20b9106eba7aff65cc2785e08a823e8d609afbbf18185deb039",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "1372e74cdd96cc611e61c642fa8184b579681f78d98be619c68688158267ebb0"
+      ]
+    },
+    "9b9f3e89195083d9c6e77650358af125cc07e98b041404ffa927a9b920336749": {
+      "name": "seedsigner_os.SS0.85+Satochip+earthdriver-b1.pi4-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b1",
+      "size_bytes": 268435456,
+      "sha256": "385f81be992b40ef5b8168cbf7f6febef9a2f1a6ef6bd54f034b686dbb62fcad",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "303a592143b7556d7496863a9ae7ee58004facee65c1131f9f59e62bb0c8ad75"
+      ]
+    },
+    "f6d9234115a5e6201ce6411980a73434921a9d3d20508fcbfe8f420c40ef0e54": {
+      "name": "seedsigner_os.SS0.85+Satochip+earthdriver-b2.pi0-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b2",
+      "size_bytes": 536870912,
+      "sha256": "b303ed950ad27c729130258bc826d755b9454f7a7131ad1de154eebf2c6fe874",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "ca3c44e88629aab3b757bc04626640d2cdcdae642b73837c6053dacfd0438548"
+      ]
+    },
+    "1694e3e5bda06bae66e7fcd50b604f59afa61ad3fd8175eab2b52f97c035cc27": {
+      "name": "seedsigner_os.SS0.85+Satochip+earthdriver-b2.pi02w-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b2",
+      "size_bytes": 536870912,
+      "sha256": "23ca2526991280acebca453b15ff859e9b5531568ed4c5954416fd51199dea5b",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "694e25094985a8ed4d796047c12af19a45341bb9f6ee68e78449192703d57f98"
+      ]
+    },
+    "46e141882ecdca731ae3d7a6bb692e9dff7cce0b3422421ba92a016d33a05951": {
+      "name": "seedsigner_os.SS0.85+Satochip+earthdriver-b2.pi2-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b2",
+      "size_bytes": 536870912,
+      "sha256": "443d618b3cd1d30a73b4dd1ec0297023b870c51d54cc5a911e4ab461c3910ca9",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "0a69e1139b91727253489933134ea10c4c1d50969172a249cd47a3f9efb1e949"
+      ]
+    },
+    "d2a423f1a91817ff0e1a17831472afd11c49c7cf06d39524e1942a2ebae1e377": {
+      "name": "seedsigner_os.SS0.85+Satochip+earthdriver-b2.pi4-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b2",
+      "size_bytes": 536870912,
+      "sha256": "415d16f620852f4f991e48c5480d896f4afa361bd9ab25a5219ffd0000a259a7",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "9ae3a53107ee520ddf27fdc2280be63f871e03b7ae83bf2293876bf90f1893f6"
+      ]
+    },
+    "ca75562c8f3578791b09c5f7794c5e6f4677450a6043a6cc3974d03ea3bb9aa1": {
+      "name": "seedsigner_os.SS0.85+Satochip+earthdriver-b3.pi0-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b3",
+      "size_bytes": 536870912,
+      "sha256": "7f6cd09d29bd2ee4d2e1364d00358542ebd4bdcaeea83f62bfae8d82ee925ba8",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "7fd9378dd42fc845abe02e246254dfd2bd8cfeb76977fc03214e9f1944a86462"
+      ]
+    },
+    "c9ae9b7a88a1ae7f2fb12619ef3de022a083552d9dc9d4ef068fb50020d89631": {
+      "name": "seedsigner_os.SS0.85+Satochip+earthdriver-b3.pi02w-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b3",
+      "size_bytes": 536870912,
+      "sha256": "68be0a976840919db3ed3f06d6456ee9237b03dbf06e3cf6b96003a4b0d9480c",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "7c644a68c8492299c21da5ae4ec4ad255f04b67109dabbb8522d1f3677927f25"
+      ]
+    },
+    "9f2c3cbe22c33dfa7dd2eab12f49ac137a308e9e574539f813a9e592c7d9247c": {
+      "name": "seedsigner_os.SS0.85+Satochip+earthdriver-b3.pi2-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b3",
+      "size_bytes": 536870912,
+      "sha256": "30418ee91993070450e7e4f78b0c2ed157d50f96612e13c5c3299403e8dd79fc",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "42de1824152b26dda3ed505557a088216582e73aaf79d0868044b2c0587ce2f2"
+      ]
+    },
+    "450ca7026f7cfea6181dd0c19e10f01c9390c511e6dbfc85ac430cf242f03d6f": {
+      "name": "seedsigner_os.SS0.85+Satochip+earthdriver-b3.pi4-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b3",
+      "size_bytes": 536870912,
+      "sha256": "dfe40a65b90805105791eb232345e6c38d9776b114e1a712be602909794b2a9d",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "1404731e53c2c39ec5522d29856f2ce3128bccbca93c3db674c26092c7488d95"
+      ]
+    },
+    "c75d1b687ddb71cf6382a2a5c5f832c2b7cc2b1fdcd75daf827e89e0b6bba415": {
+      "name": "seedsigner_os.SS0.85+Satochip+earthdriver-b6.pi0-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b6",
+      "size_bytes": 536870912,
+      "sha256": "ded3e2fb5a33e24bb2ecf5fb8b20264a8504228351f9d4a2b9d17c814a62c1ae",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "d7595f99949dffcb566e4535c235df9d873cfbb1f7b5703d02d35b6f5a1a1416"
+      ]
+    },
+    "3d4f8e8a1da99333a0cdc6b0f386329182a9b841f2dcc99739606100e09f2b13": {
+      "name": "seedsigner_os.SS0.85+Satochip+earthdriver-b6.pi02w-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b6",
+      "size_bytes": 536870912,
+      "sha256": "83ad340cd417d22673463506808571e366568b6488bf200b2797e38089a8dd68",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "e4336c9af5eec752f1fd73719f312868d3d4b1eb250075b1480acb74c55a5169"
+      ]
+    },
+    "3b81a86e872abcfbf98cc7ebe4c7c7198ca6d4bfd0f19b577273ac4dd9a45138": {
+      "name": "seedsigner_os.SS0.85+Satochip+earthdriver-b6.pi2-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b6",
+      "size_bytes": 536870912,
+      "sha256": "005763d46e79a87e5c68a5265c3a1fa16864cc17afb62dedb7371d42775054d1",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "93d7d8c98d42642d732a7c7ab412bf6ef258200de795f74b7356dadd38c7ab2e"
+      ]
+    },
+    "54ab6bd6128a214a4b4421f2cbcd3dcf1e787f10042ade5ecc0a8e714e140062": {
+      "name": "seedsigner_os.SS0.85+Satochip+earthdriver-b6.pi4-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b6",
+      "size_bytes": 536870912,
+      "sha256": "186784ae9912a2e586a4783494f839ef2f956a70bbb86277c57a70b159ceed57",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "b94e564a307bf919d2aa8f4843c4584ed469d2a1b2ba58fa1d053517e8ab2ba5"
+      ]
+    },
+    "5990879bf283b73a8e5f78e5d80d32926ced598a2fe3c9a992eb77eeb37265b3": {
+      "name": "seedsigner_os.SS0.85+Satochip+earthdriver-b7.pi0-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b7",
+      "size_bytes": 536870912,
+      "sha256": "e2ee196114424dd807408c888f499207443478be1855e879aa21c0d0606b5730",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "c8f3640a20b3973265fa6f4ab334cc96988ea1296094c852e66c489994068c36"
+      ]
+    },
+    "a0d8879713874d29f9eb25a8a7dbb9a3f161e09f57350a49163ec98fa0e4827f": {
+      "name": "seedsigner_os.SS0.85+Satochip+earthdriver-b7.pi02w-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b7",
+      "size_bytes": 536870912,
+      "sha256": "cb18b58c1e68c5ffd42ca474c00a137e221332de3860d956ce46707256c4ec9f",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "c804ad3218e29f9d53f189193c42da0a422cdd5e1e5fec6d5c998e6646939e4e"
+      ]
+    },
+    "5763e997818ac47e630fd141995b20d90dd13d9e2dc0bae1e076a608a962e16f": {
+      "name": "seedsigner_os.SS0.85+Satochip+earthdriver-b7.pi2-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b7",
+      "size_bytes": 536870912,
+      "sha256": "c2ba2d2967097ee3bdfbe2394b19c23c8fe6fee2d8889ef15241403409dac7d9",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "e311c9e05bafc8e92de2b0590dd9ae55da5411aff3b8f117e32754b285a8f51b"
+      ]
+    },
+    "ed1b6c31819284ee1dad4617dca1c036d6e1464c7e7f09bad7b88e7c823fd697": {
+      "name": "seedsigner_os.SS0.85+Satochip+earthdriver-b7.pi4-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b7",
+      "size_bytes": 536870912,
+      "sha256": "12ba95408b4f72390b67ee4d12cc9409164edccd9ab2a43322e9f7ebda55b585",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "7bcbf672bb9c16547bd2058b5fc68ffc855ff1718b9ec37a6a1ddc215f72a5df"
+      ]
+    },
+    "84c1e48a848ea68cf0623570ecba9de08ae47f9fd0b5f2f769572b0a140d0227": {
+      "name": "seedsigner_os.SS0.85+Satochip+earthdriver-b8.pi0-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b8",
+      "size_bytes": 536870912,
+      "sha256": "423b65aeffe38c3598d40922662ecffcc8f49deb322da9a1a51e48d3cd00fa6f",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "78080161b93397e16c4af7f75aa5485487e41f000c356164f06c086bcee2927c"
+      ]
+    },
+    "36e1399076dbff1bbb6778ed804e0418da873c75e7a097222973f74f10af8103": {
+      "name": "seedsigner_os.SS0.85+Satochip+earthdriver-b8.pi02w-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b8",
+      "size_bytes": 536870912,
+      "sha256": "90a049bcd9ea15216bfabf9c6501a26f0cd1f05152d812f735cdbdba6f43f433",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "5625656d8d760420ef7eb9b750c0d8d3231ced97c9e774fb5d18654d6f30f7e5"
+      ]
+    },
+    "df0fc6a4dff184ee99823839994df7a78c36cb951ecdbee77e17ef3b0f2b7175": {
+      "name": "seedsigner_os.SS0.85+Satochip+earthdriver-b8.pi2-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b8",
+      "size_bytes": 536870912,
+      "sha256": "06367d6d9ef7b08b7e36cd3f3bdc09b1da68a9494d3088c0c48c339b2bf56c6d",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "152f8466d80444112b88574ff0c73fff726c95c8c32c859b3aaf808b471f87cb"
+      ]
+    },
+    "406a8f88f783a32525e161889809eb5ef338f67b212fac45db873bf752bda017": {
+      "name": "seedsigner_os.SS0.85+Satochip+earthdriver-b8.pi4-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b8",
+      "size_bytes": 536870912,
+      "sha256": "36a79f37715845d341fbaf7a222886a4f887575c5472b9534e077f722b6ea42d",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "adf9e75b9d56f835b0523e3b5406af29eeb94253580498f0af777d7abea4e242"
+      ]
+    },
+    "fa8b5c20977d1c246fe70742b29202d15ca27cf40ed2a68d437be5434d87a686": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B10_.lafrite-smartcard-dev.img",
+      "source_repo": "3rdIteration/seedsigner-os",
+      "tag": "SeSi-0.8.6+ShSi-B10",
+      "size_bytes": 1074790400,
+      "sha256": "d49f36c83df414320cb0fb8da3b595e476ed063867e3effa8a78b8976ee98f3c",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "9dcb920ad69ab260002f2c64664779e231be5eac66d2f8caf7a015f768c19950"
+      ]
+    },
+    "72eeba7efe7d2762e54291caa2ef43b861b54a6d30c05b552d61f8ad528649ba": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B10_.pi0-smartcard-dev.img",
+      "source_repo": "3rdIteration/seedsigner-os",
+      "tag": "SeSi-0.8.6+ShSi-B10",
+      "size_bytes": 1073742336,
+      "sha256": "01e1c84e43578c97f7f2469d31b03e056a8ecd8529c4d7577db80df5e15d3ab0",
+      "volatile_offsets": [
+        577,
+        1512,
+        1513,
+        1514,
+        1515,
+        1516,
+        1517,
+        1518,
+        1519
+      ],
+      "alt_prefix_hashes": [
+        "77b35275edd8cc265f1348b3e109f66e9af6a13b67103152564d4d99a744f5a7"
+      ]
+    },
+    "57865f81820217d5c95d29e6a3948a41fa2018c2d63e67a1b61b6f4ceef99377": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B10_.pi0-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SeSi-0.8.6+ShSi-B10",
+      "size_bytes": 536870912,
+      "sha256": "d80fca00de7171788c465a6dc49efde276da7ab8fb72e84df77a64623e425efd",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "22291b5a52ac6e56346a80bde50a9ae585124b35b7a2792c9771132d33ee3055"
+      ]
+    },
+    "6c2019cb580cc59f2b9e81066fd224bacf99604b295c92a3c7829506ace154b9": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B10_.pi02w-smartcard-dev.img",
+      "source_repo": "3rdIteration/seedsigner-os",
+      "tag": "SeSi-0.8.6+ShSi-B10",
+      "size_bytes": 1073742336,
+      "sha256": "5b68e72bee43147c8c5976d3c957d6a96fdfea37fc5c16facdd9b32a5db68f9e",
+      "volatile_offsets": [
+        577,
+        1512,
+        1513,
+        1514,
+        1515,
+        1516,
+        1517,
+        1518,
+        1519
+      ],
+      "alt_prefix_hashes": [
+        "a2f7cc4f3a996c16d0261c3f51a85bba532568f6bd5700ba481b58900c67fe08"
+      ]
+    },
+    "a3d788002956b3f6692065a11f1ac0b839a07fddede085839b90928f995a281e": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B10_.pi02w-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SeSi-0.8.6+ShSi-B10",
+      "size_bytes": 536870912,
+      "sha256": "615a49c6dc4d6fa8d6b4f940bcfd684d52a96ec340e94967b5deb3eadebd7a48",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "cae477c160ae1d3832acf0e939e586bdf48df499f09a10822a19ce0d91a5c137"
+      ]
+    },
+    "5fc55c7c63907f0b7d7db5fe76ae5e823b4bebd7e5dd66c30c966f063969acd3": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B10_.pi2-smartcard-dev.img",
+      "source_repo": "3rdIteration/seedsigner-os",
+      "tag": "SeSi-0.8.6+ShSi-B10",
+      "size_bytes": 1073742336,
+      "sha256": "27d0dde13ac154865fc5128da5618122508428217eddeae84372a974f94dd53b",
+      "volatile_offsets": [
+        577,
+        1512,
+        1513,
+        1514,
+        1515,
+        1516,
+        1517,
+        1518,
+        1519
+      ],
+      "alt_prefix_hashes": [
+        "b0d7bc3578108b8e5253a81465ed6639f54ef1502c3cb07031f6fa12c8335a94"
+      ]
+    },
+    "ea84c6bd216c5a531f2d303294082c53e2e1371131ccba43439e0ca05e0658c8": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B10_.pi2-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SeSi-0.8.6+ShSi-B10",
+      "size_bytes": 536870912,
+      "sha256": "319c05b570417e5df58a74febd2498725efbced4d053dff7d9197a0fdbd6463c",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "5f5c6b3374e57fd2ebe462bfc02a3ecce61e29c2053015a0eda8849ddaf20fdb"
+      ]
+    },
+    "0d5c41fe115b67cdf58c21f3d0fc3580bbee267656c3e02eaae4a14c7b85e8b5": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B10_.pi4-smartcard-dev.img",
+      "source_repo": "3rdIteration/seedsigner-os",
+      "tag": "SeSi-0.8.6+ShSi-B10",
+      "size_bytes": 1073742336,
+      "sha256": "3c41669e2a4e3d0a9965b3eaf27651d3230da076990bf445e33f695139dc1d50",
+      "volatile_offsets": [
+        577,
+        1512,
+        1513,
+        1514,
+        1515,
+        1516,
+        1517,
+        1518,
+        1519
+      ],
+      "alt_prefix_hashes": [
+        "cf0db8fe0e1a5fa2870f296ae8b464aa9f6c4f4b9f79723d37f2135deb7d91ca"
+      ]
+    },
+    "0d655159e022fa8aeb8ac4f95885a9c8aef47f03b8639a2f8125df6fad361df0": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B10_.pi4-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SeSi-0.8.6+ShSi-B10",
+      "size_bytes": 536870912,
+      "sha256": "4f837a92428b7622c8842d14aaf40355c2c59831e4088629e34571979c2efc21",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "958a3deb1377a4e268d83e82be518a1c04a8016f96ce55b18a97f9029b90ca42"
+      ]
+    },
+    "357f3fbc32fac9f42d879868da093a9689ce2da9a2cc65993a6d23ac6eb9df72": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B11_.lafrite-smartcard-dev.img",
+      "source_repo": "3rdIteration/seedsigner-os",
+      "tag": "SeSi-0.8.6+ShSi-B11",
+      "size_bytes": 1074790400,
+      "sha256": "4c5818b74ba1cd70ed5ea77f747e005653f4dfec2b359aa8bd1c34cd413d11d9",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "40de68b74588e4669917c4fa3387efa4a576862de762f3e7ec5f31679fac6698"
+      ]
+    },
+    "9266ae109ab40e822412e86ae031ba39262a19982eeadf8241b62a6d224e7163": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B11_.pi0-smartcard-dev.img",
+      "source_repo": "3rdIteration/seedsigner-os",
+      "tag": "SeSi-0.8.6+ShSi-B11",
+      "size_bytes": 1073742336,
+      "sha256": "cbb750460fafee018c8c870e715b1ffcd8d79db1c09e7feeb16aa0414f7f1169",
+      "volatile_offsets": [
+        577,
+        1512,
+        1513,
+        1514,
+        1515,
+        1516,
+        1517,
+        1518,
+        1519
+      ],
+      "alt_prefix_hashes": [
+        "85cb50013954fdd2c6f080a85f36fb80ca150350932a35a0b0d10241468df7a8"
+      ]
+    },
+    "577ece737373506ed50f851e1aed6b6abd950363ec7d275514e8884f3e28a2fa": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B11_.pi0-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SeSi-0.8.6+ShSi-B11",
+      "size_bytes": 536870912,
+      "sha256": "38c10ea77704c1640bf4122bf12b30d49672bc8e7071c0f013fc716bd8e84847",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "ec4e966416494f82a1435fbe355317ca4df7dd02f1cbbb387e4923cc41a16296"
+      ]
+    },
+    "71dddc0a37776123d061bd12b3cf7a9bbc2cd750738c45a84b91a064fc3d6cea": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B11_.pi02w-smartcard-dev.img",
+      "source_repo": "3rdIteration/seedsigner-os",
+      "tag": "SeSi-0.8.6+ShSi-B11",
+      "size_bytes": 1073742336,
+      "sha256": "797752e8ff95a687f0712dfee9d8f0757ee19e360f44c288226d3ae5b2069d17",
+      "volatile_offsets": [
+        577,
+        1512,
+        1513,
+        1514,
+        1515,
+        1516,
+        1517,
+        1518,
+        1519
+      ],
+      "alt_prefix_hashes": [
+        "93b4d04315a1fdc0f40c61a22b19f40dd7c6fe144ddc8ab8cc1ff1db8d6ddb08"
+      ]
+    },
+    "c70206ade907ce28844a56101d63caaf5d2f6d3930461b652d90848a4d021a6b": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B11_.pi02w-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SeSi-0.8.6+ShSi-B11",
+      "size_bytes": 536870912,
+      "sha256": "792a7f92f622e76b7a681fa04b43c64a61a32d546921a09af16a68c498d156bc",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "9d303c0b7cabe907c89f88fa3947f6fc420aaa984ce5c3a99167ec4853d757a5"
+      ]
+    },
+    "390006f8eccecda74782ff95670636c7af3d936a0712e915722f74c803d9006e": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B11_.pi2-smartcard-dev.img",
+      "source_repo": "3rdIteration/seedsigner-os",
+      "tag": "SeSi-0.8.6+ShSi-B11",
+      "size_bytes": 1073742336,
+      "sha256": "74f8585e003b1257f26dd6aa99b9dcdfdcb00709f8843e39eded13c38a1411d2",
+      "volatile_offsets": [
+        577,
+        1512,
+        1513,
+        1514,
+        1515,
+        1516,
+        1517,
+        1518,
+        1519
+      ],
+      "alt_prefix_hashes": [
+        "a67997dc83e2ff97422a8f2f71e7a988ccc60c64274a5ba92d72ce117053aec5"
+      ]
+    },
+    "eb0267bee49fac0e1aa1824dbdb74a592939afb4b56577426d5afb139073bacc": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B11_.pi2-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SeSi-0.8.6+ShSi-B11",
+      "size_bytes": 536870912,
+      "sha256": "2296b13d833fe565a0c121b8d2b29f2ad8e7e75584567793720dd85a37dd8966",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "afbcd6dc73d1361fb132da8a6dfa3300ae0e58476a83be8ecdf0e4142a74a368"
+      ]
+    },
+    "53565a183bdbc260ef674a45448c5df561e8eb66a5b5e37029bd9e7fead3564b": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B11_.pi4-smartcard-dev.img",
+      "source_repo": "3rdIteration/seedsigner-os",
+      "tag": "SeSi-0.8.6+ShSi-B11",
+      "size_bytes": 1073742336,
+      "sha256": "c177d54c895f9718266555c88a2949f72e49937d009897c29cd41f7debb37db0",
+      "volatile_offsets": [
+        577,
+        1512,
+        1513,
+        1514,
+        1515,
+        1516,
+        1517,
+        1518,
+        1519
+      ],
+      "alt_prefix_hashes": [
+        "676538437dea90b10a281407d93acf3ab50ea4e6f34b42bee19ba0ee197eaf91"
+      ]
+    },
+    "cabe343a3da111d13b89bf1abdeac95b7557ec9b6a212d9040d1d22cc733b792": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B11_.pi4-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SeSi-0.8.6+ShSi-B11",
+      "size_bytes": 536870912,
+      "sha256": "2be4668ffd6b0ed2e08319cafd9742bd2c45f58b7929c57a6e846c696f3818fa",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "e0295de86eae41c323afa384396580f2b8f08976dbdb091d4b484aa2bf5db21f"
+      ]
+    },
+    "8b98972869f54c8eba0f05feaf1bc3d5a2f5abf3661fad53446f757e0d44ab14": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B8_.pi0-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SeSi-0.8.6+ShSi-B8",
+      "size_bytes": 536870912,
+      "sha256": "55ab35f603e2e15701f5afa866f09a60713dc9e93ed141ad6a513a067e726e0d",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "c6ddceaf9195998c9dbec00141978fe4a781354c68f4a518db6e3a7aec850dfd"
+      ]
+    },
+    "4b4b2c9256579ce613ddad8bd7b611d424753f2c1b476eb5f503ced85b0c182f": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B8_.pi02w-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SeSi-0.8.6+ShSi-B8",
+      "size_bytes": 536870912,
+      "sha256": "781290285b5e98f6633c79332fb2ac93c97eb847f1add87adf2144a31366cd85",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "1761707241b776f338cef99bc913548fae51250c7c7a16ff72f820e613d3943b"
+      ]
+    },
+    "678cb967aa5a2f229323490542f7911201daeb2420e4c00d0cb01413edd77130": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B8_.pi2-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SeSi-0.8.6+ShSi-B8",
+      "size_bytes": 536870912,
+      "sha256": "843bbd5edb59c7e0bece11095d28d3784dcebf54f2fbb07decef6efa702ee793",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "a1da12cd23f21ebc6ee03d05ffb27a8e8c3901f290fa76c98725c7256468e176"
+      ]
+    },
+    "19358f4dd284c3a11769fa59e63132be3cc20ea9bac52ce4e5087ec320db486f": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B8_.pi4-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SeSi-0.8.6+ShSi-B8",
+      "size_bytes": 536870912,
+      "sha256": "f4c0594c1436e32e0f845d17f3ad4d44184aa1c5ab217ee301df36d76e212e59",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "69ae92533cdc0bb8cae89601d846a03076e063dfa6a5fd7a66b97f5f0d794ed5"
+      ]
+    },
+    "94b84e8dfaa2e68ed471232bbc9b8ad8074020195870e69ff0271f48632e01ed": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B9_.lafrite-smartcard-dev.img",
+      "source_repo": "3rdIteration/seedsigner-os",
+      "tag": "SeSi-0.8.6+ShSi-B9",
+      "size_bytes": 1074790400,
+      "sha256": "b1521905ace4563dac627095f65dc76e09cd0a8cd0975f00b6394f29d6d641ba",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "fb548b2a888d2c046e078752805d294f8a6352adf6dd8cb3f3582cc8c8941fc0"
+      ]
+    },
+    "c8ef877cd9237c8dd9c9213af2582503e93c653c4654072eba412e3f5c1d00fe": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B9_.pi0-smartcard-dev.img",
+      "source_repo": "3rdIteration/seedsigner-os",
+      "tag": "SeSi-0.8.6+ShSi-B9",
+      "size_bytes": 1073742336,
+      "sha256": "7a7df32dc377653da003e64f2ae1b7731ee173576cf9ce4ecf79baa44e325745",
+      "volatile_offsets": [
+        577,
+        1512,
+        1513,
+        1514,
+        1515,
+        1516,
+        1517,
+        1518,
+        1519
+      ],
+      "alt_prefix_hashes": [
+        "9f2aaa430dc721156f91b6fd2eee5bf3b72138885f3d36f8b4f3fdceb3668981"
+      ]
+    },
+    "63a487f234ddc3dbbb022e9ba1353dd655eff182d74e4c9deeff8fff373d5a9c": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B9_.pi0-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SeSi-0.8.6+ShSi-B9",
+      "size_bytes": 536870912,
+      "sha256": "54e35d08715673d781b62cd25d08372d530a25f9c0da85a782a61017331617fe",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "48909c50d627de562aee4eee393d1643fa691b6cb150bdf262c446f6c85942f5"
+      ]
+    },
+    "cea9d1d3c107519e0f9f44ea18eda546ebe79ef892bae4f30d104fe51b70f5b3": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B9_.pi02w-smartcard-dev.img",
+      "source_repo": "3rdIteration/seedsigner-os",
+      "tag": "SeSi-0.8.6+ShSi-B9",
+      "size_bytes": 1073742336,
+      "sha256": "13576351f7f5b468a471d372f4e0ea03e27a93cd0676b74398e9544a974c5ee0",
+      "volatile_offsets": [
+        577,
+        1512,
+        1513,
+        1514,
+        1515,
+        1516,
+        1517,
+        1518,
+        1519
+      ],
+      "alt_prefix_hashes": [
+        "40e340b26d95c053e8f0fa124adfa620308dabd85f38a6fa51f9e3004e974d54"
+      ]
+    },
+    "80dd09bec056b1108fbd92aceecd690bd125839ea6d9f02dc4c795b351ab339f": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B9_.pi02w-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SeSi-0.8.6+ShSi-B9",
+      "size_bytes": 536870912,
+      "sha256": "1c1f08de7ff062d8f3e9f13ec4cf6fda1726843611088cab24e45e5e58deff48",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "0fac678224801b247197199204553f7365d0af5c54cc09d8c443425d8bd02f29"
+      ]
+    },
+    "c8a55ccf28bcadbcab8eaf6972315c41bc0e7b3934402f4e550f8dda78bece5a": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B9_.pi2-smartcard-dev.img",
+      "source_repo": "3rdIteration/seedsigner-os",
+      "tag": "SeSi-0.8.6+ShSi-B9",
+      "size_bytes": 1073742336,
+      "sha256": "8c1fab48fafb0b804a153214ba4d0682cdb2b22e53e2863d003eee352b6975e8",
+      "volatile_offsets": [
+        577,
+        1512,
+        1513,
+        1514,
+        1515,
+        1516,
+        1517,
+        1518,
+        1519
+      ],
+      "alt_prefix_hashes": [
+        "135653d6960848a5edd8c8cd9eaacae69d1dcc8e00f5e29aa557a299a9286037"
+      ]
+    },
+    "bf340bcc7dbbd588ae53ce92d5344bd882832a27005b19bdb394cefb4ad02b67": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B9_.pi2-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SeSi-0.8.6+ShSi-B9",
+      "size_bytes": 536870912,
+      "sha256": "8bd379b0949b0e260a4f33761a93367f8b3f42269357e4a3228860e460325ef5",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "263cc97467ab60717cfbae1291ee3fc83be35a1625a6a755172f6da7b9523880"
+      ]
+    },
+    "5cf12939aec30c562fea723c70aef57f2b6ea7ccc7a67d1d6a804e329c6aec5e": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B9_.pi4-smartcard-dev.img",
+      "source_repo": "3rdIteration/seedsigner-os",
+      "tag": "SeSi-0.8.6+ShSi-B9",
+      "size_bytes": 1073742336,
+      "sha256": "a1bd6ffbb8102369c824a35dd005b83e7d53809cad8b84eadd8ce5afbe309373",
+      "volatile_offsets": [
+        577,
+        1512,
+        1513,
+        1514,
+        1515,
+        1516,
+        1517,
+        1518,
+        1519
+      ],
+      "alt_prefix_hashes": [
+        "be5ebfb5eb212099d932be6dbddd2f453e60f26884b6e502e7901bb873ab2ec4"
+      ]
+    },
+    "e3ec434984adadb7211c9e151e608ab3504d9a9826c9418f9b1679e2e64eb556": {
+      "name": "seedsigner_os.SeSi-0.8.6_ShSi-B9_.pi4-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SeSi-0.8.6+ShSi-B9",
+      "size_bytes": 536870912,
+      "sha256": "3a6c40781684499be826c2fdf4a8cc736269d0cb021111425e6fdba7fc27ebaf",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "934b0a74b5d6bea65f4c3aaee5744b987ba73e125e78a6885e58c07632d5ee06"
+      ]
+    },
+    "596b0bf0a1ace8af094c1a77a0d501802203426af606f489d0546ca910f32000": {
+      "name": "seedsigner_os.SeSi-0.8.7_ShSi-B11_.pi0-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SeSi-0.8.7+ShSi-B11",
+      "size_bytes": 536870912,
+      "sha256": "aaea55f5b73a8711aefcb6e7b379e8712d164bf716bac6c62a490d3477ebc893",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "7082dc0815705a99543c3a0c31fddfa3dda390c87d6db71ea001473569361421"
+      ]
+    },
+    "a0077902135c9f6c9080b191618b1951b7d607a623da3584ed41723ada653faa": {
+      "name": "seedsigner_os.SeSi-0.8.7_ShSi-B11_.pi02w-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SeSi-0.8.7+ShSi-B11",
+      "size_bytes": 536870912,
+      "sha256": "2620129e0442b6bc85403d78e7eba737c2a07688637b376cf03999d87a8d0b67",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "1890274bec4cd92a669cbb90bbfe079fe6f5a56089a487fede311b2126215edc"
+      ]
+    },
+    "ce0d6d96e09b99f1f7a8f45eab1c9db1e2b92fa097241febf3d8d361442f1237": {
+      "name": "seedsigner_os.SeSi-0.8.7_ShSi-B11_.pi2-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SeSi-0.8.7+ShSi-B11",
+      "size_bytes": 536870912,
+      "sha256": "3729e70c8e78231fccb676279ca2533f45e3d0b809c568f65cd81382d2273067",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "299c28fbe18a9cdabb65be5e6825220c0218d15817b79d765e3b4e43ef99c768"
+      ]
+    },
+    "e262d1d69c254d9f9756aa3c293c12c044804dd98a7df18ed24b1777d5b7b16c": {
+      "name": "seedsigner_os.SeSi-0.8.7_ShSi-B11_.pi4-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SeSi-0.8.7+ShSi-B11",
+      "size_bytes": 536870912,
+      "sha256": "371046641ae8767ec1288da685eadd0e11661c8057ddccbbb19190bf9556bb7c",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "5ad70a9d166f7b169df019137514e5bfc22a72f17595c76db06e6d9259d44fdd"
+      ]
+    },
+    "86f8f502e5e7439123f2807004dfb35e1b25efcd8c3cd77fbc240e00854ddd99": {
+      "name": "seedsigner_os.SeSi-0.8.7_ShSi-B12-pre_.lafrite-smartcard-dev.img",
+      "source_repo": "3rdIteration/seedsigner-os",
+      "tag": "SeSi-0.8.7+ShSi-B12-pre",
+      "size_bytes": 1074790400,
+      "sha256": "65e9d82ea3ecab3314aa9a820f42c03dcc24d004f9598bfcc13be1bcfa6875c4",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "40e3518985d2addea8307eccb97d55a6667d4d42ac971c6c318d53bce26c66bf"
+      ]
+    },
+    "318dd072d73b5543abf5705a648289cabe881af05dca2c84dfb075a155c7a331": {
+      "name": "seedsigner_os.SeSi-0.8.7_ShSi-B12-pre_.lafrite-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SeSi-0.8.7+ShSi-B12-pre",
+      "size_bytes": 536870912,
+      "sha256": "f456eee21425084d28e7ad7877355bfd8f04ce5e5289c048fb2d0a68a632fdfe",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "e3c3624077c4cef959fbaf846ad3c0fbb87a2abba22c7a077646da57a9a38ddf"
+      ]
+    },
+    "07b14bd9e82ea0a190eba0f19c97b6327d5afe9f2a2b859459336b1eba6e0c59": {
+      "name": "seedsigner_os.SeSi-0.8.7_ShSi-B12-pre_.pi0-smartcard-dev.img",
+      "source_repo": "3rdIteration/seedsigner-os",
+      "tag": "SeSi-0.8.7+ShSi-B12-pre",
+      "size_bytes": 1073742336,
+      "sha256": "0d794695a315e122ba6e6003be5c39ccd455fa0ac02ef457b969f36ec1624f42",
+      "volatile_offsets": [
+        577,
+        1512,
+        1513,
+        1514,
+        1515,
+        1516,
+        1517,
+        1518,
+        1519
+      ],
+      "alt_prefix_hashes": [
+        "f7a2588b7a1d0b6afe34daed5c028218819394748b351760a92ae654d8d6fe67"
+      ]
+    },
+    "0c830806141e5ba7b5b8153ef7507ef48bcee9396fa9843845f0b6f7a47bb18a": {
+      "name": "seedsigner_os.SeSi-0.8.7_ShSi-B12-pre_.pi0-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SeSi-0.8.7+ShSi-B12-pre",
+      "size_bytes": 536870912,
+      "sha256": "239c2ad0e7aa7f28bd31d21aabb0cbe935e7087f471578dac543e20f3d5f7d0e",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "0029b589d79f4422cbe6ce3876a2917a9226ac7807504a142d64b748f0b41db5"
+      ]
+    },
+    "3e298f6c71691df7e46d3ce8a33398914290cc50ba5acbb2be6035ead5b24a4b": {
+      "name": "seedsigner_os.SeSi-0.8.7_ShSi-B12-pre_.pi02w-smartcard-dev.img",
+      "source_repo": "3rdIteration/seedsigner-os",
+      "tag": "SeSi-0.8.7+ShSi-B12-pre",
+      "size_bytes": 1073742336,
+      "sha256": "e9247562cc340dda4727a1e04296b18fcfbe81f88bbbe8be2aabe4f2bba198d0",
+      "volatile_offsets": [
+        577,
+        1512,
+        1513,
+        1514,
+        1515,
+        1516,
+        1517,
+        1518,
+        1519
+      ],
+      "alt_prefix_hashes": [
+        "62015af9083a000c130348ba26fc40e0f534133516e6aa3c1b86dc36d56c904b"
+      ]
+    },
+    "419bf2666b50a28459f3a057b4b779f4742a45a30ef0365b6726c961a8ba5e4d": {
+      "name": "seedsigner_os.SeSi-0.8.7_ShSi-B12-pre_.pi02w-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SeSi-0.8.7+ShSi-B12-pre",
+      "size_bytes": 536870912,
+      "sha256": "360303b0c33d0108f8aad02e9bca529c7bb4b8db462306c7c9d149594ee79bb0",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "34bedad36ba0afdec5202971b5956a0bcf25bcd10dfbd4ab169d3ae490cad01a"
+      ]
+    },
+    "42463e8800d8c4fd640fea8037d05066251497afd5edc1943b989c134754805d": {
+      "name": "seedsigner_os.SeSi-0.8.7_ShSi-B12-pre_.pi2-smartcard-dev.img",
+      "source_repo": "3rdIteration/seedsigner-os",
+      "tag": "SeSi-0.8.7+ShSi-B12-pre",
+      "size_bytes": 1073742336,
+      "sha256": "a5c4720d80ad792d7d56933c40569d74c9ba594300e0099e9a1a3c399cada309",
+      "volatile_offsets": [
+        577,
+        1512,
+        1513,
+        1514,
+        1515,
+        1516,
+        1517,
+        1518,
+        1519
+      ],
+      "alt_prefix_hashes": [
+        "dc1d7f4ab71837c1d9a6a346ecd1e3202c9fe19e0764a890939bea7096afded6"
+      ]
+    },
+    "be87f69f9c54feff3cbef683d2a16c3027a6121404f608d65d892c7c524b438b": {
+      "name": "seedsigner_os.SeSi-0.8.7_ShSi-B12-pre_.pi2-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SeSi-0.8.7+ShSi-B12-pre",
+      "size_bytes": 536870912,
+      "sha256": "c9bcd0d6cf96e8a2fd13c2e189137035944b34d1905943dcba64128da58b38f7",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "f742f97732a6446179566c1048465068ebb737ffe5a84b8212d5aac1bee635cd"
+      ]
+    },
+    "f2e0b9d40d79e6fa57eace59fec5762690e859886f952d47ea6149e012dd1007": {
+      "name": "seedsigner_os.SeSi-0.8.7_ShSi-B12-pre_.pi4-smartcard-dev.img",
+      "source_repo": "3rdIteration/seedsigner-os",
+      "tag": "SeSi-0.8.7+ShSi-B12-pre",
+      "size_bytes": 1073742336,
+      "sha256": "c71760170503faa20a831ed13471d3953cf516e33ad01c2283f3557104c11302",
+      "volatile_offsets": [
+        577,
+        1512,
+        1513,
+        1514,
+        1515,
+        1516,
+        1517,
+        1518,
+        1519
+      ],
+      "alt_prefix_hashes": [
+        "334dd1281ebfe5c837365193b08471e6a96541324a96b7089f5ca7dae2ba03de"
+      ]
+    },
+    "91a5e4ce487804441701fa9b435fb87a553dd225c9f05bea5f54ccf3736e8016": {
+      "name": "seedsigner_os.SeSi-0.8.7_ShSi-B12-pre_.pi4-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SeSi-0.8.7+ShSi-B12-pre",
+      "size_bytes": 536870912,
+      "sha256": "b998f49ceb5a284fc38dbacd69eec2bc653a03ee9f3fa19c22c8aef641c264cf",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "e967578e1eab86dd5b46b5901b19e93d97aafbbc2f68c3997f5057099ab155f1"
+      ]
+    },
+    "680c2a0f9249ad7166fd938ef888660d82b3e67277554f94fc4e49971291c784": {
+      "name": "seedsigner_os.dev.pi0-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b7-pre",
+      "size_bytes": 536870912,
+      "sha256": "4aeeda16a0e8e45b0bcd3f7a7bf92d155d1d00d71f6cc7d2422d1d3a6ae7c080",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "a17f798ae2d230eebc1d4d42b6f75c58ec7b8f96372190fb68a1e7d16a67792c"
+      ]
+    },
+    "8efb6ca331886fa4bc7c642ad9d30b1953f0bffde09b57397ffb2152a88021a8": {
+      "name": "seedsigner_os.dev.pi0-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "ss0.85-b3+earthdriver-a1",
+      "size_bytes": 268435456,
+      "sha256": "3b708b0f70003aef03350d27b95d4cbc5a6769c32f5b7f754d0e88f1a7abfdca",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "0fd72d925f91606cc319e951d7ad34f2b28a6c22cd3b42f8cee8e1adbf6c0858"
+      ]
+    },
+    "cecaa67c65763fec33046693bc5d6858aa61c0ff1da42972bce6b0b6add4bb78": {
+      "name": "seedsigner_os.dev.pi0.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.7.0-rc1",
+      "size_bytes": 27262976,
+      "sha256": "30f75c6c3eaff7effb6f1023940206d8cc5f13e14c8ab85d1c481dfd832e16e4",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "a0a4b98e294b853d2224929334324a840d189283ce4c82f13842aad22262ad53"
+      ]
+    },
+    "50e99c2563d0502e2245fc7cedcb6f78ccbf155bb65acd88b865bf548b8669bb": {
+      "name": "seedsigner_os.dev.pi02w-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b7-pre",
+      "size_bytes": 536870912,
+      "sha256": "0d1e578873e64063c3d425aa6b0439d7b80861aa9db4330f4d28924c5bcc44b4",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "6f05a9435068f1bd692f74dd94676b89642c5fcdca96516fe0b6b8a4ca25d65b"
+      ]
+    },
+    "611f03214702c7b788513f4d6d298077cd6f21f17c16927568635ef1345f151d": {
+      "name": "seedsigner_os.dev.pi02w-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "ss0.85-b3+earthdriver-a1",
+      "size_bytes": 268435456,
+      "sha256": "b806e2c6d8ecf2ab768e1c4bfde2b744278a4ae4f95a18bdba520480afc1c11a",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "4d9498cfaca37faffa4f98aa07b4114a88ae399089f4af4e0833aca678f8cb1c"
+      ]
+    },
+    "d2688d1e95b7de307bb25580eefd0b08ce029cac39463fe1e00243252588ea6e": {
+      "name": "seedsigner_os.dev.pi02w-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "ss0.85-b5+earthdriver-a2",
+      "size_bytes": 268435456,
+      "sha256": "aa5edb666cfb5fdf5859915716026f37d860e405f2c9d7ea32926dd64f13ccd4",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "35e0a19b69591f7e73ac8009354e2f6d068107a1b028e5281930b4e458c24e92"
+      ]
+    },
+    "758c2622f819c0edab3f15172f5648a519b900ade54f4785ae1dbd9dff1b415c": {
+      "name": "seedsigner_os.dev.pi02w.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.7.0-rc1",
+      "size_bytes": 27262976,
+      "sha256": "48a14d17bea673c2a5229889f471b22cc8a26fc12b036c0c1ac0c76e9b55e735",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "7fc7762a4c78853d1197a2b8b16e313ec607cf15a099ec99c0b77251045f9755"
+      ]
+    },
+    "cd6815194264f6b339f21101856852524517d13f8dd46f92df376996e52bb7bc": {
+      "name": "seedsigner_os.dev.pi2-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "ss0.85-b5+earthdriver-a2",
+      "size_bytes": 268435456,
+      "sha256": "9f403e76becc6c6a6c787e45d074f1e30476e763a95d229292ee7911d7c94947",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "e77a2719a6af2a2bfabe207aa9ba34830b551a17ca0b1fa8d0d814adf582c9b9"
+      ]
+    },
+    "d102641d7e4a2c286714c2566330b0f7412446a26a38be296e8c718280899a4a": {
+      "name": "seedsigner_os.dev.pi2-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b7-pre",
+      "size_bytes": 536870912,
+      "sha256": "7320363e070d63ba0ea0500ad6b17d8299de6f13b6ee0b8444f3a5713832f050",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "6d626941f3c8660ad25d31bdfec29d7ddcde29c61b9ed09df2df1e7482db6afc"
+      ]
+    },
+    "3126a67e992a889ceddfe6da22a913a6261946ae39869c3fcec8905126e34082": {
+      "name": "seedsigner_os.dev.pi2.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.7.0-rc1",
+      "size_bytes": 27262976,
+      "sha256": "9342c83e3760f9b26f8c001f0f2d1de64714f3d560f7b2f9551e9052b5a93508",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "7397b62b31907ce275b282f442d4e0d6738e1ece590bddd0d9030dbbc3f7b2b8"
+      ]
+    },
+    "551d4c1e37e1e3f02358f8092fa4309fb13d44588af49fd25f659a127ada73e1": {
+      "name": "seedsigner_os.dev.pi4-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "SS0.85+Satochip+earthdriver-b7-pre",
+      "size_bytes": 536870912,
+      "sha256": "64f55785a0f09477e3d44acf603e908a6a06af7c20cbb2cc8d58b84529674dbd",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "4c551804260a20378be1d1b1791d67b1cdf7f10fa4519198cc8fd3a3c9bdf810"
+      ]
+    },
+    "d34bf21b8e39a6b8145688408ff96e7036988d0c634988d88eb9440f2065a6e0": {
+      "name": "seedsigner_os.dev.pi4-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "ss0.85-b5+earthdriver-a2",
+      "size_bytes": 268435456,
+      "sha256": "039d46fb0eef10561f3ad700e857a07a71345b62a27b6c05d94ddfde9de713e5",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "7dddaa8cd685ff8c239ffcec3b761ac80c3766534151ed3788829628eb30b235"
+      ]
+    },
+    "77e882c765f21ecde5bc0a2cb90834c19e279b2423c8022645243a3de455621a": {
+      "name": "seedsigner_os.dev.pi4.img",
+      "source_repo": "SeedSigner/seedsigner",
+      "tag": "0.7.0-rc1",
+      "size_bytes": 27262976,
+      "sha256": "74bae6427821c903fe912dab19c23f0c9737ca5527c7949b93f5fc81088f3a5a",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "8d0f0d9664653334fb84b3acddfc3c84b71ffff5051e17a57468aef753ae1b03"
+      ]
+    },
+    "a3d091c5de38d3fb48b3315eab949b8e266cacd8490faad22a462ab83169fbcd": {
+      "name": "seedsigner_os.ss0.85-b5+earthdriver-a2.pi0-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "ss0.85-b5+earthdriver-a2",
+      "size_bytes": 268435456,
+      "sha256": "40cd12e423a1715fc1df2161289cd4ce5523da224a04a5257e9cef37a2134ed4",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "43ab04d6ccbf48b960a2f16f5fcfef8d3794757124e3fc58a84f014461db9842"
+      ]
+    },
+    "c6c2984a672be7218c5cf166b983cef6b548a2efe8191947577f5ae6a01be8ee": {
+      "name": "seedsigner_os.ss0.85rc1-b3-a1.pi0-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "ss0.85rc1-b3-a1",
+      "size_bytes": 268435456,
+      "sha256": "33790c7cfeef4c532b9249cc470db69eccbd2fa24780c858ed93b5074b8abcbe",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "5961e3ad088fe43d8cab23c21ecf4ff33ff33b9bfcdd0e1173921f981c7245f6"
+      ]
+    },
+    "e38557995f3655e5594560b6fd360b82f793b4d7214ba4daa921345b6a2ec1ce": {
+      "name": "seedsigner_os.ss0.85rc1-b3-a1.pi02w-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "ss0.85rc1-b3-a1",
+      "size_bytes": 268435456,
+      "sha256": "3c8e53d51aa0063187a8a6ff463f7458216fa6ba1d32c7014a21e59b7988cda3",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "34ae89823ec752dc2e4466c8292d0f87ee5469849bb24e77c4f94ba1286b5376"
+      ]
+    },
+    "943363a4060f03c751a8be2416373830d18ebee7690da496fa155c8a2c92a08f": {
+      "name": "seedsigner_os.ss0.85rc1-b3-a1.pi2-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "ss0.85rc1-b3-a1",
+      "size_bytes": 268435456,
+      "sha256": "1222c3e597d6361f2cbbaa139cba48bd8acb6e0798cceb594c9aa272c0ff1aaf",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "fb08292ac035e3c9044770053e8bf3d61159d4242063ba0f72f8af42edeb79a1"
+      ]
+    },
+    "f0ab8dd57eac72c7485ea657257be48572d317747940c56e9bb417b415939937": {
+      "name": "seedsigner_os.ss0.85rc1-b3-a1.pi4-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "ss0.85rc1-b3-a1",
+      "size_bytes": 268435456,
+      "sha256": "d75ba64fe89eca8329f08a9ceaab2112bc0308f6afcb2acb50cc7bed1e42bfd3",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "e914e753bc0e7ebc5b8f73dc43f8dec83396760d4bcf7178f8e0767314abf687"
+      ]
+    },
+    "f9cc3be28337fffc97868438740d7b693e99f43a87e04c673a985595986cfe85": {
+      "name": "seedsigner_os.ss0.85rc1-b3-a2.pi0-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "ss0.85rc1-b3-a2",
+      "size_bytes": 268435456,
+      "sha256": "0f5d885fb6f0ea125e0633b4e9c6e779ce44de5c15c9090b81c8ffbd7c765af5",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "9dd301ac44a6c1a8685b59f11cd95e46981155b7c88f3fca83a8d4b8100016bb"
+      ]
+    },
+    "0791aa8863d7760a2338568a2684d642dd52033e38d6ec329e869bcc60a320dc": {
+      "name": "seedsigner_os.ss0.85rc1-b3-a2.pi02w-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "ss0.85rc1-b3-a2",
+      "size_bytes": 268435456,
+      "sha256": "b0141d5ad34fcf0ad12bd84762bf33409081e92d9f3a8449505b79f73c19c594",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "1c458fee6fef54813d8726b936b0164d93ea725cb2f769ce01113da8291ede5e"
+      ]
+    },
+    "76a67f12fa296f47cd92e3bcde4be043546e642ffa91b8c7d6c130c741e8cda3": {
+      "name": "seedsigner_os.ss0.85rc1-b3-a2.pi2-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "ss0.85rc1-b3-a2",
+      "size_bytes": 268435456,
+      "sha256": "13ce743d8c375f9c07eed29e222315306741f02686ecf082726142197cb77af4",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "0665a0aa46e8981faae418e2fd7d1e8062ebed22edb696cb13649cbe9d11e9ab"
+      ]
+    },
+    "b72d7c89006bce645046f01865c25e6d1b96eb77d870f559d7df93b333a15035": {
+      "name": "seedsigner_os.ss0.85rc1-b3-a2.pi4-smartcard.img",
+      "source_repo": "3rdIteration/seedsigner",
+      "tag": "ss0.85rc1-b3-a2",
+      "size_bytes": 268435456,
+      "sha256": "c411773475238c40398359e97c1053cc8dcdb50aae4037880ad040f4af27a849",
+      "volatile_offsets": [
+        1048641,
+        1049576,
+        1049577,
+        1049578,
+        1049579,
+        1049580,
+        1049581,
+        1049582,
+        1049583
+      ],
+      "alt_prefix_hashes": [
+        "8984d6c27590710d354c6f375acf3a8365d9b81a287dd76d9bc446c90b5df200"
+      ]
+    }
+  }
+}

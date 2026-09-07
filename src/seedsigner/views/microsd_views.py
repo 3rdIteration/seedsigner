@@ -29,6 +29,64 @@ def find_sd_card_device():
     return None
 
 
+def _zero_volatile_in_place(buf, offsets, buf_start=0):
+    """Zero bytes at absolute ``offsets`` within ``buf`` (a mutable bytearray).
+
+    ``buf_start`` is the absolute position in the source where ``buf`` begins,
+    so that offsets can be mapped to local indices.
+    """
+    base = buf_start
+    for off in offsets:
+        idx = off - base
+        if 0 <= idx < len(buf):
+            buf[idx] = 0
+
+
+def _load_known_checksums(path=None):
+    """
+    Return (prefix_size, pristine_map, alt_map) from the checksums JSON.
+
+    ``pristine_map`` maps unaltered prefix hashes to their entry dicts.
+    ``alt_map`` maps dirty-state (zeroed-volatiles) prefix hashes to the same
+    entry dicts.
+
+    Deliberately forgiving: a missing or corrupt file yields (None, {}, {}),
+    so verification still runs and simply reports every card as unfamiliar.
+    """
+    import json
+    from pathlib import Path
+
+    try:
+        if path is None:
+            path = Path(__file__).parent.parent.resolve() / "resources" / "microsd-known-checksums.json"
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        prefix_size = int(data["prefix_size"])
+        pristine_map = {}
+        alt_map = {}
+        for checksum, meta in data["images"].items():
+            if isinstance(checksum, str) and isinstance(meta, dict):
+                pristine_map[checksum.lower()] = meta
+                for alt in meta.get("alt_prefix_hashes", []):
+                    alt_map[alt.lower()] = meta
+        return prefix_size, pristine_map, alt_map
+    except Exception as e:
+        logger.info(f"microsd-known-checksums.json unavailable ({e}); no known images")
+        return None, {}, {}
+
+
+def _format_image_name(name):
+    """Wrap an image name for the 240px status screen: 3 lines of max 20 chars."""
+    short = name[len("seedsigner_os."):] if name.startswith("seedsigner_os.") else name
+    if short.endswith(".img"):
+        short = short[:-len(".img")]
+    lines = [short[i:i + 20] for i in range(0, len(short), 20)]
+    if len(lines) > 3:
+        lines = lines[:3]
+        lines[2] = lines[2][:17] + "..."
+    return "\n".join(lines)
+
+
 class ToolsMicroSDMenuView(View):
     FLASH_IMAGE = ButtonOption("Flash Image")
     VERIFY_IMAGE = ButtonOption("Verify MicroSD")
@@ -228,62 +286,148 @@ class ToolsMicroSDVerifyWarningView(View):
 
 
 class ToolsMicroSDVerifyView(View):
-    known_checksums = {'5809d4ec68138c737b1b000db4c6ec60983e94544efd893bdfa40ebf19af60f4':'Zero Wiped (First 26MB)',
-                       'a380cb93eb852254863718a9c000be9ec30cee14a78fc0ec90708308c17c1b8a':'seedsigner_os.0.7.0.pi0',
-                       'fe0601e6da97c7711093b67a7102f8108f2bfb8a2478fd94fa9d3edea5adfb64':'seedsigner_os.0.7.0.pi02w',
-                       '65be9209527ba03efe8093099dae8ec65725c90a758bc98678b9da31639637d7':'seedsigner_os.0.7.0.pi2',
-                       'd574c1326d07e18b550e2f65e36a4678b05db882adb5cb8f8732ff8d75d59809':'seedsigner_os.0.7.0.pi4',
-                       'c8d5352ed4a86c19eb9ef54f2920934f8ce460742b464ea94dc9114f9f4e039a':'seedsigner_os.0.8.0.pi02w.img',
-                       '1d0f1c412f64b40e6aba21b5bacdb41d9323653c170ce06d0a3f1dd71fddb28e':'seedsigner_os.0.8.0.pi0.img',
-                       '11c5553d75b3ebca4988ae3c4573b60b33a12bc4779282454ae34404ba797670':'seedsigner_os.0.8.0.pi2.img',
-                       '917201e335bfc7ee4189f17827f954f89588dc0fdefdad80d26f2a65c5c8e6d0':'seedsigner_os.0.8.0.pi4.img',
-                       '398d9bf9cda0858fe97c0788b353194c1c902335a858b7dbf5d7b213bda75d96':'seedsigner_os.0.8.5.pi02w.img',
-                       'bcb901e27d309d85f086dc80b49b153d6b1caab2247eba2811731384d58f2f3e':'seedsigner_os.0.8.5.pi0.img',
-                       '1e93a82e62d4a1defbdc777a6762a813f4cb5c3ef9090da0bd07542dfd6f62bf':'seedsigner_os.0.8.5.pi2.img',
-                       'd298ffad3c765e11e48873efc6d1c65e4230528fde4d5bd4701bb507acbf493c':'seedsigner_os.0.8.5.pi4.img'}
-
     def run(self):
-        from subprocess import run
+        import hashlib
 
         self.loading_screen = LoadingScreenThread(text="Reading MicroSD\n\n\n\n\n\n")
         self.loading_screen.start()
 
         microsd_dev = find_sd_card_device()
+        prefix_size, pristine_map, alt_map = _load_known_checksums()
 
-        dd_cmd = ["dd", f"if={microsd_dev}", "of=/tmp/img.img", "bs=1M", "count=26"]
-        if platform.uname()[1] != "seedsigner-os":
-            dd_cmd = ["sudo"] + dd_cmd
-        run(dd_cmd, check=False)
-
-        data = run(["sha256sum", "/tmp/img.img"], capture_output=True, text=True)
-        logger.info(data)
-
-        self.loading_screen.stop()
-
-        checksum = data.stdout[:64]
-
-        try:
-            image_name = self.known_checksums[checksum]
+        if microsd_dev is None or prefix_size is None or (not pristine_map and not alt_map):
+            self.loading_screen.stop()
             self.run_screen(
-                LargeIconStatusScreen,
-                title="Success",
-                status_headline="Matched Checksum",
-                text=image_name[:20] + "\n" + image_name[20:40] + "\n" + image_name[40:60],
+                WarningScreen,
+                title="Unavailable",
+                status_headline=None,
+                text="Unable to verify.\nNo known images or\nno MicroSD found.",
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")]
             )
+            return Destination(MainMenuView)
 
-        except KeyError:
-            formatted_checksum = data.stdout[:16] + "\n" + data.stdout[16:32] + "\n" + data.stdout[32:48] + "\n" + data.stdout[48:64]
-
+        try:
+            f = open(microsd_dev, "rb")
+        except OSError as e:
+            self.loading_screen.stop()
+            logger.info(f"Unable to open MicroSD device {microsd_dev}: {e}")
             self.run_screen(
                 WarningScreen,
-                title="Unfamilliar Checksum",
+                title="Error",
+                status_headline=None,
+                text="Unable to open\nMicroSD device.",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")]
+            )
+            return Destination(MainMenuView)
+
+        try:
+            # Read prefix data once
+            prefix_data = bytearray(f.read(prefix_size))
+
+            # Pass 1a: pristine hash (raw)
+            prefix_hash = hashlib.sha256(prefix_data).hexdigest()
+            entry = pristine_map.get(prefix_hash)
+
+            is_dirty = False
+            if entry is None:
+                # Pass 1b: try dirty hash (zero fat volatile offsets)
+                volatile_offsets = None
+                # We don't know which entry yet — try each alt_map key
+                # against a zeroed version of the prefix data.
+                # Avoid zeroing many times: zero once, hash once, then
+                # look up in alt_map.
+                for candidate_hash, candidate_entry in alt_map.items():
+                    # Only try the zeroed version once — we pick the
+                    # first alt_map entry as the canonical zeroed hash.
+                    volatile_offsets = candidate_entry.get("volatile_offsets", [])
+                    break
+
+                if volatile_offsets:
+                    probe = bytearray(prefix_data)
+                    _zero_volatile_in_place(probe, volatile_offsets)
+                    dirty_hash = hashlib.sha256(probe).hexdigest()
+                    entry = alt_map.get(dirty_hash)
+                    if entry is not None:
+                        is_dirty = True
+
+            if entry is not None:
+                # Pass 2: hash full image with volatile bytes zeroed
+                volatile_offsets = entry.get("volatile_offsets", [])
+
+                # Start with the prefix portion (zeroed)
+                buf = bytearray(prefix_data)
+                _zero_volatile_in_place(buf, volatile_offsets, 0)
+                h = hashlib.sha256(buf)
+
+                # Stream the remainder from the card
+                pos = len(prefix_data)
+                remaining = int(entry["size_bytes"]) - pos
+                while remaining > 0:
+                    chunk = bytearray(f.read(min(1 << 20, remaining)))
+                    if not chunk:
+                        break
+                    _zero_volatile_in_place(chunk, volatile_offsets, pos)
+                    h.update(chunk)
+                    pos += len(chunk)
+                    remaining -= len(chunk)
+
+                full_hash = h.hexdigest()
+                self.loading_screen.stop()
+
+                if full_hash == entry["sha256"]:
+                    screen_text = _format_image_name(entry["name"])
+                    if is_dirty:
+                        status_headline = "Matched Checksum\n(Card Was Mounted)"
+                    else:
+                        status_headline = "Matched Checksum"
+                    self.run_screen(
+                        LargeIconStatusScreen,
+                        title="Success",
+                        status_headline=status_headline,
+                        text=screen_text,
+                        show_back_button=False,
+                        button_data=[ButtonOption("Continue")]
+                    )
+                else:
+                    self.run_screen(
+                        WarningScreen,
+                        title="Content Mismatch",
+                        status_headline=None,
+                        text="Known image ID,\nbut content differs.\n\n" + _format_image_name(entry["name"]),
+                        show_back_button=False,
+                        button_data=[ButtonOption("Continue")]
+                    )
+
+                return Destination(MainMenuView)
+
+            # No prefix matched at all
+            formatted_checksum = (prefix_hash[:16] + "\n" + prefix_hash[16:32] + "\n" +
+                                  prefix_hash[32:48] + "\n" + prefix_hash[48:64])
+            self.loading_screen.stop()
+            self.run_screen(
+                WarningScreen,
+                title="Unfamiliar Checksum",
                 status_headline=None,
                 text=formatted_checksum,
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")]
             )
+
+        except OSError as e:
+            self.loading_screen.stop()
+            logger.info(f"Error reading MicroSD device {microsd_dev}: {e}")
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Error reading\nMicroSD device.",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")]
+            )
+        finally:
+            f.close()
 
         return Destination(MainMenuView)
 
