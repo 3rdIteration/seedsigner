@@ -108,14 +108,30 @@ class TestSmartcardViewsModuleLevelSymbols:
 
         assert hasattr(smartcard_views, "embit_utils")
 
-    def test_tools_common_filter_screen_imported(self):
-        """ToolsCommonFilterScreen is imported from tools_screens.
+    def test_satodime_views_defined(self):
+        """The Satodime menu + views (cherry-picked from PR #66) live in smartcard_views.
 
-        This was missing after the split, causing NameError in ToolsCommonFilterView.
+        They reference the embit ec/script/networks helpers, so a missing import
+        would only surface at run() time without this guard.
         """
         from seedsigner.views import smartcard_views
 
-        assert hasattr(smartcard_views, "ToolsCommonFilterScreen")
+        for name in (
+            "ToolsSatodimeView",
+            "ToolsSatodimeAddressesView",
+            "ToolsSatodimeSealSlotView",
+            "ToolsSatodimeUnsealSlotView",
+            "ToolsSatodimeSignTxView",
+            "ToolsSatodimeTransferOwnershipView",
+            "ToolsSatodimeCardSettingsView",
+        ):
+            assert hasattr(smartcard_views, name)
+
+    def test_fingerprint_view_defined(self):
+        """The standalone master-fingerprint view (issue #401) is present."""
+        from seedsigner.views import smartcard_views
+
+        assert hasattr(smartcard_views, "ToolsSmartcardViewFingerprintView")
 
 
 class TestModuleImportNoNameError:

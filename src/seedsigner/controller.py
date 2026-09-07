@@ -269,7 +269,6 @@ class Controller(Singleton):
     Satochip_PIN = None
     Satochip_Last_UID_SHA1 = None
     GPG_Admin_PIN = None
-    tools_common_card_filter: list[str] = None
     javacard_keys: dict | None = None
 
     # Destination placeholder for when we need to jump out to a side flow but intend to

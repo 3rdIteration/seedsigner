@@ -456,6 +456,63 @@ class TestSatodime:
         finally:
             self._disconnect()
 
+    # -- keyslot operations used by the Satodime views (PR #66) ----------
+    # Definition order matters: seal/read run before unseal (destructive last).
+
+    def _first_slot(self, connector, want_txt):
+        (_, _, _, status) = connector.satodime_get_status()
+        for key_nbr in range(status.get("max_num_keys", 0)):
+            (_, _, _, slot_status) = connector.satodime_get_keyslot_status(key_nbr)
+            if slot_status.get("key_status_txt") == want_txt:
+                return key_nbr
+        return None
+
+    def test_seal_slot_then_read_pubkey(self):
+        """Seal an uninitialized slot and read back its pubkey, as the views do."""
+        connector = self._connect()
+        try:
+            connector.satodime_set_unlock_secret()
+            connector.satodime_set_unlock_counter()
+
+            slot = self._first_slot(connector, "Uninitialized")
+            if slot is None:
+                pytest.skip("no uninitialized satodime slot available")
+
+            entropy = os.urandom(32)
+            (_, sw1, sw2, _, pub_comp) = connector.satodime_seal_key(slot, entropy)
+            assert (sw1, sw2) == (0x90, 0x00), "seal should succeed"
+
+            # A compressed secp256k1 pubkey is 33 bytes.
+            (_, _, _, _, pub_read) = connector.satodime_get_pubkey(slot)
+            assert len(bytes(pub_read)) == 33
+
+            (_, _, _, slot_status) = connector.satodime_get_keyslot_status(slot)
+            assert slot_status.get("key_status_txt") == "Sealed"
+        finally:
+            self._disconnect()
+
+    def test_unseal_slot_returns_privkey(self):
+        """Unsealing a sealed slot yields the private key (destructive — runs last)."""
+        connector = self._connect()
+        try:
+            connector.satodime_set_unlock_secret()
+            connector.satodime_set_unlock_counter()
+
+            # Ensure there is something sealed to open; seal one if needed.
+            slot = self._first_slot(connector, "Sealed")
+            if slot is None:
+                slot = self._first_slot(connector, "Uninitialized")
+                if slot is None:
+                    pytest.skip("no satodime slot available to unseal")
+                connector.satodime_seal_key(slot, os.urandom(32))
+
+            (_, sw1, sw2, _, priv) = connector.satodime_unseal_key(slot)
+            assert (sw1, sw2) == (0x90, 0x00), "unseal should succeed"
+            # Private key is a secp256k1 scalar.
+            assert len(bytes(priv)) in (32, 33)
+        finally:
+            self._disconnect()
+
 
 # ======================================================================
 # Phase 2 — SeedKeeper

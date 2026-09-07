@@ -21,6 +21,7 @@ from pathlib import Path
 from embit.bip32 import HDKey
 from embit.descriptor import Descriptor
 from embit.psbt import PSBT
+from embit import ec, script, networks
 from gettext import gettext as _
 
 from seedsigner.gui.components import (
@@ -38,7 +39,6 @@ from seedsigner.gui.screens import (
     seed_screens,
 )
 from seedsigner.gui.screens.tools_screens import (
-    ToolsCommonFilterScreen,
     ToolsTextQRTextEntryScreen,
     ToolsTextQRReviewTextScreen,
 )
@@ -84,16 +84,29 @@ from .seed_views import (
 )
 
 
+def _applet_card_filter(card_filter, allowed):
+    """Resolve the effective init_satochip card filter for a shared view.
+
+    ``card_filter`` is the applet(s) the calling menu wants (e.g. ["satochip"]);
+    ``allowed`` is the set of card types the particular function supports. When a
+    caller passes nothing we fall back to every allowed type (previously driven by
+    the removed Device Filter). Intersecting keeps an unsupported pairing from ever
+    reaching the connector.
+    """
+    requested = card_filter or allowed
+    return [c for c in requested if c in allowed]
+
+
 class ToolsSmartcardMenuView(View):
-    COMMON = ButtonOption("Common Functions")
     SATOCHIP = ButtonOption("Satochip Functions")
     KEYCARD = ButtonOption("KeyCard Functions")
     SEEDKEEPER = ButtonOption("SeedKeeper Functions")
+    SATODIME = ButtonOption("Satodime Functions")
     SPECTER_DIY = ButtonOption("Specter-DIY Functions")
     Satochip_DIY = ButtonOption("DIY Tools")
 
     def run(self):
-        button_data = [self.COMMON, self.SEEDKEEPER]
+        button_data = [self.SEEDKEEPER]
         satochip_enabled = (
             self.settings.get_value(SettingsConstants.SETTING__SATOCHIP_SUPPORT)
             == SettingsConstants.OPTION__ENABLED
@@ -110,6 +123,7 @@ class ToolsSmartcardMenuView(View):
             button_data.append(self.SATOCHIP)
         if keycard_enabled:
             button_data.append(self.KEYCARD)
+        button_data.append(self.SATODIME)
         if specter_diy_enabled:
             button_data.append(self.SPECTER_DIY)
         button_data.append(self.Satochip_DIY)
@@ -123,11 +137,6 @@ class ToolsSmartcardMenuView(View):
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-
-        elif button_data[selected_menu_num] == self.COMMON:
-            # COMMON tools work on Satochip/SeedKeeper cards (pysatochip only)
-            self.controller.smartcard_backend_preference = "pysatochip"
-            return Destination(ToolsCommonView)
 
         elif button_data[selected_menu_num] == self.SATOCHIP:
             # Satochip menu forces pysatochip backend
@@ -143,6 +152,11 @@ class ToolsSmartcardMenuView(View):
             self.controller.smartcard_backend_preference = "pysatochip"
             return Destination(ToolsSeedkeeperView)
 
+        elif button_data[selected_menu_num] == self.SATODIME:
+            # Satodime is pysatochip-only (satodime_* APDUs are not keycard)
+            self.controller.smartcard_backend_preference = "pysatochip"
+            return Destination(ToolsSatodimeView)
+
         elif button_data[selected_menu_num] == self.SPECTER_DIY:
             return Destination(ToolsSpecterDIYView)
 
@@ -151,96 +165,6 @@ class ToolsSmartcardMenuView(View):
             self.controller.smartcard_backend_preference = "pysatochip"
             return Destination(ToolsSatochipDIYView)
 
-class ToolsCommonView(View):
-    FILTER = ButtonOption("Device Filter")
-    INFO = ButtonOption("Card Info")
-    GENUINE = ButtonOption("Genuine Check")
-    CHANGE_PIN = ButtonOption("Change PIN")
-    CHANGE_LABEL = ButtonOption("Change Label")
-    CHANGE_NFC = ButtonOption("Change NFC Policy")
-    CONFIGURE_NDEF = ButtonOption("Configure NDEF")
-    FACTORY_RESET = ButtonOption("Factory Reset Card")
-
-    def run(self):
-
-        button_data = [
-            self.FILTER,
-            self.INFO,
-            self.GENUINE,
-            self.CHANGE_PIN,
-            self.CHANGE_LABEL,
-            self.CHANGE_NFC,
-            self.CONFIGURE_NDEF,
-            self.FACTORY_RESET,
-        ]
-
-        selected_menu_num = self.run_screen(
-                ButtonListScreen,
-                title="Common Tools",
-                is_button_text_centered=False,
-                button_data=button_data
-            )
-
-        if selected_menu_num == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
-
-        elif button_data[selected_menu_num] == self.FILTER:
-            return Destination(ToolsCommonFilterView)
-
-        elif button_data[selected_menu_num] == self.INFO:
-            return Destination(ToolsSmartcardInfoView)
-
-        elif button_data[selected_menu_num] == self.GENUINE:
-            return Destination(ToolsSmartcardGenuineCheckView)
-
-        elif button_data[selected_menu_num] == self.CHANGE_PIN:
-            return Destination(ToolsSatochipChangePinView)
-        
-        elif button_data[selected_menu_num] == self.CHANGE_LABEL:
-            return Destination(ToolsSatochipChangeLabelView)
-
-        elif button_data[selected_menu_num] == self.CHANGE_NFC:
-            return Destination(ToolsSatochipChangeNFCView)
-
-        elif button_data[selected_menu_num] == self.CONFIGURE_NDEF:
-            return Destination(ToolsCommonNdefView)
-
-        elif button_data[selected_menu_num] == self.FACTORY_RESET:
-            return Destination(ToolsSatochipFactoryResetView)
-
-
-class ToolsCommonFilterView(View):
-    def run(self):
-        devices = [
-            ("satochip", "Satochip"),
-            ("seedkeeper", "Seedkeeper"),
-            ("satodime", "Satodime"),
-        ]
-
-        selected = self.controller.tools_common_card_filter or [d[0] for d in devices]
-
-        while True:
-            button_data = [ButtonOption(name) for _, name in devices]
-            checked = [i for i, (code, _) in enumerate(devices) if code in selected]
-
-            ret = self.run_screen(
-                ToolsCommonFilterScreen,
-                button_data=button_data,
-                checked_buttons=checked,
-            )
-
-            if ret == RET_CODE__BACK_BUTTON:
-                if len(selected) == len(devices):
-                    self.controller.tools_common_card_filter = None
-                else:
-                    self.controller.tools_common_card_filter = list(selected)
-                return Destination(BackStackView)
-
-            code = devices[ret][0]
-            if code in selected:
-                selected.remove(code)
-            else:
-                selected.append(code)
 
 class ToolsCommonNdefView(View):
     VIEW_NDEF = ButtonOption("View NDEF")
@@ -260,6 +184,10 @@ class ToolsCommonNdefView(View):
     RECORD_TYPE_URI = ButtonOption("URI Record")
     RECORD_TYPE_ANDROID_APP = ButtonOption("Android App Launch")
     RECORD_TYPE_HEX = ButtonOption("Custom (HEX)")
+
+    def __init__(self, card_filter=None):
+        super().__init__()
+        self.card_filter = card_filter
 
     @staticmethod
     def _extract_ndef_payload(ndef_bytes: bytes) -> bytes:
@@ -282,8 +210,7 @@ class ToolsCommonNdefView(View):
 
     def run(self):
         allowed = ["seedkeeper", "satodime"]
-        card_filter = self.controller.tools_common_card_filter or allowed
-        card_filter = [c for c in card_filter if c in allowed]
+        card_filter = _applet_card_filter(self.card_filter, allowed)
 
         connector = seedkeeper_utils.init_satochip(
             self,
@@ -812,11 +739,14 @@ class ToolsCommonNdefView(View):
 
 
 class ToolsSmartcardInfoView(View):
+    def __init__(self, card_filter=None):
+        super().__init__()
+        self.card_filter = card_filter
+
     def run(self):
 
         allowed = ["satochip", "seedkeeper", "satodime"]
-        card_filter = self.controller.tools_common_card_filter or allowed
-        card_filter = [c for c in card_filter if c in allowed]
+        card_filter = _applet_card_filter(self.card_filter, allowed)
 
         Satochip_Connector = seedkeeper_utils.init_satochip(
             self, init_card_filter=card_filter, require_pin=False
@@ -874,11 +804,14 @@ class ToolsSmartcardInfoView(View):
         return Destination(BackStackView)
 
 class ToolsSmartcardGenuineCheckView(View):
+    def __init__(self, card_filter=None):
+        super().__init__()
+        self.card_filter = card_filter
+
     def run(self):
 
         allowed = ["satochip", "seedkeeper", "satodime"]
-        card_filter = self.controller.tools_common_card_filter or allowed
-        card_filter = [c for c in card_filter if c in allowed]
+        card_filter = _applet_card_filter(self.card_filter, allowed)
 
         Satochip_Connector = seedkeeper_utils.init_satochip(
             self, init_card_filter=card_filter
@@ -950,11 +883,14 @@ class ToolsSmartcardGenuineCheckView(View):
         return Destination(BackStackView)
 
 class ToolsSatochipChangePinView(View):
+    def __init__(self, card_filter=None):
+        super().__init__()
+        self.card_filter = card_filter
+
     def run(self):
 
         allowed = ["satochip", "seedkeeper"]
-        card_filter = self.controller.tools_common_card_filter or ["satochip", "seedkeeper", "satodime"]
-        card_filter = [c for c in card_filter if c in allowed]
+        card_filter = _applet_card_filter(self.card_filter, allowed)
 
         Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=card_filter)
 
@@ -993,11 +929,14 @@ class ToolsSatochipChangePinView(View):
         return Destination(BackStackView)
     
 class ToolsSatochipChangeNFCView(View):
+    def __init__(self, card_filter=None):
+        super().__init__()
+        self.card_filter = card_filter
+
     def run(self):
 
         allowed = ["satochip", "seedkeeper"]
-        card_filter = self.controller.tools_common_card_filter or ["satochip", "seedkeeper", "satodime"]
-        card_filter = [c for c in card_filter if c in allowed]
+        card_filter = _applet_card_filter(self.card_filter, allowed)
 
         Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=card_filter)
 
@@ -1067,6 +1006,10 @@ class ToolsSatochipChangeNFCView(View):
         return Destination(BackStackView)
 
 class ToolsSatochipFactoryResetView(View):
+    def __init__(self, card_filter=None):
+        super().__init__()
+        self.card_filter = card_filter
+
     def run(self):
         resetStatus = False
 
@@ -1090,8 +1033,7 @@ class ToolsSatochipFactoryResetView(View):
         new version currently only implemented on SeedKeeper v0.2 and higher
         """
         allowed = ["satochip", "seedkeeper"]
-        card_filter = self.controller.tools_common_card_filter or ["satochip", "seedkeeper", "satodime"]
-        card_filter = [c for c in card_filter if c in allowed]
+        card_filter = _applet_card_filter(self.card_filter, allowed)
 
         Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=card_filter, require_pin = False)
 
@@ -1470,11 +1412,14 @@ class ToolsSatochipFactoryResetView(View):
         return resetStatus
 
 class ToolsSatochipChangeLabelView(View):
+    def __init__(self, card_filter=None):
+        super().__init__()
+        self.card_filter = card_filter
+
     def run(self):
 
         allowed = ["satochip", "seedkeeper"]
-        card_filter = self.controller.tools_common_card_filter or ["satochip", "seedkeeper", "satodime"]
-        card_filter = [c for c in card_filter if c in allowed]
+        card_filter = _applet_card_filter(self.card_filter, allowed)
 
         Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=card_filter)
 
@@ -1528,6 +1473,7 @@ class ToolsSeedkeeperView(View):
     LOAD_DESCRIPTOR = ButtonOption("Load MultiSig Descriptor")
     SAVE_DESCRIPTOR = ButtonOption("Save MultiSig Descriptor")
     CLONE_SECRETS = ButtonOption("Clone Card Secrets")
+    CARD_SETTINGS = ButtonOption("Card Settings")
 
     def run(self):
         button_data = [
@@ -1538,6 +1484,7 @@ class ToolsSeedkeeperView(View):
             self.SAVE_DESCRIPTOR,
             self.CLONE_SECRETS,
             self.VIEW_FREE_SPACE,
+            self.CARD_SETTINGS,
         ]
 
         selected_menu_num = self.run_screen(
@@ -1570,6 +1517,68 @@ class ToolsSeedkeeperView(View):
 
         elif button_data[selected_menu_num] == self.CLONE_SECRETS:
             return Destination(ToolsSeedkeeperCloneSecretsView)
+
+        elif button_data[selected_menu_num] == self.CARD_SETTINGS:
+            return Destination(ToolsSeedkeeperCardSettingsView)
+
+
+class ToolsSeedkeeperCardSettingsView(View):
+    """Card-management functions scoped to a SeedKeeper card.
+
+    Formerly lived in the shared 'Common Functions' menu; the applet is now fixed
+    by which menu launched it, so each destination gets an explicit card_filter.
+    """
+    INFO = ButtonOption("Card Info")
+    GENUINE = ButtonOption("Genuine Check")
+    CHANGE_PIN = ButtonOption("Change PIN")
+    CHANGE_LABEL = ButtonOption("Change Label")
+    CHANGE_NFC = ButtonOption("Change NFC Policy")
+    CONFIGURE_NDEF = ButtonOption("Configure NDEF")
+    FACTORY_RESET = ButtonOption("Factory Reset Card")
+
+    _CARD_FILTER = ["seedkeeper"]
+
+    def run(self):
+        button_data = [
+            self.INFO,
+            self.GENUINE,
+            self.CHANGE_PIN,
+            self.CHANGE_LABEL,
+            self.CHANGE_NFC,
+            self.CONFIGURE_NDEF,
+            self.FACTORY_RESET,
+        ]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="SeedKeeper Settings",
+            is_button_text_centered=False,
+            button_data=button_data
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        elif button_data[selected_menu_num] == self.INFO:
+            return Destination(ToolsSmartcardInfoView, view_args=dict(card_filter=self._CARD_FILTER))
+
+        elif button_data[selected_menu_num] == self.GENUINE:
+            return Destination(ToolsSmartcardGenuineCheckView, view_args=dict(card_filter=self._CARD_FILTER))
+
+        elif button_data[selected_menu_num] == self.CHANGE_PIN:
+            return Destination(ToolsSatochipChangePinView, view_args=dict(card_filter=self._CARD_FILTER))
+
+        elif button_data[selected_menu_num] == self.CHANGE_LABEL:
+            return Destination(ToolsSatochipChangeLabelView, view_args=dict(card_filter=self._CARD_FILTER))
+
+        elif button_data[selected_menu_num] == self.CHANGE_NFC:
+            return Destination(ToolsSatochipChangeNFCView, view_args=dict(card_filter=self._CARD_FILTER))
+
+        elif button_data[selected_menu_num] == self.CONFIGURE_NDEF:
+            return Destination(ToolsCommonNdefView, view_args=dict(card_filter=self._CARD_FILTER))
+
+        elif button_data[selected_menu_num] == self.FACTORY_RESET:
+            return Destination(ToolsSatochipFactoryResetView, view_args=dict(card_filter=self._CARD_FILTER))
 
 
 class ToolsSeedkeeperFreeSpaceView(View):
@@ -2652,16 +2661,20 @@ class ToolsSeedkeeperSaveDescriptorView(View):
 class ToolsSatochipView(View):
     IMPORT_SEED = ButtonOption("Initialise with Seed")
     EXPORT_XPUB = ButtonOption("Export Xpub")
+    VIEW_FINGERPRINT = ButtonOption("View Master Fingerprint")
     LOAD_DESCRIPTOR = ButtonOption("Load as Descriptor")
     LOAD_PSBT = ButtonOption("Load PSBT")
+    CARD_SETTINGS = ButtonOption("Card Settings")
     ADVANCED = ButtonOption("Advanced")
 
     def run(self):
         button_data = [
             self.IMPORT_SEED,
             self.EXPORT_XPUB,
+            self.VIEW_FINGERPRINT,
             self.LOAD_DESCRIPTOR,
             self.LOAD_PSBT,
+            self.CARD_SETTINGS,
             self.ADVANCED,
         ]
         selected_menu_num = self.run_screen(
@@ -2680,17 +2693,141 @@ class ToolsSatochipView(View):
         elif button_data[selected_menu_num] == self.EXPORT_XPUB:
             return Destination(SatochipExportXpubSigTypeView)
 
+        elif button_data[selected_menu_num] == self.VIEW_FINGERPRINT:
+            return Destination(ToolsSmartcardViewFingerprintView, view_args=dict(card_filter=["satochip"]))
+
         elif button_data[selected_menu_num] == self.LOAD_DESCRIPTOR:
             return Destination(SatochipLoadDescriptorScriptTypeView)
         elif button_data[selected_menu_num] == self.LOAD_PSBT:
             return Destination(ToolsSatochipLoadPsbtView)
+        elif button_data[selected_menu_num] == self.CARD_SETTINGS:
+            return Destination(ToolsSatochipCardSettingsView)
         elif button_data[selected_menu_num] == self.ADVANCED:
             return Destination(ToolsSatochipAdvancedView)
+
+
+class ToolsSatochipCardSettingsView(View):
+    """Card-management functions scoped to a Satochip card.
+
+    Formerly lived in the shared 'Common Functions' menu; the applet is now fixed
+    by which menu launched it, so each destination gets an explicit card_filter.
+    """
+    INFO = ButtonOption("Card Info")
+    GENUINE = ButtonOption("Genuine Check")
+    CHANGE_PIN = ButtonOption("Change PIN")
+    CHANGE_LABEL = ButtonOption("Change Label")
+    CHANGE_NFC = ButtonOption("Change NFC Policy")
+    FACTORY_RESET = ButtonOption("Factory Reset Card")
+
+    _CARD_FILTER = ["satochip"]
+
+    def run(self):
+        button_data = [
+            self.INFO,
+            self.GENUINE,
+            self.CHANGE_PIN,
+            self.CHANGE_LABEL,
+            self.CHANGE_NFC,
+            self.FACTORY_RESET,
+        ]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Satochip Settings",
+            is_button_text_centered=False,
+            button_data=button_data
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        elif button_data[selected_menu_num] == self.INFO:
+            return Destination(ToolsSmartcardInfoView, view_args=dict(card_filter=self._CARD_FILTER))
+
+        elif button_data[selected_menu_num] == self.GENUINE:
+            return Destination(ToolsSmartcardGenuineCheckView, view_args=dict(card_filter=self._CARD_FILTER))
+
+        elif button_data[selected_menu_num] == self.CHANGE_PIN:
+            return Destination(ToolsSatochipChangePinView, view_args=dict(card_filter=self._CARD_FILTER))
+
+        elif button_data[selected_menu_num] == self.CHANGE_LABEL:
+            return Destination(ToolsSatochipChangeLabelView, view_args=dict(card_filter=self._CARD_FILTER))
+
+        elif button_data[selected_menu_num] == self.CHANGE_NFC:
+            return Destination(ToolsSatochipChangeNFCView, view_args=dict(card_filter=self._CARD_FILTER))
+
+        elif button_data[selected_menu_num] == self.FACTORY_RESET:
+            return Destination(ToolsSatochipFactoryResetView, view_args=dict(card_filter=self._CARD_FILTER))
+
+
+class ToolsSmartcardViewFingerprintView(View):
+    """Show the card's BIP-32 master key fingerprint without running the xpub export.
+
+    Issue #401. The fingerprint is derived from the master extended public key at
+    path ``m``; the script type used to serialize it does not change the underlying
+    master public key, so a fixed xtype is fine. Works on both the pysatochip and
+    keycard-compat backends (the parent menu sets ``smartcard_backend_preference``).
+    """
+
+    def __init__(self, card_filter=None):
+        super().__init__()
+        self.card_filter = card_filter if card_filter else ["satochip"]
+
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(
+            self, init_card_filter=self.card_filter
+        )
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+        is_mainnet = network == SettingsConstants.MAINNET
+
+        loading = LoadingScreenThread(text="Reading master key...")
+        loading.start()
+        try:
+            master_xpub = Satochip_Connector.card_bip32_get_xpub("", "p2wpkh", is_mainnet)
+        except Exception as e:
+            loading.stop()
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text=f"Could not read master key:\n{str(e)[:80]}",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+        finally:
+            loading.stop()
+
+        try:
+            fingerprint_hex = hexlify(HDKey.from_string(master_xpub).my_fingerprint).decode("utf-8")
+        except Exception as e:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text=f"Invalid master key:\n{str(e)[:80]}",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Master Fingerprint",
+            status_headline=None,
+            text=fingerprint_hex,
+            show_back_button=True,
+        )
+        return Destination(BackStackView)
 
 
 class ToolsKeycardView(View):
     IMPORT_SEED = ButtonOption("Initialise with Seed")
     EXPORT_XPUB = ButtonOption("Export Xpub")
+    VIEW_FINGERPRINT = ButtonOption("View Master Fingerprint")
     LOAD_DESCRIPTOR = ButtonOption("Load as Descriptor")
     LOAD_PSBT = ButtonOption("Load PSBT")
     CHANGE_PIN = ButtonOption("Change PIN")
@@ -2706,6 +2843,7 @@ class ToolsKeycardView(View):
         button_data = [
             self.IMPORT_SEED,
             self.EXPORT_XPUB,
+            self.VIEW_FINGERPRINT,
             self.LOAD_DESCRIPTOR,
             self.LOAD_PSBT,
             self.CHANGE_PIN,
@@ -2731,6 +2869,11 @@ class ToolsKeycardView(View):
 
         elif button_data[selected_menu_num] == self.EXPORT_XPUB:
             return Destination(SatochipExportXpubSigTypeView)
+
+        elif button_data[selected_menu_num] == self.VIEW_FINGERPRINT:
+            # Keycard-compat backend still keys off the 'satochip' card filter;
+            # smartcard_backend_preference ("keycard") is set above.
+            return Destination(ToolsSmartcardViewFingerprintView, view_args=dict(card_filter=["satochip"]))
 
         elif button_data[selected_menu_num] == self.LOAD_DESCRIPTOR:
             return Destination(SatochipLoadDescriptorScriptTypeView)
@@ -4438,6 +4581,398 @@ class SatochipLoadDescriptorDetailsView(View):
         # ToolsKeycardView reach it with no resume_main_flow set -- so there is
         # no single entry menu to name here either.
         return Destination(MainMenuView)
+
+
+class ToolsSatodimeView(View):
+    VIEW_ADDRESSES = ButtonOption("View Deposit Addresses")
+    SEAL_SLOT = ButtonOption("Seal Slot")
+    UNSEAL_SLOT = ButtonOption("Unseal Slot")
+    SIGN_TX = ButtonOption("Sign Transaction")
+    TRANSFER = ButtonOption("Transfer Ownership")
+    CARD_SETTINGS = ButtonOption("Card Settings")
+
+    def run(self):
+        button_data = [
+            self.VIEW_ADDRESSES,
+            self.SEAL_SLOT,
+            self.UNSEAL_SLOT,
+            self.SIGN_TX,
+            self.TRANSFER,
+            self.CARD_SETTINGS,
+        ]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Satodime",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if button_data[selected_menu_num] == self.VIEW_ADDRESSES:
+            return Destination(ToolsSatodimeAddressesView)
+        elif button_data[selected_menu_num] == self.SEAL_SLOT:
+            return Destination(ToolsSatodimeSealSlotView)
+        elif button_data[selected_menu_num] == self.UNSEAL_SLOT:
+            return Destination(ToolsSatodimeUnsealSlotView)
+        elif button_data[selected_menu_num] == self.SIGN_TX:
+            return Destination(ToolsSatodimeSignTxView)
+        elif button_data[selected_menu_num] == self.TRANSFER:
+            return Destination(ToolsSatodimeTransferOwnershipView)
+        elif button_data[selected_menu_num] == self.CARD_SETTINGS:
+            return Destination(ToolsSatodimeCardSettingsView)
+
+
+class ToolsSatodimeCardSettingsView(View):
+    """Card-management functions scoped to a Satodime card.
+
+    Only the subset of the former 'Common Functions' that Satodime supports is
+    offered here: Card Info, Genuine Check and Configure NDEF (Change PIN/Label/NFC
+    and Factory Reset are not implemented by the Satodime applet).
+    """
+    INFO = ButtonOption("Card Info")
+    GENUINE = ButtonOption("Genuine Check")
+    CONFIGURE_NDEF = ButtonOption("Configure NDEF")
+
+    _CARD_FILTER = ["satodime"]
+
+    def run(self):
+        button_data = [self.INFO, self.GENUINE, self.CONFIGURE_NDEF]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Satodime Settings",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        elif button_data[selected_menu_num] == self.INFO:
+            return Destination(ToolsSmartcardInfoView, view_args=dict(card_filter=self._CARD_FILTER))
+
+        elif button_data[selected_menu_num] == self.GENUINE:
+            return Destination(ToolsSmartcardGenuineCheckView, view_args=dict(card_filter=self._CARD_FILTER))
+
+        elif button_data[selected_menu_num] == self.CONFIGURE_NDEF:
+            return Destination(ToolsCommonNdefView, view_args=dict(card_filter=self._CARD_FILTER))
+
+
+class ToolsSatodimeAddressesView(View):
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satodime"], require_pin=False)
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        Satochip_Connector.satodime_set_unlock_secret()
+        Satochip_Connector.satodime_set_unlock_counter()
+
+        self.loading_screen = LoadingScreenThread(text="Fetching Slots\n\n\n\n\n\n")
+        self.loading_screen.start()
+        (_, _, _, status) = Satochip_Connector.satodime_get_status()
+        self.loading_screen.stop()
+
+        max_keys = status.get("max_num_keys", 0)
+        network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+        embit_network = embit_utils.get_embit_network_name(network)
+        net = networks.NETWORKS[embit_network]
+
+        for key_nbr in range(max_keys):
+            try:
+                (_, _, _, slot_status) = Satochip_Connector.satodime_get_keyslot_status(key_nbr)
+                (_, _, _, _, pub_comp) = Satochip_Connector.satodime_get_pubkey(key_nbr)
+                address = script.p2pkh(ec.PublicKey(bytes(pub_comp))).address(network=net)
+                text = f"{slot_status['key_status_txt']}\n{address}"
+            except Exception as e:
+                text = str(e)
+
+            ret = self.run_screen(
+                LargeIconStatusScreen,
+                title=f"Slot {key_nbr}",
+                status_headline=None,
+                text=text,
+                show_back_button=True,
+                button_data=[ButtonOption("Next")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                break
+
+        return Destination(BackStackView)
+
+
+class ToolsSatodimeSealSlotView(View):
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satodime"], require_pin=False)
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        Satochip_Connector.satodime_set_unlock_secret()
+        Satochip_Connector.satodime_set_unlock_counter()
+
+        (_, _, _, status) = Satochip_Connector.satodime_get_status()
+        max_keys = status.get("max_num_keys", 0)
+
+        available = []
+        button_data = []
+        for key_nbr in range(max_keys):
+            (_, _, _, slot_status) = Satochip_Connector.satodime_get_keyslot_status(key_nbr)
+            if slot_status.get("key_status_txt") == "Uninitialized":
+                available.append(key_nbr)
+                button_data.append(ButtonOption(f"Slot {key_nbr}"))
+
+        if not available:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text="No uninitialized slots",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Slot",
+            is_button_text_centered=False,
+            button_data=button_data,
+            show_back_button=True,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        slot = available[selected]
+        # Card-side sealing entropy; never logged or persisted (AGENTS security).
+        entropy = os.urandom(32)
+
+        self.loading_screen = LoadingScreenThread(text="Sealing Slot\n\n\n\n\n\n")
+        self.loading_screen.start()
+        (_, sw1, sw2, _, pub_comp) = Satochip_Connector.satodime_seal_key(slot, entropy)
+        self.loading_screen.stop()
+
+        if sw1 != 0x90 or sw2 != 0x00:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text="Seal failed",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+        embit_network = embit_utils.get_embit_network_name(network)
+        net = networks.NETWORKS[embit_network]
+        address = script.p2pkh(ec.PublicKey(bytes(pub_comp))).address(network=net)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text=f"Slot {slot} sealed\n{address}",
+            show_back_button=False,
+        )
+
+        return Destination(BackStackView)
+
+
+class ToolsSatodimeUnsealSlotView(View):
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satodime"], require_pin=False)
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        Satochip_Connector.satodime_set_unlock_secret()
+        Satochip_Connector.satodime_set_unlock_counter()
+
+        (_, _, _, status) = Satochip_Connector.satodime_get_status()
+        max_keys = status.get("max_num_keys", 0)
+
+        available = []
+        button_data = []
+        for key_nbr in range(max_keys):
+            (_, _, _, slot_status) = Satochip_Connector.satodime_get_keyslot_status(key_nbr)
+            if slot_status.get("key_status_txt") == "Sealed":
+                available.append(key_nbr)
+                button_data.append(ButtonOption(f"Slot {key_nbr}"))
+
+        if not available:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text="No sealed slots",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Slot",
+            is_button_text_centered=False,
+            button_data=button_data,
+            show_back_button=True,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        slot = available[selected]
+
+        self.loading_screen = LoadingScreenThread(text="Unsealing Slot\n\n\n\n\n\n")
+        self.loading_screen.start()
+        (_, sw1, sw2, _, priv_list) = Satochip_Connector.satodime_unseal_key(slot)
+        self.loading_screen.stop()
+
+        if sw1 != 0x90 or sw2 != 0x00:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text="Unseal failed",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+        embit_network = embit_utils.get_embit_network_name(network)
+        net = networks.NETWORKS[embit_network]
+        # WIF is secret material shown only on this screen; never logged. priv_list
+        # is dropped as soon as the display returns below (best-effort, AGENTS security).
+        wif = ec.PrivateKey(bytes(priv_list), network=net).wif()
+        del priv_list
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Unsealed",
+            status_headline=None,
+            text=wif,
+            show_back_button=True,
+        )
+        wif = None
+
+        return Destination(BackStackView)
+
+
+class ToolsSatodimeSignTxView(View):
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        from seedsigner.models.wif import WIFKey
+        from seedsigner.views.scan_views import ScanPSBTView
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satodime"], require_pin=False)
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        Satochip_Connector.satodime_set_unlock_secret()
+        Satochip_Connector.satodime_set_unlock_counter()
+
+        (_, _, _, status) = Satochip_Connector.satodime_get_status()
+        max_keys = status.get("max_num_keys", 0)
+
+        available = []
+        button_data = []
+        for key_nbr in range(max_keys):
+            (_, _, _, slot_status) = Satochip_Connector.satodime_get_keyslot_status(key_nbr)
+            if slot_status.get("key_status_txt") == "Sealed":
+                available.append(key_nbr)
+                button_data.append(ButtonOption(f"Slot {key_nbr}"))
+
+        if not available:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text="No sealed slots",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Slot",
+            is_button_text_centered=False,
+            button_data=button_data,
+            show_back_button=True,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        slot = available[selected]
+
+        self.loading_screen = LoadingScreenThread(text="Unsealing Slot\n\n\n\n\n\n")
+        self.loading_screen.start()
+        (_, sw1, sw2, _, priv_list) = Satochip_Connector.satodime_unseal_key(slot)
+        self.loading_screen.stop()
+
+        if sw1 != 0x90 or sw2 != 0x00:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text="Unseal failed",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+        embit_network = embit_utils.get_embit_network_name(network)
+        net = networks.NETWORKS[embit_network]
+        wif = ec.PrivateKey(bytes(priv_list), network=net).wif()
+        del priv_list
+
+        # The WIF-derived key becomes the PSBT signing seed; the standard PSBT flow
+        # owns and clears controller.psbt_seed on completion / exit (AGENTS security).
+        self.controller.psbt_seed = WIFKey(wif)
+        wif = None
+
+        return Destination(ScanPSBTView)
+
+
+class ToolsSatodimeTransferOwnershipView(View):
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satodime"], require_pin=False)
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        Satochip_Connector.satodime_set_unlock_secret()
+        Satochip_Connector.satodime_set_unlock_counter()
+
+        self.loading_screen = LoadingScreenThread(text="Sending Command\n\n\n\n\n\n")
+        self.loading_screen.start()
+        (_, sw1, sw2) = Satochip_Connector.satodime_initiate_ownership_transfer()
+        self.loading_screen.stop()
+
+        if sw1 == 0x90 and sw2 == 0x00:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text="Ownership transfer started",
+                show_back_button=False,
+            )
+        else:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text="Ownership transfer failed",
+                show_back_button=True,
+            )
+
+        return Destination(BackStackView)
 
 
 class ToolsSpecterDIYView(View):

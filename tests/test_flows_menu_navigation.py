@@ -658,17 +658,59 @@ class TestMenuNavigationFlows(FlowTest):
     #  SMARTCARD SUB-MENU
     # ======================================================================
 
-    def test_smartcard_common(self):
-        """Tools → Smartcard → Common → BACK."""
+    def test_smartcard_satodime(self):
+        """Tools → Smartcard → Satodime → BACK."""
         from seedsigner.views.smartcard_views import (
-            ToolsSmartcardMenuView, ToolsCommonView,
+            ToolsSmartcardMenuView, ToolsSatodimeView,
         )
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
             FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.SMARTCARD),
-            FlowStep(ToolsSmartcardMenuView, button_data_selection=ToolsSmartcardMenuView.COMMON),
-            FlowStep(ToolsCommonView, screen_return_value=RET_CODE__BACK_BUTTON),
+            FlowStep(ToolsSmartcardMenuView, button_data_selection=ToolsSmartcardMenuView.SATODIME),
+            FlowStep(ToolsSatodimeView, screen_return_value=RET_CODE__BACK_BUTTON),
             FlowStep(ToolsSmartcardMenuView),
+        ])
+
+    def test_smartcard_satodime_card_settings(self):
+        """Tools → Smartcard → Satodime → Card Settings → BACK."""
+        from seedsigner.views.smartcard_views import (
+            ToolsSmartcardMenuView, ToolsSatodimeView, ToolsSatodimeCardSettingsView,
+        )
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.SMARTCARD),
+            FlowStep(ToolsSmartcardMenuView, button_data_selection=ToolsSmartcardMenuView.SATODIME),
+            FlowStep(ToolsSatodimeView, button_data_selection=ToolsSatodimeView.CARD_SETTINGS),
+            FlowStep(ToolsSatodimeCardSettingsView, screen_return_value=RET_CODE__BACK_BUTTON),
+            FlowStep(ToolsSatodimeView),
+        ])
+
+    def test_smartcard_satochip_card_settings(self):
+        """Tools → Smartcard → Satochip → Card Settings → BACK."""
+        from seedsigner.views.smartcard_views import (
+            ToolsSmartcardMenuView, ToolsSatochipView, ToolsSatochipCardSettingsView,
+        )
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.SMARTCARD),
+            FlowStep(ToolsSmartcardMenuView, button_data_selection=ToolsSmartcardMenuView.SATOCHIP),
+            FlowStep(ToolsSatochipView, button_data_selection=ToolsSatochipView.CARD_SETTINGS),
+            FlowStep(ToolsSatochipCardSettingsView, screen_return_value=RET_CODE__BACK_BUTTON),
+            FlowStep(ToolsSatochipView),
+        ])
+
+    def test_smartcard_seedkeeper_card_settings(self):
+        """Tools → Smartcard → SeedKeeper → Card Settings → BACK."""
+        from seedsigner.views.smartcard_views import (
+            ToolsSmartcardMenuView, ToolsSeedkeeperView, ToolsSeedkeeperCardSettingsView,
+        )
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.SMARTCARD),
+            FlowStep(ToolsSmartcardMenuView, button_data_selection=ToolsSmartcardMenuView.SEEDKEEPER),
+            FlowStep(ToolsSeedkeeperView, button_data_selection=ToolsSeedkeeperView.CARD_SETTINGS),
+            FlowStep(ToolsSeedkeeperCardSettingsView, screen_return_value=RET_CODE__BACK_BUTTON),
+            FlowStep(ToolsSeedkeeperView),
         ])
 
     def test_smartcard_seedkeeper(self):

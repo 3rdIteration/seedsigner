@@ -128,6 +128,40 @@ def simulated_satochip(monkeypatch, applet: str = "satochip", setup_pin: str = "
             yield connector
 
 
+@contextmanager
+def simulated_satodime(monkeypatch):
+    """
+    Put a *real* Satodime applet behind `init_satochip`, running in jcardsim.
+
+    Unlike Satochip, Satodime needs no ``card_setup`` / PIN enrolment to answer status and
+    keyslot queries (it keys access off an ownership/unlock secret instead), so this fixture
+    stops at connector construction. Skips via JCardSimUnavailable when Java or the applet
+    sources are absent.
+    """
+    import sys
+    from unittest.mock import MagicMock as _MagicMock
+
+    for name in [m for m in sys.modules if m == "pysatochip" or m.startswith("pysatochip.")]:
+        if isinstance(sys.modules[name], _MagicMock):
+            del sys.modules[name]
+
+    from jcardsim import open_card
+    from jcardsim.pcsc_shim import patched_pcsc
+
+    from seedsigner.helpers import seedkeeper_utils
+
+    with open_card("satodime") as card:
+        card.select()
+        with patched_pcsc(card):
+            from pysatochip.CardConnector import CardConnector
+
+            connector = CardConnector(card_filter=["satodime"])
+            monkeypatch.setattr(
+                seedkeeper_utils, "init_satochip", lambda *a, **kw: connector
+            )
+            yield connector
+
+
 
 class FakePyGP:
     """

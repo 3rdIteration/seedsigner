@@ -275,7 +275,6 @@ class MainMenuView(View):
                     logger.debug("boot-counter clear skipped", exc_info=True)
 
         controller.storage.discard_pending_slip39_shares()
-        controller.tools_common_card_filter = None
         controller.psbt_from_microsd = False
         controller.psbt_microsd_save_path = None
         controller.psbt_microsd_seed_warning_shown = False
