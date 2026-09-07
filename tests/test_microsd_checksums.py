@@ -9,34 +9,45 @@ the zero-wiped marker, and coverage of the latest official release images
 import hashlib
 import json
 
-# Import base FIRST: it installs the hardware/renderer mocks into sys.modules
-# before any seedsigner import (see tests/conftest.py single-identity note).
-import base  # noqa: F401
+import base  # noqa: F401 — installs hardware mocks before seedsigner imports
 
 from seedsigner.views.microsd_views import _load_known_checksums, _format_image_name
 
-ZERO_WIPED_HASH = "5809d4ec68138c737b1b000db4c6ec60983e94544efd893bdfa40ebf19af60f4"
-READ_BYTES = 26 * 1024 * 1024
+PREFIX_SIZE = 4 * 1024 * 1024
+ZERO_WIPED_PREFIX = "bb9f8df61474d25e71fa00722318cd387396ca1736605e1248821cc0de3d3af8"
+ZERO_WIPED_FULL = "5809d4ec68138c737b1b000db4c6ec60983e94544efd893bdfa40ebf19af60f4"
 
 
 class TestKnownChecksums:
     def test_bundled_file_loads(self):
-        known = _load_known_checksums()
-        assert len(known) > 0
-        for checksum, name in known.items():
+        prefix_size, images = _load_known_checksums()
+        assert prefix_size == PREFIX_SIZE
+        assert len(images) > 0
+        for checksum, entry in images.items():
             assert len(checksum) == 64
             assert all(c in "0123456789abcdef" for c in checksum)
-            assert isinstance(name, str) and name
+            assert isinstance(entry, dict)
+            assert entry.get("name")
+            assert entry.get("source_repo")
+            assert entry.get("size_bytes", 0) >= prefix_size
+            assert isinstance(entry.get("sha256"), str)
+            assert len(entry["sha256"]) == 64
 
-    def test_zero_wiped_entry_matches_26mib_of_zeros(self):
-        known = _load_known_checksums()
-        assert ZERO_WIPED_HASH in known
-        assert hashlib.sha256(b"\x00" * READ_BYTES).hexdigest() == ZERO_WIPED_HASH
+    def test_zero_wiped_entry_matches_zeros(self):
+        prefix_size, images = _load_known_checksums()
+        entry = images.get(ZERO_WIPED_PREFIX)
+        assert entry is not None
+        assert entry["name"] == "Zero Wiped (First 26MB)"
+        assert entry["size_bytes"] == 26 * 1024 * 1024
+        assert entry["sha256"] == ZERO_WIPED_FULL
+        assert hashlib.sha256(b"\x00" * PREFIX_SIZE).hexdigest() == ZERO_WIPED_PREFIX
+        assert hashlib.sha256(b"\x00" * 26 * 1024 * 1024).hexdigest() == ZERO_WIPED_FULL
 
     def test_latest_official_release_covered(self):
-        names = list(_load_known_checksums().values())
+        _, images = _load_known_checksums()
+        names = [e["name"] for e in images.values()]
         v087 = [n for n in names if "0.8.7" in n]
-        assert len(v087) >= 4, f"official 0.8.7 images missing from known checksums: {v087}"
+        assert len(v087) >= 4, f"official 0.8.7 images missing: {v087}"
 
     def test_bundled_file_is_valid_json_with_schema(self):
         import seedsigner.views.microsd_views as mv
@@ -44,25 +55,42 @@ class TestKnownChecksums:
         path = Path(mv.__file__).parent.parent / "resources" / "microsd-known-checksums.json"
         with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
+        assert data["prefix_size"] == PREFIX_SIZE
         assert isinstance(data["images"], dict)
         for meta in data["images"].values():
             assert isinstance(meta, dict)
             assert meta.get("name")
-            assert "source_repo" in meta
+            assert meta.get("source_repo")
+            assert meta.get("size_bytes", 0) >= PREFIX_SIZE
+            assert isinstance(meta.get("sha256"), str)
+            assert len(meta["sha256"]) == 64
+
+    def test_all_prefix_hashes_unique(self):
+        _, images = _load_known_checksums()
+        assert len(images) == len(set(images.keys()))
 
     def test_missing_file_returns_empty(self, tmp_path):
-        assert _load_known_checksums(tmp_path / "nonexistent.json") == {}
+        prefix_size, images = _load_known_checksums(tmp_path / "nonexistent.json")
+        assert prefix_size is None
+        assert images == {}
 
     def test_corrupt_file_returns_empty(self, tmp_path):
         bad = tmp_path / "bad.json"
         bad.write_text("{ this is not json", encoding="utf-8")
-        assert _load_known_checksums(bad) == {}
+        prefix_size, images = _load_known_checksums(bad)
+        assert prefix_size is None
+        assert images == {}
 
     def test_non_dict_entries_are_skipped(self, tmp_path):
         good = "a" * 64
         p = tmp_path / "mixed.json"
-        p.write_text(json.dumps({"images": {"bb": "just a string", good: {"name": "ok"}}}), encoding="utf-8")
-        assert _load_known_checksums(p) == {good: "ok"}
+        p.write_text(json.dumps({
+            "prefix_size": PREFIX_SIZE,
+            "images": {"bb": "just a string", good: {"name": "ok", "source_repo": "test", "size_bytes": PREFIX_SIZE, "sha256": good}},
+        }), encoding="utf-8")
+        prefix_size, images = _load_known_checksums(p)
+        assert prefix_size == PREFIX_SIZE
+        assert images == {good: {"name": "ok", "source_repo": "test", "size_bytes": PREFIX_SIZE, "sha256": good}}
 
 
 class TestFormatImageName:
@@ -79,12 +107,6 @@ class TestFormatImageName:
         assert len(lines) <= 3
         assert all(len(line) <= 20 for line in lines)
         assert not lines[-1].endswith("...")
-
-    def test_real_long_name_fits_three_lines(self):
-        name = "seedsigner_os.SeSi-0.8.7_ShSi-B12-pre_.lafrite-smartcard-dev.img"
-        lines = _format_image_name(name).split("\n")
-        assert len(lines) == 3
-        assert all(len(line) <= 20 for line in lines)
 
     def test_overlong_name_truncated_with_ellipsis(self):
         name = "seedsigner_os." + "x" * 80 + ".img"

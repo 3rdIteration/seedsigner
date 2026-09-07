@@ -1,16 +1,25 @@
 name: Update MicroSD known checksums
 
 # Refreshes src/seedsigner/resources/microsd-known-checksums.json, which the
-# "Verify MicroSD" tool uses to recognize freshly-flashed SeedSigner OS cards.
-# The device hashes only the first 26 MiB of the raw card, so each entry is
-# sha256(first 26 MiB of the release image, zero-padded to 26 MiB) -- not the
-# full-file hash from the release's .sha256.txt. New images are fetched with a
-# single HTTP Range request each; already-recorded assets are never re-fetched.
+# "Verify MicroSD" tool uses to recognize freshly-flashed cards.
+#
+# The device uses a two-pass approach:
+#   Pass 1 — read the first ``prefix_size`` bytes (4 MiB) from the raw card,
+#            compute sha256, and look up the matching entry.
+#   Pass 2 — read the full image at its exact published size from the card,
+#            compute sha256, and compare against the entry's ``sha256`` field.
+#            A prefix match with a full-hash mismatch is reported as possible
+#            tampering — catching malicious bytes beyond the prefix.
+#
+# Each entry is keyed by the 4 MiB prefix hash and stores the full-file sha256.
+# For official SeedSigner/seedsigner releases that ship a GPG-signed
+# sha256.txt, the updater verifies the signature before trusting the published
+# hash.  Fork builds that lack a sha256.txt are hashed directly.
 #
 # The data is advisory: it labels a checksum match on a verification screen and
 # never gates a signing decision, so a missing or stale entry only means "card
-# not recognized". That is why sourcing digests from GitHub releases in CI is
-# acceptable here -- and why this opens a PR rather than pushing directly, so
+# not recognized".  That is why sourcing digests from GitHub releases in CI is
+# acceptable here — and why this opens a PR rather than pushing directly, so
 # new entries are still reviewed like any other change.
 
 on:
@@ -48,10 +57,13 @@ jobs:
           body: |
             Automated refresh of `src/seedsigner/resources/microsd-known-checksums.json`.
 
-            Each new entry is `sha256(first 26 MiB of the release image, zero-padded to
-            26 MiB)` -- exactly what the device's "Verify MicroSD" tool reads back with
-            `dd bs=1M count=26`, not the full-file hash from the release `.sha256.txt`.
+            Each entry is keyed by the sha256 of the first 4 MiB of the release
+            image (two-pass prefix lookup) and records the full-file sha256 +
+            exact size.  Official SeedSigner/seedsigner releases are GPG-verified
+            against the bundled Seedsigner_pubkey.asc before their published
+            hashes are trusted.
 
-            The data is advisory: it labels a checksum match on a verification screen
-            and never gates a signing decision, so this is safe to merge or ignore.
+            The data is advisory: it labels a checksum match on a verification
+            screen and never gates a signing decision, so this is safe to merge
+            or ignore.
           delete-branch: true

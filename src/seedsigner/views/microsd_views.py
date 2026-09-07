@@ -31,10 +31,10 @@ def find_sd_card_device():
 
 def _load_known_checksums(path=None):
     """
-    Return {sha256_hex: image_name} from resources/microsd-known-checksums.json.
+    Return (prefix_size, {prefix_hash: entry}) from microsd-known-checksums.json.
 
     The json is refreshed by .github/workflows/update-microsd-checksums.yml.
-    Deliberately forgiving: a missing or corrupt file yields an empty dict, so
+    Deliberately forgiving: a missing or corrupt file yields (None, {}), so
     verification still runs and simply reports every card as an unfamiliar
     checksum instead of crashing.
     """
@@ -46,14 +46,16 @@ def _load_known_checksums(path=None):
             path = Path(__file__).parent.parent.resolve() / "resources" / "microsd-known-checksums.json"
         with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
-        return {
-            checksum.lower(): meta.get("name", checksum)
+        prefix_size = int(data["prefix_size"])
+        images = {
+            checksum.lower(): meta
             for checksum, meta in data["images"].items()
             if isinstance(checksum, str) and isinstance(meta, dict)
         }
+        return prefix_size, images
     except Exception as e:
         logger.info(f"microsd-known-checksums.json unavailable ({e}); no known images")
-        return {}
+        return None, {}
 
 
 def _format_image_name(name):
@@ -268,47 +270,111 @@ class ToolsMicroSDVerifyWarningView(View):
 
 class ToolsMicroSDVerifyView(View):
     def run(self):
-        from subprocess import run
+        import hashlib
 
         self.loading_screen = LoadingScreenThread(text="Reading MicroSD\n\n\n\n\n\n")
         self.loading_screen.start()
 
         microsd_dev = find_sd_card_device()
+        prefix_size, images = _load_known_checksums()
 
-        dd_cmd = ["dd", f"if={microsd_dev}", "of=/tmp/img.img", "bs=1M", "count=26"]
-        if platform.uname()[1] != "seedsigner-os":
-            dd_cmd = ["sudo"] + dd_cmd
-        run(dd_cmd, check=False)
-
-        data = run(["sha256sum", "/tmp/img.img"], capture_output=True, text=True)
-        logger.info(data)
-
-        self.loading_screen.stop()
-
-        checksum = data.stdout[:64]
-
-        try:
-            image_name = _load_known_checksums()[checksum]
-            self.run_screen(
-                LargeIconStatusScreen,
-                title="Success",
-                status_headline="Matched Checksum",
-                text=_format_image_name(image_name),
-                show_back_button=False,
-                button_data=[ButtonOption("Continue")]
-            )
-
-        except KeyError:
-            formatted_checksum = data.stdout[:16] + "\n" + data.stdout[16:32] + "\n" + data.stdout[32:48] + "\n" + data.stdout[48:64]
-
+        if microsd_dev is None or prefix_size is None or not images:
+            self.loading_screen.stop()
             self.run_screen(
                 WarningScreen,
-                title="Unfamiliar Checksum",
+                title="Unavailable",
                 status_headline=None,
-                text=formatted_checksum,
+                text="Unable to verify.\nNo known images or\nno MicroSD found.",
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")]
             )
+            return Destination(MainMenuView)
+
+        try:
+            f = open(microsd_dev, "rb")
+        except OSError as e:
+            self.loading_screen.stop()
+            logger.info(f"Unable to open MicroSD device {microsd_dev}: {e}")
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Unable to open\nMicroSD device.",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")]
+            )
+            return Destination(MainMenuView)
+
+        try:
+            # Pass 1: hash the prefix (prefix_size bytes) and look it up.
+            prefix_data = f.read(prefix_size)
+            prefix_hash = hashlib.sha256(prefix_data).hexdigest()
+            entry = images.get(prefix_hash)
+
+            if entry is None:
+                # Prefix matched nothing in the known set.
+                formatted_checksum = (prefix_hash[:16] + "\n" + prefix_hash[16:32] + "\n" +
+                                      prefix_hash[32:48] + "\n" + prefix_hash[48:64])
+
+                self.loading_screen.stop()
+                self.run_screen(
+                    WarningScreen,
+                    title="Unfamiliar Checksum",
+                    status_headline=None,
+                    text=formatted_checksum,
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")]
+                )
+                return Destination(MainMenuView)
+
+            # Pass 2: hash the full image at its exact published size.
+            h = hashlib.sha256(prefix_data)
+            remaining = int(entry["size_bytes"]) - len(prefix_data)
+            while remaining > 0:
+                chunk = f.read(min(1 << 20, remaining))
+                if not chunk:
+                    break
+                h.update(chunk)
+                remaining -= len(chunk)
+            full_hash = h.hexdigest()
+
+            self.loading_screen.stop()
+
+            if full_hash == entry["sha256"]:
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Success",
+                    status_headline="Matched Checksum",
+                    text=_format_image_name(entry["name"]),
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")]
+                )
+            else:
+                # Prefix matched but full content differs: possible
+                # corruption or tampering (e.g. malicious bytes beyond the
+                # prefix or a partially-written card).
+                self.run_screen(
+                    WarningScreen,
+                    title="Content Mismatch",
+                    status_headline=None,
+                    text="Known image ID,\nbut content differs.\n\n" + _format_image_name(entry["name"]),
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")]
+                )
+
+        except OSError as e:
+            self.loading_screen.stop()
+            logger.info(f"Error reading MicroSD device {microsd_dev}: {e}")
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Error reading\nMicroSD device.",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")]
+            )
+        finally:
+            f.close()
 
         return Destination(MainMenuView)
 
