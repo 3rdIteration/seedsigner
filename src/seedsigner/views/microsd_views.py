@@ -29,14 +29,29 @@ def find_sd_card_device():
     return None
 
 
+def _zero_volatile_in_place(buf, offsets, buf_start=0):
+    """Zero bytes at absolute ``offsets`` within ``buf`` (a mutable bytearray).
+
+    ``buf_start`` is the absolute position in the source where ``buf`` begins,
+    so that offsets can be mapped to local indices.
+    """
+    base = buf_start
+    for off in offsets:
+        idx = off - base
+        if 0 <= idx < len(buf):
+            buf[idx] = 0
+
+
 def _load_known_checksums(path=None):
     """
-    Return (prefix_size, {prefix_hash: entry}) from microsd-known-checksums.json.
+    Return (prefix_size, pristine_map, alt_map) from the checksums JSON.
 
-    The json is refreshed by .github/workflows/update-microsd-checksums.yml.
-    Deliberately forgiving: a missing or corrupt file yields (None, {}), so
-    verification still runs and simply reports every card as an unfamiliar
-    checksum instead of crashing.
+    ``pristine_map`` maps unaltered prefix hashes to their entry dicts.
+    ``alt_map`` maps dirty-state (zeroed-volatiles) prefix hashes to the same
+    entry dicts.
+
+    Deliberately forgiving: a missing or corrupt file yields (None, {}, {}),
+    so verification still runs and simply reports every card as unfamiliar.
     """
     import json
     from pathlib import Path
@@ -47,15 +62,17 @@ def _load_known_checksums(path=None):
         with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
         prefix_size = int(data["prefix_size"])
-        images = {
-            checksum.lower(): meta
-            for checksum, meta in data["images"].items()
-            if isinstance(checksum, str) and isinstance(meta, dict)
-        }
-        return prefix_size, images
+        pristine_map = {}
+        alt_map = {}
+        for checksum, meta in data["images"].items():
+            if isinstance(checksum, str) and isinstance(meta, dict):
+                pristine_map[checksum.lower()] = meta
+                for alt in meta.get("alt_prefix_hashes", []):
+                    alt_map[alt.lower()] = meta
+        return prefix_size, pristine_map, alt_map
     except Exception as e:
         logger.info(f"microsd-known-checksums.json unavailable ({e}); no known images")
-        return None, {}
+        return None, {}, {}
 
 
 def _format_image_name(name):
@@ -276,9 +293,9 @@ class ToolsMicroSDVerifyView(View):
         self.loading_screen.start()
 
         microsd_dev = find_sd_card_device()
-        prefix_size, images = _load_known_checksums()
+        prefix_size, pristine_map, alt_map = _load_known_checksums()
 
-        if microsd_dev is None or prefix_size is None or not images:
+        if microsd_dev is None or prefix_size is None or (not pristine_map and not alt_map):
             self.loading_screen.stop()
             self.run_screen(
                 WarningScreen,
@@ -306,61 +323,97 @@ class ToolsMicroSDVerifyView(View):
             return Destination(MainMenuView)
 
         try:
-            # Pass 1: hash the prefix (prefix_size bytes) and look it up.
-            prefix_data = f.read(prefix_size)
+            # Read prefix data once
+            prefix_data = bytearray(f.read(prefix_size))
+
+            # Pass 1a: pristine hash (raw)
             prefix_hash = hashlib.sha256(prefix_data).hexdigest()
-            entry = images.get(prefix_hash)
+            entry = pristine_map.get(prefix_hash)
 
+            is_dirty = False
             if entry is None:
-                # Prefix matched nothing in the known set.
-                formatted_checksum = (prefix_hash[:16] + "\n" + prefix_hash[16:32] + "\n" +
-                                      prefix_hash[32:48] + "\n" + prefix_hash[48:64])
+                # Pass 1b: try dirty hash (zero fat volatile offsets)
+                volatile_offsets = None
+                # We don't know which entry yet — try each alt_map key
+                # against a zeroed version of the prefix data.
+                # Avoid zeroing many times: zero once, hash once, then
+                # look up in alt_map.
+                for candidate_hash, candidate_entry in alt_map.items():
+                    # Only try the zeroed version once — we pick the
+                    # first alt_map entry as the canonical zeroed hash.
+                    volatile_offsets = candidate_entry.get("volatile_offsets", [])
+                    break
 
+                if volatile_offsets:
+                    probe = bytearray(prefix_data)
+                    _zero_volatile_in_place(probe, volatile_offsets)
+                    dirty_hash = hashlib.sha256(probe).hexdigest()
+                    entry = alt_map.get(dirty_hash)
+                    if entry is not None:
+                        is_dirty = True
+
+            if entry is not None:
+                # Pass 2: hash full image with volatile bytes zeroed
+                volatile_offsets = entry.get("volatile_offsets", [])
+
+                # Start with the prefix portion (zeroed)
+                buf = bytearray(prefix_data)
+                _zero_volatile_in_place(buf, volatile_offsets, 0)
+                h = hashlib.sha256(buf)
+
+                # Stream the remainder from the card
+                pos = len(prefix_data)
+                remaining = int(entry["size_bytes"]) - pos
+                while remaining > 0:
+                    chunk = bytearray(f.read(min(1 << 20, remaining)))
+                    if not chunk:
+                        break
+                    _zero_volatile_in_place(chunk, volatile_offsets, pos)
+                    h.update(chunk)
+                    pos += len(chunk)
+                    remaining -= len(chunk)
+
+                full_hash = h.hexdigest()
                 self.loading_screen.stop()
-                self.run_screen(
-                    WarningScreen,
-                    title="Unfamiliar Checksum",
-                    status_headline=None,
-                    text=formatted_checksum,
-                    show_back_button=False,
-                    button_data=[ButtonOption("Continue")]
-                )
+
+                if full_hash == entry["sha256"]:
+                    screen_text = _format_image_name(entry["name"])
+                    if is_dirty:
+                        status_headline = "Matched Checksum\n(Card Was Mounted)"
+                    else:
+                        status_headline = "Matched Checksum"
+                    self.run_screen(
+                        LargeIconStatusScreen,
+                        title="Success",
+                        status_headline=status_headline,
+                        text=screen_text,
+                        show_back_button=False,
+                        button_data=[ButtonOption("Continue")]
+                    )
+                else:
+                    self.run_screen(
+                        WarningScreen,
+                        title="Content Mismatch",
+                        status_headline=None,
+                        text="Known image ID,\nbut content differs.\n\n" + _format_image_name(entry["name"]),
+                        show_back_button=False,
+                        button_data=[ButtonOption("Continue")]
+                    )
+
                 return Destination(MainMenuView)
 
-            # Pass 2: hash the full image at its exact published size.
-            h = hashlib.sha256(prefix_data)
-            remaining = int(entry["size_bytes"]) - len(prefix_data)
-            while remaining > 0:
-                chunk = f.read(min(1 << 20, remaining))
-                if not chunk:
-                    break
-                h.update(chunk)
-                remaining -= len(chunk)
-            full_hash = h.hexdigest()
-
+            # No prefix matched at all
+            formatted_checksum = (prefix_hash[:16] + "\n" + prefix_hash[16:32] + "\n" +
+                                  prefix_hash[32:48] + "\n" + prefix_hash[48:64])
             self.loading_screen.stop()
-
-            if full_hash == entry["sha256"]:
-                self.run_screen(
-                    LargeIconStatusScreen,
-                    title="Success",
-                    status_headline="Matched Checksum",
-                    text=_format_image_name(entry["name"]),
-                    show_back_button=False,
-                    button_data=[ButtonOption("Continue")]
-                )
-            else:
-                # Prefix matched but full content differs: possible
-                # corruption or tampering (e.g. malicious bytes beyond the
-                # prefix or a partially-written card).
-                self.run_screen(
-                    WarningScreen,
-                    title="Content Mismatch",
-                    status_headline=None,
-                    text="Known image ID,\nbut content differs.\n\n" + _format_image_name(entry["name"]),
-                    show_back_button=False,
-                    button_data=[ButtonOption("Continue")]
-                )
+            self.run_screen(
+                WarningScreen,
+                title="Unfamiliar Checksum",
+                status_headline=None,
+                text=formatted_checksum,
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")]
+            )
 
         except OSError as e:
             self.loading_screen.stop()

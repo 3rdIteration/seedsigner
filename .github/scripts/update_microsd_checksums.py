@@ -3,39 +3,47 @@
 Refresh src/seedsigner/resources/microsd-known-checksums.json.
 
 The device's "Verify MicroSD" tool uses a two-pass approach:
-  Pass 1 — read the first ``prefix_size`` bytes (4 MiB) from the raw card,
-            compute sha256, and look up the matching entry by prefix hash.
-  Pass 2 — read the full image at its exact published size (``size_bytes``)
-            from the card, compute sha256, and compare against the entry's
-            ``sha256`` field.  A prefix match with a full-hash mismatch is
-            reported as possible tampering.
 
-This script walks the release assets of the repos below, records the 4 MiB
-prefix hash and the full-file sha256 + size for each image, and optionally
-GPG-verifies the release's sha256.txt against the bundled SeedSigner signing
-key (``gpg_keys/Seedsigner_pubkey.asc``) before trusting the published hash.
+  Pass 1a — read the first ``prefix_size`` bytes (4 MiB) from the raw card,
+             compute sha256, and look up by pristine hash.
+  Pass 1b — if no match, zero the volatile bytes (dirty bit + FSINFO fields
+             from the card's MBR-identified FAT partition) within the prefix
+             buffer and re-hash — look up by ``alt_prefix_hashes`` in the entry.
+             The UI distinguishes "Matched Checksum" clean vs dirty.
+  Pass 2 —  read the full image at its exact published size from the card,
+             zeroing the same volatile offsets throughout, compute sha256, and
+             compare against the entry's ``sha256`` field.  A prefix match with
+             a full-hash mismatch is reported as possible tampering.
 
-Schema (``prefix_size`` is a top-level field so other projects can adopt the
-same format with a different prefix):
+The JSON stores the **zeroed** full-file sha256 (the same hash the device
+computes after zeroing volatile bytes during pass 2).  Official SeedSigner
+releases that ship a GPG-signed sha256.txt are verified against the bundled
+Seedsigner_pubkey.asc as a cross-check before hashing.
+
+Volatile offsets (FAT dirty bit at ``0x41`` and FSINFO at ``512+0x1E8..0x1EF``)
+are determined from the image's MBR partition table.  Entries without a valid
+MBR (e.g. zero-wiped marker) have an empty list.
+
+Schema::
 
   {
     "prefix_size": 4194304,
     "updated": "2026-09-07",
     "images": {
-      "<sha256_of_first_4mib>": {
+      "<pristine_prefix_hash>": {
         "name": "seedsigner_os.0.8.7.pi0.img",
         "source_repo": "SeedSigner/seedsigner",
         "tag": "0.8.7",
         "size_bytes": 52428800,
-        "sha256": "<full-file sha256>"
+        "sha256": "<full-file sha256 (with volatile bytes zeroed)>",
+        "volatile_offsets": [4194817, 4195328, 4195329, 4195330, 4195331, 4195332, 4195333, 4195334, 4195335],
+        "alt_prefix_hashes": ["<zeroed_prefix_hash>"]
       }
     }
   }
 
-Existing entries are never re-downloaded: assets are tracked by
-repo+tag+asset name.  Manual entries (e.g. the zero-wiped-card marker) are
-always preserved.  A collision check asserts that every prefix hash is unique
-across all entries.
+Existing entries are preserved by (repo, tag, name); new ones are appended.
+A collision check ensures all hashes (pristine + alt) are unique.
 
 Run manually with ``python .github/scripts/update_microsd_checksums.py``, or
 let .github/workflows/update-microsd-checksums.yml run it on a schedule and
@@ -48,6 +56,7 @@ import json
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -56,27 +65,20 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 REPOS = [
-    "SeedSigner/seedsigner",        # official images: seedsigner_os.X.Y.Z.<platform>.img
-    "3rdIteration/seedsigner",      # fork builds: smartcard variants etc.
+    "SeedSigner/seedsigner",
+    "3rdIteration/seedsigner",
     "3rdIteration/seedsigner-os",
 ]
 ASSET_PATTERN = re.compile(r"^seedsigner_os\..*\.img$")
 SHA256_PATTERN = re.compile(r"^seedsigner\..*sha256")
 SIG_PATTERN = re.compile(r"^seedsigner\..*sha256.*\.sig$")
 
-# How many bytes the device reads for the initial prefix lookup.
 PREFIX_SIZE = 4 * 1024 * 1024  # 4 MiB
-
-# Smaller assets are not plausible OS images; treat as a bad upload.
 MIN_ASSET_BYTES = 4 * 1024 * 1024
 
-# Path to the bundled SeedSigner GPG signing key, relative to the repo root.
 PUBKEY_PATH = Path(__file__).resolve().parents[2] / "gpg_keys" / "Seedsigner_pubkey.asc"
-
-DEFAULT_OUT = (
-    Path(__file__).resolve().parents[2]
-    / "src" / "seedsigner" / "resources" / "microsd-known-checksums.json"
-)
+DEFAULT_OUT = (Path(__file__).resolve().parents[2] /
+               "src" / "seedsigner" / "resources" / "microsd-known-checksums.json")
 
 
 def _open(url, byte_range=None):
@@ -93,7 +95,6 @@ def _open(url, byte_range=None):
 
 
 def iter_releases(repos):
-    """Yield (repo, release_dict) for every release with at least one .img asset."""
     for repo in repos:
         page = 1
         while True:
@@ -108,29 +109,87 @@ def iter_releases(repos):
             page += 1
 
 
-def sha256_prefix(url):
-    """Range-request first PREFIX_SIZE bytes, returns hex digest."""
-    with _open(url, byte_range=f"bytes=0-{PREFIX_SIZE - 1}") as r:
-        data = r.read(PREFIX_SIZE)
-    return hashlib.sha256(data).hexdigest()
+# ─── MBR / volatile-offset helpers ───────────────────────────────────────
+
+FAT_TYPES = {0x0b, 0x0c, 0x0e}
+# FAT32 FSINFO offsets (within the first sector of the FSINFO block, which
+# is at partition LBA + 512).  Only applicable for FAT32 (type 0x0b/0x0c).
+# Non-FAT32 FAT (type 0x0e) lacks an FSINFO sector.
+FSINFO_BASE = 512          # FSINFO sector = partition LBA * 512 + 512
+FSINFO_DIRTY = 0x41         # dirty flag is at partition LBA * 512 + 0x41
+FSINFO_FREE_CLUSTERS = 0x1E8  # 4 bytes
+FSINFO_NEXT_FREE = 0x1EC      # 4 bytes
 
 
-def sha256_file(url):
-    """Full streaming download, returns (hex_digest, size_bytes)."""
+def compute_volatile_offsets(first_512):
+    """Return a sorted list of absolute byte offsets for volatile FAT fields.
+
+    Parses the MBR (first 512 bytes of a raw image) for partition entries of
+    FAT type (0x0b, 0x0c, 0x0e).  For each such partition adds:
+      - the dirty flag at ``partition_lba * 512 + 0x41`` (1 byte)
+      - four FSINFO bytes at ``partition_lba * 512 + 512 + 0x1E8`` (FAT32 only)
+      - four FSINFO bytes at ``partition_lba * 512 + 512 + 0x1EC`` (FAT32 only)
+
+    Returns ``[]`` for zeroed or GPT-only images.
+    """
+    offsets = set()
+    mbr_partitions = first_512[446:510]  # 0x1BE-0x1FD
+    for i in range(4):
+        ent = mbr_partitions[i * 16:(i + 1) * 16]
+        if len(ent) < 16:
+            break
+        ptype = ent[4]
+        if ptype not in FAT_TYPES:
+            continue
+        lba = struct.unpack_from("<I", ent, 8)[0]
+        if lba == 0:
+            continue
+        base = lba * 512
+        offsets.add(base + FSINFO_DIRTY)
+        if ptype in (0x0b, 0x0c):  # FAT32 has FSINFO sector
+            offsets.add(base + FSINFO_BASE + FSINFO_FREE_CLUSTERS + 0)
+            offsets.add(base + FSINFO_BASE + FSINFO_FREE_CLUSTERS + 1)
+            offsets.add(base + FSINFO_BASE + FSINFO_FREE_CLUSTERS + 2)
+            offsets.add(base + FSINFO_BASE + FSINFO_FREE_CLUSTERS + 3)
+            offsets.add(base + FSINFO_BASE + FSINFO_NEXT_FREE + 0)
+            offsets.add(base + FSINFO_BASE + FSINFO_NEXT_FREE + 1)
+            offsets.add(base + FSINFO_BASE + FSINFO_NEXT_FREE + 2)
+            offsets.add(base + FSINFO_BASE + FSINFO_NEXT_FREE + 3)
+    return sorted(offsets)
+
+
+def zero_in_place(data, offsets, offset_base=0):
+    """Zero the bytes at ``offsets`` (absolute) within ``data`` (bytes or bytearray).
+
+    Only applies offsets that fall within the data's range.
+    """
+    for off in offsets:
+        local = off - offset_base
+        if 0 <= local < len(data):
+            data[local] = 0
+
+
+# ─── Hashing helpers ─────────────────────────────────────────────────────
+
+def sha256_prefix_full(url):
+    """Download the full asset content (streaming), return (raw_bytes,
+    hex_digest_of_full)."""
     with _open(url) as r:
-        h = hashlib.sha256()
-        size = 0
-        while True:
-            chunk = r.read(1 << 20)
-            if not chunk:
-                break
-            h.update(chunk)
-            size += len(chunk)
-    return h.hexdigest(), size
+        data = r.read()
+    return data, hashlib.sha256(data).hexdigest()
+
+
+def sha256_with_zerofile(data, offsets):
+    """Return sha256 hex of ``data`` with bytes at ``offsets`` zeroed.
+
+    Operates on a mutable copy; ``data`` is bytes, ``offsets`` are absolute.
+    """
+    buf = bytearray(data)
+    zero_in_place(buf, offsets)
+    return hashlib.sha256(buf).hexdigest()
 
 
 def parse_sha256_txt(content):
-    """Return {filename: hex_digest} from the release's sha256.txt content."""
     result = {}
     for line in content.splitlines():
         line = line.strip()
@@ -143,85 +202,82 @@ def parse_sha256_txt(content):
 
 
 def gpg_verify(sha256_content, sig_content):
-    """Verify sig_content against sha256_content using the bundled SeedSigner key.
-
-    Returns True on success.  Raises RuntimeError if gpg is unavailable,
-    the key cannot be imported, or verification fails.
-    """
     if not shutil.which("gpg"):
         raise RuntimeError("gpg not found on this system; cannot verify signature")
-
     if not PUBKEY_PATH.exists():
         raise RuntimeError(f"SeedSigner public key not found at {PUBKEY_PATH}")
-
     with tempfile.TemporaryDirectory() as gnupghome:
-        # Import the SeedSigner signing key
         res = subprocess.run(
             ["gpg", "--homedir", gnupghome, "--import", str(PUBKEY_PATH)],
-            capture_output=True, text=True
-        )
+            capture_output=True, text=True)
         if res.returncode != 0:
             raise RuntimeError(f"Failed to import GPG key: {res.stderr.strip()}")
-
-        # Write sha256 content and signature to temp files.  Use newline=""
-        # so text-mode doesn't translate \n to \r\n on Windows: GPG
-        # verification is byte-exact against the original signed content.
         sha256_path = os.path.join(gnupghome, "sha256.txt")
         sig_path = sha256_path + ".sig"
         with open(sha256_path, "w", encoding="utf-8", newline="") as f:
             f.write(sha256_content)
         with open(sig_path, "wb") as f:
             f.write(sig_content)
-
-        # Verify
         res = subprocess.run(
             ["gpg", "--homedir", gnupghome, "--trust-model", "always",
              "--verify", sig_path, sha256_path],
-            capture_output=True, text=True
-        )
+            capture_output=True, text=True)
         if res.returncode != 0:
-            raise RuntimeError(
-                f"GPG verification failed:\n{res.stderr.strip()}"
-            )
+            raise RuntimeError(f"GPG verification failed:\n{res.stderr.strip()}")
     return True
 
 
 def process_asset(img, sha256_entries, gpg_verified, repo, tag):
-    """Download and hash one .img asset, returning (prefix_hash, entry_dict).
+    """Download one .img, compute prefix variants and full zeroed sha256.
 
-    If ``sha256_entries`` contains the image name, the full-file hash is
-    verified against the published value.  If ``gpg_verified`` is True, the
-    sha256.txt was cryptographically signed by the SeedSigner release key.
+    Returns (pristine_prefix_hash, entry_dict).  Raises on collision or
+    hash mismatch vs published sha256.txt.
     """
     url = img["browser_download_url"]
+    raw, pub_full_hash = sha256_prefix_full(url)
 
-    # Pass 1: prefix hash (4 MiB, always via Range request)
-    prefix = sha256_prefix(url)
+    if len(raw) < PREFIX_SIZE:
+        raise ValueError(f"asset too small ({len(raw)} bytes) for {PREFIX_SIZE} prefix")
 
-    # Pass 2: full-file hash
+    # Determine volatile offsets from the image's MBR
+    first_512 = raw[:512]
+    volatile_offsets = compute_volatile_offsets(first_512)
+
+    # Pristine prefix hash (raw, as-is)
+    prefix_pristine = hashlib.sha256(raw[:PREFIX_SIZE]).hexdigest()
+
+    # Alt prefix hash (with volatile offsets zeroed within the prefix)
+    prefix_buf = bytearray(raw[:PREFIX_SIZE])
+    zero_in_place(prefix_buf, volatile_offsets)
+    prefix_alt = hashlib.sha256(prefix_buf).hexdigest()
+
+    # Full-file hash with volatile offsets zeroed throughout
+    sha256_zeroed = sha256_with_zerofile(raw, volatile_offsets)
+
+    # If a published sha256.txt hash exists, cross-check
     expected = sha256_entries.get(img["name"])
     if expected:
-        actual, size = sha256_file(url)
-        if actual != expected.lower():
+        if pub_full_hash != expected.lower():
             raise RuntimeError(
                 f"Hash mismatch for {img['name']}: "
-                f"expected {expected}, got {actual}"
+                f"expected {expected}, got {pub_full_hash}"
             )
         if not gpg_verified:
-            # sha256.txt existed but was not GPG-signed (or key wasn't
-            # available); log a warning but still record the verified hash.
             print(f"  ! {img['name']}: sha256 verified (no GPG signature)", file=sys.stderr)
     else:
-        # No sha256.txt available — full download and record.
-        actual, size = sha256_file(url)
+        # No published sha256 — the zeroed hash is all we have.
+        pass
 
-    return prefix, {
+    entry = {
         "name": img["name"],
         "source_repo": repo,
         "tag": tag,
-        "size_bytes": size,
-        "sha256": actual,
+        "size_bytes": len(raw),
+        "sha256": sha256_zeroed,
+        "volatile_offsets": volatile_offsets,
+        "alt_prefix_hashes": [prefix_alt] if prefix_alt != prefix_pristine else [],
     }
+    return prefix_pristine, entry
 
 
 def main():
@@ -234,7 +290,6 @@ def main():
                         help="github repos to scan")
     args = parser.parse_args()
 
-    # Load existing data (if any)
     data = {"prefix_size": PREFIX_SIZE, "updated": None, "images": {}}
     if args.out.exists():
         with open(args.out, encoding="utf-8") as fh:
@@ -252,7 +307,6 @@ def main():
     for repo, rel, imgs in iter_releases(args.repos):
         tag = rel["tag_name"]
 
-        # Collect sha256.txt and .sig assets for this release
         sha256_assets = [a for a in rel.get("assets", [])
                          if SHA256_PATTERN.search(a["name"]) and not a["name"].endswith(".sig")]
         sig_assets = [a for a in rel.get("assets", [])
@@ -265,7 +319,6 @@ def main():
             try:
                 sha256_content = _open(sha_txt["browser_download_url"]).read().decode("utf-8")
                 sha256_entries = parse_sha256_txt(sha256_content)
-
                 if sig_assets:
                     sig = sig_assets[0]
                     try:
@@ -295,15 +348,26 @@ def main():
                 if prefix_hash in data["images"]:
                     existing = data["images"][prefix_hash]
                     print(
-                        f"  COLLISION: {prefix_hash[:12]} overlaps between "
-                        f"{existing['name']} and {img['name']}",
+                        f"  COLLISION (pristine): {prefix_hash[:12]} overlaps "
+                        f"between {existing['name']} and {img['name']}",
                         file=sys.stderr
                     )
                     sys.exit(1)
 
+                for alt_h in entry.get("alt_prefix_hashes", []):
+                    if alt_h in data["images"]:
+                        existing = data["images"][alt_h]
+                        print(
+                            f"  COLLISION (alt): {alt_h[:12]} overlaps "
+                            f"between {existing['name']} and {img['name']}",
+                            file=sys.stderr
+                        )
+                        sys.exit(1)
+
                 data["images"][prefix_hash] = entry
                 sha_tag = " [gpg]" if gpg_verified else ""
-                print(f"  ok   {img['name']} ({tag}){sha_tag}")
+                n_vol = len(entry.get("volatile_offsets", []))
+                print(f"  ok   {img['name']} ({tag}){sha_tag}  {n_vol} vol offs")
 
             except Exception as e:
                 failures += 1
@@ -315,11 +379,6 @@ def main():
 
     if not data["images"]:
         print("No entries found; nothing to write.")
-        sys.exit(1)
-
-    # Verify no prefix-hash collisions
-    if len(data["images"]) != len({k for k in data["images"]}):
-        print("FATAL: prefix-hash collision detected in final data", file=sys.stderr)
         sys.exit(1)
 
     data["updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
