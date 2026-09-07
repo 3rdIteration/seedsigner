@@ -1,0 +1,57 @@
+name: Update MicroSD known checksums
+
+# Refreshes src/seedsigner/resources/microsd-known-checksums.json, which the
+# "Verify MicroSD" tool uses to recognize freshly-flashed SeedSigner OS cards.
+# The device hashes only the first 26 MiB of the raw card, so each entry is
+# sha256(first 26 MiB of the release image, zero-padded to 26 MiB) -- not the
+# full-file hash from the release's .sha256.txt. New images are fetched with a
+# single HTTP Range request each; already-recorded assets are never re-fetched.
+#
+# The data is advisory: it labels a checksum match on a verification screen and
+# never gates a signing decision, so a missing or stale entry only means "card
+# not recognized". That is why sourcing digests from GitHub releases in CI is
+# acceptable here -- and why this opens a PR rather than pushing directly, so
+# new entries are still reviewed like any other change.
+
+on:
+  schedule:
+    # Monthly; new OS releases are far less frequent than this and manual
+    # dispatch covers anything urgent.
+    - cron: "0 4 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Hash new release images
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 .github/scripts/update_microsd_checksums.py
+
+      - name: Open a PR if anything changed
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: chore/update-microsd-checksums
+          title: "chore: update MicroSD known checksums"
+          commit-message: |
+            chore: update MicroSD known checksums
+
+            Automated refresh of src/seedsigner/resources/microsd-known-checksums.json
+            from the SeedSigner/seedsigner and 3rdIteration release assets.
+          body: |
+            Automated refresh of `src/seedsigner/resources/microsd-known-checksums.json`.
+
+            Each new entry is `sha256(first 26 MiB of the release image, zero-padded to
+            26 MiB)` -- exactly what the device's "Verify MicroSD" tool reads back with
+            `dd bs=1M count=26`, not the full-file hash from the release `.sha256.txt`.
+
+            The data is advisory: it labels a checksum match on a verification screen
+            and never gates a signing decision, so this is safe to merge or ignore.
+          delete-branch: true

@@ -29,6 +29,45 @@ def find_sd_card_device():
     return None
 
 
+def _load_known_checksums(path=None):
+    """
+    Return {sha256_hex: image_name} from resources/microsd-known-checksums.json.
+
+    The json is refreshed by .github/workflows/update-microsd-checksums.yml.
+    Deliberately forgiving: a missing or corrupt file yields an empty dict, so
+    verification still runs and simply reports every card as an unfamiliar
+    checksum instead of crashing.
+    """
+    import json
+    from pathlib import Path
+
+    try:
+        if path is None:
+            path = Path(__file__).parent.parent.resolve() / "resources" / "microsd-known-checksums.json"
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return {
+            checksum.lower(): meta.get("name", checksum)
+            for checksum, meta in data["images"].items()
+            if isinstance(checksum, str) and isinstance(meta, dict)
+        }
+    except Exception as e:
+        logger.info(f"microsd-known-checksums.json unavailable ({e}); no known images")
+        return {}
+
+
+def _format_image_name(name):
+    """Wrap an image name for the 240px status screen: 3 lines of max 20 chars."""
+    short = name[len("seedsigner_os."):] if name.startswith("seedsigner_os.") else name
+    if short.endswith(".img"):
+        short = short[:-len(".img")]
+    lines = [short[i:i + 20] for i in range(0, len(short), 20)]
+    if len(lines) > 3:
+        lines = lines[:3]
+        lines[2] = lines[2][:17] + "..."
+    return "\n".join(lines)
+
+
 class ToolsMicroSDMenuView(View):
     FLASH_IMAGE = ButtonOption("Flash Image")
     VERIFY_IMAGE = ButtonOption("Verify MicroSD")
@@ -228,20 +267,6 @@ class ToolsMicroSDVerifyWarningView(View):
 
 
 class ToolsMicroSDVerifyView(View):
-    known_checksums = {'5809d4ec68138c737b1b000db4c6ec60983e94544efd893bdfa40ebf19af60f4':'Zero Wiped (First 26MB)',
-                       'a380cb93eb852254863718a9c000be9ec30cee14a78fc0ec90708308c17c1b8a':'seedsigner_os.0.7.0.pi0',
-                       'fe0601e6da97c7711093b67a7102f8108f2bfb8a2478fd94fa9d3edea5adfb64':'seedsigner_os.0.7.0.pi02w',
-                       '65be9209527ba03efe8093099dae8ec65725c90a758bc98678b9da31639637d7':'seedsigner_os.0.7.0.pi2',
-                       'd574c1326d07e18b550e2f65e36a4678b05db882adb5cb8f8732ff8d75d59809':'seedsigner_os.0.7.0.pi4',
-                       'c8d5352ed4a86c19eb9ef54f2920934f8ce460742b464ea94dc9114f9f4e039a':'seedsigner_os.0.8.0.pi02w.img',
-                       '1d0f1c412f64b40e6aba21b5bacdb41d9323653c170ce06d0a3f1dd71fddb28e':'seedsigner_os.0.8.0.pi0.img',
-                       '11c5553d75b3ebca4988ae3c4573b60b33a12bc4779282454ae34404ba797670':'seedsigner_os.0.8.0.pi2.img',
-                       '917201e335bfc7ee4189f17827f954f89588dc0fdefdad80d26f2a65c5c8e6d0':'seedsigner_os.0.8.0.pi4.img',
-                       '398d9bf9cda0858fe97c0788b353194c1c902335a858b7dbf5d7b213bda75d96':'seedsigner_os.0.8.5.pi02w.img',
-                       'bcb901e27d309d85f086dc80b49b153d6b1caab2247eba2811731384d58f2f3e':'seedsigner_os.0.8.5.pi0.img',
-                       '1e93a82e62d4a1defbdc777a6762a813f4cb5c3ef9090da0bd07542dfd6f62bf':'seedsigner_os.0.8.5.pi2.img',
-                       'd298ffad3c765e11e48873efc6d1c65e4230528fde4d5bd4701bb507acbf493c':'seedsigner_os.0.8.5.pi4.img'}
-
     def run(self):
         from subprocess import run
 
@@ -263,12 +288,12 @@ class ToolsMicroSDVerifyView(View):
         checksum = data.stdout[:64]
 
         try:
-            image_name = self.known_checksums[checksum]
+            image_name = _load_known_checksums()[checksum]
             self.run_screen(
                 LargeIconStatusScreen,
                 title="Success",
                 status_headline="Matched Checksum",
-                text=image_name[:20] + "\n" + image_name[20:40] + "\n" + image_name[40:60],
+                text=_format_image_name(image_name),
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")]
             )
@@ -278,7 +303,7 @@ class ToolsMicroSDVerifyView(View):
 
             self.run_screen(
                 WarningScreen,
-                title="Unfamilliar Checksum",
+                title="Unfamiliar Checksum",
                 status_headline=None,
                 text=formatted_checksum,
                 show_back_button=False,
