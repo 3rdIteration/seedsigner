@@ -4583,6 +4583,477 @@ class SatochipLoadDescriptorDetailsView(View):
         return Destination(MainMenuView)
 
 
+# A Satodime keyslot records the *coin*, never the network: Javacryptotools'
+# Constants.MAP_SLIP44_BY_SYMBOL has a single BTC entry (0x80000000) and the official
+# apps carry testnet as a separate display flag. So SeedSigner writes BTC's slip44 too,
+# and takes mainnet/testnet from SETTING__NETWORK exactly as the app takes it from its
+# own settings.
+SATODIME_SLIP44_BTC = 0x80000000
+SATODIME_SLIP44_BTC_BYTES = [0x80, 0x00, 0x00, 0x00]
+
+# key_contract / key_tokenid are deprecated, but the applet still demands 34 bytes of
+# each. The official app sends a block whose second byte is the 32-byte length
+# (NFCCardService.seal), so a slot sealed here is byte-identical to one it sealed.
+SATODIME_EMPTY_CONTRACT = [0x00, 0x20] + [0x00] * 32
+
+
+def _satodime_pubkey(pub_comp):
+    """Build an embit PublicKey from the compressed SEC bytes a Satodime returns.
+
+    ``ec.PublicKey()`` takes secp256k1's *internal* 64-byte point, not a serialized
+    key, so handing it the card's 33-byte SEC blob raises "Pubkey should be 64 bytes
+    long". ``parse()`` is the constructor that reads SEC.
+    """
+    return ec.PublicKey.parse(bytes(pub_comp))
+
+
+def _satodime_address(pub_comp, net) -> str:
+    """Derive a slot's deposit address the way the official Satodime apps do.
+
+    Javacryptotools' ``BaseCoin.pubToAddress()`` returns a segwit address whenever the
+    coin supports it, and ``Bitcoin`` sets ``segwit_supported = true`` -- so the phone
+    and desktop apps show bech32 P2WPKH. Deriving P2PKH here would print a *different*
+    address for the same key: still spendable, but the official app would show a zero
+    balance for anything deposited to it.
+    """
+    return script.p2wpkh(_satodime_pubkey(pub_comp)).address(network=net)
+
+
+def _satodime_slot_slip44(slot_status) -> int:
+    """The coin recorded on a keyslot, as an int.
+
+    Slots sealed by SeedSigner before it wrote this metadata read back as 0; treat that
+    as Bitcoin, which is the only coin this app seals.
+    """
+    raw = slot_status.get("key_slip44") or []
+    if not raw:
+        return SATODIME_SLIP44_BTC
+    value = int.from_bytes(bytes(raw), "big")
+    return SATODIME_SLIP44_BTC if value == 0 else value
+
+
+def _satodime_write_slot_metadata(connector, slot) -> bool:
+    """Tag a freshly sealed slot as Bitcoin, mirroring the official app's seal.
+
+    The app seals and then immediately sends SET_KEYSLOT_STATUS with the coin's slip44
+    (NFCCardService.seal). Without it the slot reads back as slip44 0x00000000, which
+    the official apps show as an unknown asset with no balance lookup.
+    """
+    try:
+        (_r, sw1, sw2) = connector.satodime_set_keyslot_status_part0(
+            slot,
+            0x00,                       # RFU1
+            0x00,                       # RFU2
+            0x00,                       # key_asset: the app leaves this Undefined
+            SATODIME_SLIP44_BTC_BYTES,
+            list(SATODIME_EMPTY_CONTRACT),
+            list(SATODIME_EMPTY_CONTRACT),
+        )
+    except Exception:
+        logger.exception("Satodime: failed to tag slot %s as BTC", slot)
+        return False
+    if sw1 != 0x90 or sw2 != 0x00:
+        logger.warning(
+            "Satodime: failed to tag slot %s as BTC: %s", slot, format_sw_error(sw1, sw2)
+        )
+        return False
+    return True
+
+
+def _satodime_is_claimed(connector) -> bool:
+    """Whether INS_SETUP has run on this card.
+
+    Until it has, the applet answers every state-changing APDU with 0x9C04 -- but
+    status/keyslot/pubkey reads work fine, so read-only views need not care.
+    """
+    return bool(getattr(connector, "setup_done", False))
+
+
+def _satodime_prepare(view, connector, needs_unlock: bool):
+    """Get a Satodime ready for a view, or return where the user has to go first.
+
+    ``needs_unlock`` marks the operations the applet gates behind the unlock code over
+    a contactless reader: seal, unseal, reset, get-privkey and ownership transfer.
+    Read-only views (status, keyslot, pubkey) pass False -- they work on an unclaimed
+    card and over either medium, so they must not drag the user through a claim.
+
+    Returns a ``Destination`` to redirect to, or None to carry on.
+    """
+    if needs_unlock and not _satodime_is_claimed(connector):
+        return Destination(ToolsSatodimeClaimView)
+
+    have_secret = seedkeeper_utils.apply_satodime_unlock_secret(view.controller, connector)
+    connector.satodime_set_unlock_counter()
+
+    if (
+        needs_unlock
+        and not have_secret
+        and seedkeeper_utils.satodime_connection_is_contactless(connector)
+    ):
+        # Over NFC the applet checks HMAC(unlock_secret, ...), so the zeroed
+        # placeholder would just earn a 0x9C51. Send the user to restore it rather
+        # than letting the operation fail with a status word.
+        selected = view.run_screen(
+            WarningScreen,
+            title="Code Required",
+            status_headline=None,
+            text="NFC needs this card's\nunlock code.",
+            show_back_button=True,
+            button_data=[ButtonOption("Restore Code")],
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        return Destination(ToolsSatodimeRestoreUnlockView)
+
+    return None
+
+
+class ToolsSatodimeClaimView(View):
+    """Claim an unowned Satodime, then walk the user through backing up its unlock code.
+
+    INS_SETUP is the only time the card ever emits its 20-byte unlock secret. On a
+    contactless reader that secret is required for every later state change -- seal,
+    unseal, reset, even handing the card on -- and it cannot be re-read, so losing it
+    strands the card. Over a contact reader the applet ignores it entirely, so there is
+    nothing worth backing up and this view claims and returns.
+    """
+
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satodime"], require_pin=False)
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        if _satodime_is_claimed(Satochip_Connector):
+            self.run_screen(
+                WarningScreen,
+                title="Already Claimed",
+                status_headline=None,
+                text="This card already has\nan owner.",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        # Claiming mints a fresh secret, so doing it to a card that is mid-transfer
+        # takes the card away from whoever it was being handed to.
+        selected = self.run_screen(
+            WarningScreen,
+            title="Card Unclaimed",
+            status_headline=None,
+            text="This Satodime has no owner.\nClaim it for this device?",
+            show_back_button=False,
+            button_data=[ButtonOption("Claim Card"), ButtonOption("Cancel")],
+        )
+        if selected != 0:
+            return Destination(BackStackView)
+
+        self.loading_screen = LoadingScreenThread(text="Claiming Card")
+        self.loading_screen.start()
+        try:
+            (_response, sw1, sw2) = seedkeeper_utils.claim_satodime_ownership(Satochip_Connector)
+        except Exception as e:
+            logger.exception("Satodime claim failed")
+            claim_error = str(e)[:100]
+        else:
+            claim_error = None if (sw1 == 0x90 and sw2 == 0x00) else format_sw_error(sw1, sw2)
+        finally:
+            self.loading_screen.stop()
+
+        if claim_error is not None:
+            self.run_screen(
+                WarningScreen,
+                title="Claim Failed",
+                status_headline=None,
+                text=claim_error,
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        # card_setup() caches the freshly minted counter + secret on the connector.
+        card_id = seedkeeper_utils.satodime_card_id(Satochip_Connector)
+        seedkeeper_utils.cache_satodime_unlock_secret(
+            self.controller, card_id, list(Satochip_Connector.unlock_secret)
+        )
+
+        if not seedkeeper_utils.satodime_connection_is_contactless(Satochip_Connector):
+            # Contact reader: the applet never checks the unlock code, so the secret
+            # buys the user nothing here and the backup flow would be pure friction.
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Card Claimed",
+                status_headline=None,
+                text="Ready to use.",
+                show_back_button=False,
+            )
+            return Destination(BackStackView)
+
+        return Destination(ToolsSatodimeBackupUnlockView, view_args=dict(card_id=card_id))
+
+
+class ToolsSatodimeBackupUnlockView(View):
+    """Show the unlock code as a QR and make the user prove they captured it.
+
+    The read-back is the point: a QR the user never scanned is a backup they cannot be
+    sure they have. They photograph the code, then hold the photo up to the camera.
+    MicroSD is offered as a second copy, not as a substitute.
+    """
+
+    def __init__(self, card_id: str = None):
+        super().__init__()
+        self.card_id = card_id
+
+    def run(self):
+        from seedsigner.gui.screens.screen import QRDisplayScreen
+        from seedsigner.models.encode_qr import GenericStaticQrEncoder
+
+        card_id = self.card_id
+        secret = (
+            seedkeeper_utils.get_cached_satodime_unlock_secret(self.controller, card_id)
+            if card_id
+            else None
+        )
+        if not secret:
+            self.run_screen(
+                WarningScreen,
+                title="No Unlock Code",
+                status_headline=None,
+                text="Claim the card first.",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        payload = seedkeeper_utils.format_satodime_unlock_payload(card_id, secret)
+
+        self.run_screen(
+            DireWarningScreen,
+            title="Unlock Code",
+            status_headline=None,
+            text="Back this up now. It can\nnever be shown again.",
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+
+        # The security property users most often get wrong about Satodime: this code is
+        # proximity protection, not theft protection.
+        self.run_screen(
+            WarningScreen,
+            title="Not Theft Proof",
+            status_headline=None,
+            text="A contact reader can unseal\nthis card without the code.",
+            show_back_button=False,
+            button_data=[ButtonOption("I Understand")],
+        )
+
+        while True:
+            self.run_screen(QRDisplayScreen, qr_encoder=GenericStaticQrEncoder(data=payload))
+
+            selected = self.run_screen(
+                ButtonListScreen,
+                title="Verify Backup",
+                is_button_text_centered=False,
+                button_data=[
+                    ButtonOption("Scan It Back"),
+                    ButtonOption("Show QR Again"),
+                    ButtonOption("Save to MicroSD"),
+                    ButtonOption("Skip Verification"),
+                ],
+                show_back_button=False,
+            )
+
+            if selected == 1:
+                continue
+
+            if selected == 2:
+                self._save_to_microsd(card_id, payload)
+                continue
+
+            if selected == 3:
+                confirm = self.run_screen(
+                    DireWarningScreen,
+                    title="Skip Backup?",
+                    status_headline=None,
+                    text="Without this code NFC use\nis lost for good.",
+                    show_back_button=True,
+                    button_data=[ButtonOption("Skip Anyway")],
+                )
+                if confirm == RET_CODE__BACK_BUTTON:
+                    continue
+                return Destination(BackStackView)
+
+            if self._scan_matches(payload):
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Backup Verified",
+                    status_headline=None,
+                    text="Keep it safe and private.",
+                    show_back_button=False,
+                )
+                return Destination(BackStackView)
+
+            self.run_screen(
+                WarningScreen,
+                title="No Match",
+                status_headline=None,
+                text="That is not this card's\nunlock code.",
+                show_back_button=False,
+                button_data=[ButtonOption("Try Again")],
+            )
+
+    def _scan_matches(self, payload: str) -> bool:
+        scanned = _satodime_scan_text(self)
+        return scanned is not None and scanned.strip() == payload
+
+    def _save_to_microsd(self, card_id: str, payload: str):
+        import os
+        from seedsigner.hardware.microsd import MicroSD
+
+        if not MicroSD.get_instance().is_inserted:
+            self.run_screen(
+                WarningScreen,
+                title="MicroSD",
+                status_headline="No card detected",
+                text="Insert a microSD card\nand try again.",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return
+
+        filename = seedkeeper_utils.satodime_unlock_backup_filename(card_id)
+        filepath = os.path.join(MicroSD.get_microsd_dir(), filename)
+        try:
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(payload)
+        except OSError as e:
+            self.run_screen(
+                WarningScreen,
+                title="MicroSD",
+                status_headline="Save failed",
+                text=str(e)[:100],
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Saved",
+            status_headline=None,
+            text="Anyone with this microSD\ncan read the code.",
+            show_back_button=False,
+            button_data=[ButtonOption("OK")],
+        )
+
+
+class ToolsSatodimeRestoreUnlockView(View):
+    """Load a previously backed-up unlock code back into this session."""
+
+    SCAN = ButtonOption("Scan Backup QR")
+    MICROSD = ButtonOption("Load from MicroSD")
+
+    def run(self):
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satodime"], require_pin=False)
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        card_id = seedkeeper_utils.satodime_card_id(Satochip_Connector)
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Unlock Code",
+            is_button_text_centered=False,
+            button_data=[self.SCAN, self.MICROSD],
+            show_back_button=True,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if selected == 0:
+            payload = _satodime_scan_text(self)
+        else:
+            payload = self._read_microsd(card_id)
+
+        if payload is None:
+            return Destination(BackStackView)
+
+        parsed = seedkeeper_utils.parse_satodime_unlock_payload(payload)
+        if parsed is None:
+            self.run_screen(
+                WarningScreen,
+                title="Not a Backup",
+                status_headline=None,
+                text="That is not a Satodime\nunlock code.",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        backup_card_id, secret = parsed
+        if backup_card_id != card_id:
+            self.run_screen(
+                WarningScreen,
+                title="Wrong Card",
+                status_headline=None,
+                text="That code belongs to a\ndifferent Satodime.",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        seedkeeper_utils.cache_satodime_unlock_secret(self.controller, card_id, secret)
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Unlock Code Set",
+            status_headline=None,
+            text="Loaded for this session.",
+            show_back_button=False,
+        )
+        return Destination(BackStackView)
+
+    def _read_microsd(self, card_id: str):
+        import os
+        from seedsigner.hardware.microsd import MicroSD
+
+        if not MicroSD.get_instance().is_inserted:
+            self.run_screen(
+                WarningScreen,
+                title="MicroSD",
+                status_headline="No card detected",
+                text="Insert a microSD card\nand try again.",
+                show_back_button=True,
+            )
+            return None
+
+        filepath = os.path.join(
+            MicroSD.get_microsd_dir(),
+            seedkeeper_utils.satodime_unlock_backup_filename(card_id),
+        )
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                return f.read()
+        except OSError:
+            self.run_screen(
+                WarningScreen,
+                title="Not Found",
+                status_headline=None,
+                text="No backup on this microSD\nfor this Satodime.",
+                show_back_button=True,
+            )
+            return None
+
+
+def _satodime_scan_text(view):
+    """Scan one plain-text QR, returning its contents or None."""
+    from seedsigner.gui.screens.scan_screens import ScanScreen
+    from seedsigner.models.decode_qr import DecodeQR
+    from seedsigner.models.qr_type import QRType
+
+    decoder = DecodeQR()
+    ScanScreen(decoder=decoder, instructions_text="Scan the backup QR").display()
+    view.controller.reset_screensaver_timeout()
+    if not decoder.is_complete or decoder.qr_type != QRType.TEXT:
+        return None
+    return decoder.get_text()
+
+
 class ToolsSatodimeView(View):
     VIEW_ADDRESSES = ButtonOption("View Deposit Addresses")
     SEAL_SLOT = ButtonOption("Seal Slot")
@@ -4635,11 +5106,19 @@ class ToolsSatodimeCardSettingsView(View):
     INFO = ButtonOption("Card Info")
     GENUINE = ButtonOption("Genuine Check")
     CONFIGURE_NDEF = ButtonOption("Configure NDEF")
+    BACKUP_UNLOCK = ButtonOption("Back Up Unlock Code")
+    RESTORE_UNLOCK = ButtonOption("Restore Unlock Code")
 
     _CARD_FILTER = ["satodime"]
 
     def run(self):
-        button_data = [self.INFO, self.GENUINE, self.CONFIGURE_NDEF]
+        button_data = [
+            self.INFO,
+            self.GENUINE,
+            self.CONFIGURE_NDEF,
+            self.BACKUP_UNLOCK,
+            self.RESTORE_UNLOCK,
+        ]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -4660,6 +5139,38 @@ class ToolsSatodimeCardSettingsView(View):
         elif button_data[selected_menu_num] == self.CONFIGURE_NDEF:
             return Destination(ToolsCommonNdefView, view_args=dict(card_filter=self._CARD_FILTER))
 
+        elif button_data[selected_menu_num] == self.BACKUP_UNLOCK:
+            # Re-showing the code only works while it is still cached from this
+            # session's claim; the card cannot be asked for it a second time.
+            return Destination(ToolsSatodimeReshowUnlockView)
+
+        elif button_data[selected_menu_num] == self.RESTORE_UNLOCK:
+            return Destination(ToolsSatodimeRestoreUnlockView)
+
+
+class ToolsSatodimeReshowUnlockView(View):
+    """Re-open the backup flow for a card claimed earlier in this session."""
+
+    def run(self):
+        Satochip_Connector = seedkeeper_utils.init_satochip(
+            self, init_card_filter=["satodime"], require_pin=False
+        )
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        card_id = seedkeeper_utils.satodime_card_id(Satochip_Connector)
+        if not seedkeeper_utils.get_cached_satodime_unlock_secret(self.controller, card_id):
+            self.run_screen(
+                WarningScreen,
+                title="No Unlock Code",
+                status_headline=None,
+                text="The card only reveals it\nwhen first claimed.",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        return Destination(ToolsSatodimeBackupUnlockView, view_args=dict(card_id=card_id))
+
 
 class ToolsSatodimeAddressesView(View):
     def run(self):
@@ -4669,8 +5180,9 @@ class ToolsSatodimeAddressesView(View):
         if not Satochip_Connector:
             return Destination(BackStackView)
 
-        Satochip_Connector.satodime_set_unlock_secret()
-        Satochip_Connector.satodime_set_unlock_counter()
+        redirect = _satodime_prepare(self, Satochip_Connector, needs_unlock=False)
+        if redirect:
+            return redirect
 
         self.loading_screen = LoadingScreenThread(text="Fetching Slots\n\n\n\n\n\n")
         self.loading_screen.start()
@@ -4685,9 +5197,20 @@ class ToolsSatodimeAddressesView(View):
         for key_nbr in range(max_keys):
             try:
                 (_, _, _, slot_status) = Satochip_Connector.satodime_get_keyslot_status(key_nbr)
-                (_, _, _, _, pub_comp) = Satochip_Connector.satodime_get_pubkey(key_nbr)
-                address = script.p2pkh(ec.PublicKey(bytes(pub_comp))).address(network=net)
-                text = f"{slot_status['key_status_txt']}\n{address}"
+                status_txt = slot_status.get("key_status_txt", "Unknown")
+                if status_txt == "Uninitialized":
+                    # An empty slot holds no key, so the card answers get_pubkey with an
+                    # empty body and pysatochip's parser raises. Don't ask.
+                    text = f"{status_txt}\n\nSeal this slot first"
+                elif _satodime_slot_slip44(slot_status) != SATODIME_SLIP44_BTC:
+                    # Another app sealed this slot for a different chain. Rendering a
+                    # Bitcoin address from its key would invite a deposit that the
+                    # owner's wallet for that coin will never show.
+                    coin = slot_status.get("key_slip44_txt", "another coin")
+                    text = f"{status_txt}\n\nNot Bitcoin ({coin})"
+                else:
+                    (_, _, _, _, pub_comp) = Satochip_Connector.satodime_get_pubkey(key_nbr)
+                    text = f"{status_txt}\n{_satodime_address(pub_comp, net)}"
             except Exception as e:
                 text = str(e)
 
@@ -4713,8 +5236,9 @@ class ToolsSatodimeSealSlotView(View):
         if not Satochip_Connector:
             return Destination(BackStackView)
 
-        Satochip_Connector.satodime_set_unlock_secret()
-        Satochip_Connector.satodime_set_unlock_counter()
+        redirect = _satodime_prepare(self, Satochip_Connector, needs_unlock=True)
+        if redirect:
+            return redirect
 
         (_, _, _, status) = Satochip_Connector.satodime_get_status()
         max_keys = status.get("max_num_keys", 0)
@@ -4760,17 +5284,22 @@ class ToolsSatodimeSealSlotView(View):
         if sw1 != 0x90 or sw2 != 0x00:
             self.run_screen(
                 WarningScreen,
-                title="Failed",
+                title="Seal Failed",
                 status_headline=None,
-                text="Seal failed",
+                text=format_sw_error(sw1, sw2),
                 show_back_button=True,
             )
             return Destination(BackStackView)
 
+        # Tag the slot as Bitcoin so the official Satodime apps recognise it. Advisory
+        # only: the key is already sealed and its address is valid either way, so a
+        # failure here is logged rather than shown as a failed seal.
+        _satodime_write_slot_metadata(Satochip_Connector, slot)
+
         network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
         embit_network = embit_utils.get_embit_network_name(network)
         net = networks.NETWORKS[embit_network]
-        address = script.p2pkh(ec.PublicKey(bytes(pub_comp))).address(network=net)
+        address = _satodime_address(pub_comp, net)
 
         self.run_screen(
             LargeIconStatusScreen,
@@ -4791,8 +5320,9 @@ class ToolsSatodimeUnsealSlotView(View):
         if not Satochip_Connector:
             return Destination(BackStackView)
 
-        Satochip_Connector.satodime_set_unlock_secret()
-        Satochip_Connector.satodime_set_unlock_counter()
+        redirect = _satodime_prepare(self, Satochip_Connector, needs_unlock=True)
+        if redirect:
+            return redirect
 
         (_, _, _, status) = Satochip_Connector.satodime_get_status()
         max_keys = status.get("max_num_keys", 0)
@@ -4836,9 +5366,9 @@ class ToolsSatodimeUnsealSlotView(View):
         if sw1 != 0x90 or sw2 != 0x00:
             self.run_screen(
                 WarningScreen,
-                title="Failed",
+                title="Unseal Failed",
                 status_headline=None,
-                text="Unseal failed",
+                text=format_sw_error(sw1, sw2),
                 show_back_button=True,
             )
             return Destination(BackStackView)
@@ -4873,8 +5403,9 @@ class ToolsSatodimeSignTxView(View):
         if not Satochip_Connector:
             return Destination(BackStackView)
 
-        Satochip_Connector.satodime_set_unlock_secret()
-        Satochip_Connector.satodime_set_unlock_counter()
+        redirect = _satodime_prepare(self, Satochip_Connector, needs_unlock=True)
+        if redirect:
+            return redirect
 
         (_, _, _, status) = Satochip_Connector.satodime_get_status()
         max_keys = status.get("max_num_keys", 0)
@@ -4918,9 +5449,9 @@ class ToolsSatodimeSignTxView(View):
         if sw1 != 0x90 or sw2 != 0x00:
             self.run_screen(
                 WarningScreen,
-                title="Failed",
+                title="Unseal Failed",
                 status_headline=None,
-                text="Unseal failed",
+                text=format_sw_error(sw1, sw2),
                 show_back_button=True,
             )
             return Destination(BackStackView)
@@ -4947,8 +5478,9 @@ class ToolsSatodimeTransferOwnershipView(View):
         if not Satochip_Connector:
             return Destination(BackStackView)
 
-        Satochip_Connector.satodime_set_unlock_secret()
-        Satochip_Connector.satodime_set_unlock_counter()
+        redirect = _satodime_prepare(self, Satochip_Connector, needs_unlock=True)
+        if redirect:
+            return redirect
 
         self.loading_screen = LoadingScreenThread(text="Sending Command\n\n\n\n\n\n")
         self.loading_screen.start()
@@ -4960,15 +5492,15 @@ class ToolsSatodimeTransferOwnershipView(View):
                 LargeIconStatusScreen,
                 title="Success",
                 status_headline=None,
-                text="Ownership transfer started",
+                text="Ownership released.\nNew owner must set up card.",
                 show_back_button=False,
             )
         else:
             self.run_screen(
                 WarningScreen,
-                title="Failed",
+                title="Transfer Failed",
                 status_headline=None,
-                text="Ownership transfer failed",
+                text=format_sw_error(sw1, sw2),
                 show_back_button=True,
             )
 

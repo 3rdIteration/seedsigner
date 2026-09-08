@@ -460,6 +460,140 @@ def disconnect_smartcard_connections(controller):
         pass
 
 
+def claim_satodime_ownership(connector):
+    """Run INS_SETUP on a Satodime, claiming it for this device.
+
+    Satodime has no PIN and no seed. A factory-fresh card -- or one whose ownership
+    has just been handed off with ``satodime_initiate_ownership_transfer()`` --
+    reports ``setup_done`` False and refuses every state-changing APDU (seal, unseal,
+    reset, transfer) with 0x9C04 until setup has run. Setup generates the card's
+    unlock counter/secret and returns them; pysatochip caches both on the connector.
+
+    ``card_setup()`` is the shared Satochip-family wire format, so it insists on
+    PIN/PUK arguments. The Satodime applet ignores the whole data field, so these are
+    random bytes -- never anything a user could mistake for a PIN they must remember.
+    """
+    def junk():
+        return list(urandom(16))
+
+    (response, sw1, sw2) = connector.card_setup(
+        0x05, 0x01, junk(), junk(),   # pin_tries0, ublk_tries0, pin0, ublk0
+        0x01, 0x01, junk(), junk(),   # pin_tries1, ublk_tries1, pin1, ublk1
+        32, 0x0000,                   # secmemsize, memsize
+        0x01, 0x01, 0x01,             # create_object/key/pin ACL
+        option_flags=0,
+        hmacsha160_key=None,
+        amount_limit=0,
+    )
+    return (response, sw1, sw2)
+
+
+SATODIME_UNLOCK_PREFIX = "satodime-unlock:"
+SIZE_SATODIME_UNLOCK_SECRET = 20
+
+
+def satodime_card_id(connector) -> str:
+    """Short, stable id for a Satodime, used to key its unlock secret."""
+    uid = getattr(connector, "UID_SHA1", None) or ""
+    return str(uid)[:16]
+
+
+def format_satodime_unlock_payload(card_id: str, secret) -> str:
+    """Render an unlock secret as the text that goes in the backup QR / MicroSD file.
+
+    Self-describing and ASCII, so it round-trips through ``QRType.TEXT`` and can be
+    read back by a phone camera. The card id is carried alongside the secret so a
+    restore can tell the user when they have presented the wrong card's backup.
+    """
+    return f"{SATODIME_UNLOCK_PREFIX}{card_id}:{bytes(secret).hex()}"
+
+
+def parse_satodime_unlock_payload(text: str):
+    """Inverse of :func:`format_satodime_unlock_payload`.
+
+    Returns ``(card_id, secret_list)`` or ``None`` when the text is not a Satodime
+    unlock backup or is malformed.
+    """
+    if not text:
+        return None
+    text = text.strip()
+    if not text.startswith(SATODIME_UNLOCK_PREFIX):
+        return None
+    body = text[len(SATODIME_UNLOCK_PREFIX):]
+    parts = body.split(":")
+    if len(parts) != 2:
+        return None
+    card_id, secret_hex = parts[0].strip(), parts[1].strip()
+    try:
+        secret = bytes.fromhex(secret_hex)
+    except ValueError:
+        return None
+    if len(secret) != SIZE_SATODIME_UNLOCK_SECRET:
+        return None
+    return (card_id, list(secret))
+
+
+# Reader-name fragments that mean "this connection is contactless". The Satodime
+# applet keys its unlock-code enforcement off the APDU protocol media, not off any
+# setting, so the medium of the *actual* connection is what matters -- and PN532 is
+# enabled by default, which makes the interface setting alone useless as a signal.
+CONTACTLESS_READER_MARKERS = ("nfc", "pn532", "pn53", "acr122", "contactless", "rc522")
+
+
+def satodime_connection_is_contactless(connector) -> bool:
+    """Whether this card is talking to us over a contactless reader.
+
+    Matters because the applet skips the unlock-code check entirely on a contact
+    interface: over USB the zeroed placeholder secret is accepted, so there is nothing
+    to back up and nothing to restore. Over NFC the same operations need the real
+    20-byte secret.
+
+    Fails safe: when the reader cannot be identified we answer True, so the user is
+    offered the backup rather than silently left without one.
+    """
+    try:
+        name = connector.cardservice.connection.getReader()
+    except Exception:
+        return True
+    if not name:
+        return True
+    name = str(name).lower()
+    return any(marker in name for marker in CONTACTLESS_READER_MARKERS)
+
+
+def satodime_unlock_backup_filename(card_id: str) -> str:
+    """Deterministic name, so a restore can find the file without the user typing it."""
+    return f"satodime_unlock_{card_id}.txt"
+
+
+def cache_satodime_unlock_secret(controller, card_id: str, secret) -> None:
+    """Hold an unlock secret in RAM for the rest of this session."""
+    if controller.Satodime_unlock_secrets is None:
+        controller.Satodime_unlock_secrets = {}
+    controller.Satodime_unlock_secrets[card_id] = list(secret)
+
+
+def get_cached_satodime_unlock_secret(controller, card_id: str):
+    cached = controller.Satodime_unlock_secrets or {}
+    return cached.get(card_id)
+
+
+def apply_satodime_unlock_secret(controller, connector) -> bool:
+    """Load this card's cached unlock secret onto the connector.
+
+    Returns True when a real secret was applied. Otherwise the connector is left with
+    pysatochip's all-zero placeholder, which a *contact* reader accepts (the applet
+    skips the unlock-code check entirely there) and a contactless one rejects with
+    0x9C51.
+    """
+    secret = get_cached_satodime_unlock_secret(controller, satodime_card_id(connector))
+    if secret:
+        connector.satodime_set_unlock_secret(list(secret))
+        return True
+    connector.satodime_set_unlock_secret()
+    return False
+
+
 def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend_preference: str | None = None, allow_unseeded: bool = False):
     from seedsigner.models.settings import (
         Settings,
@@ -606,7 +740,18 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend
         return None
 
     # Check if the Seedkeeper needs the initial setup process
-    if status[3]["setup_done"]:
+    setup_done = status[3]["setup_done"]
+
+    if getattr(Satochip_Connector, "card_type", None) == "Satodime":
+        # Satodime is PIN-less, so it must never reach the shared PIN branches below:
+        # the setup one would ask the user to invent a PIN the applet ignores, and the
+        # verify one has nothing to verify against. An *unclaimed* Satodime still
+        # connects fine -- status, keyslot and pubkey reads all work before setup --
+        # so hand the connector back either way and let ToolsSatodimeClaimView run the
+        # claim when a view actually needs a state change.
+        apply_satodime_unlock_secret(parentObject.controller, Satochip_Connector)
+
+    elif setup_done:
 
         if require_pin:
             # Check for an existing Seedkeeper card that we may have been using with this PIN,

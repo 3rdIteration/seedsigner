@@ -24,6 +24,7 @@ it, then uninstalling it before moving to the next.
 import hashlib
 import logging
 import os
+import re
 import sys
 import time
 import types
@@ -404,8 +405,25 @@ class TestSatodime:
             logger.warning(f"Satodime cleanup failed (non-fatal): {exc}")
 
     def _provision(self, pin: str = "1234"):
-        """Satodime does not require card provisioning; this is a no-op for API consistency."""
-        pass
+        """Claim the freshly-installed Satodime, exactly as the app does.
+
+        Satodime has no PIN, but it does have a setup step: until INS_SETUP has run,
+        the applet answers every state-changing APDU (seal, unseal, reset, transfer)
+        with 0x9C04. This deliberately calls the app's own helper rather than
+        open-coding card_setup(), so the hardware suite covers the code the device
+        actually runs.
+        """
+        from seedsigner.helpers.seedkeeper_utils import claim_satodime_ownership
+
+        # Idempotent: the applet is installed once per class, so a later test in the
+        # class finds it already claimed. Re-running setup would return
+        # SW_SETUP_ALREADY_DONE.
+        (_, _, _, status) = self._connector.card_get_status()
+        if status.get("setup_done"):
+            return
+
+        (_resp, sw1, sw2) = claim_satodime_ownership(self._connector)
+        assert (sw1, sw2) == (0x90, 0x00), f"satodime setup failed: {sw1:#x} {sw2:#x}"
 
     # -- helpers -------------------------------------------------------
 
@@ -442,9 +460,29 @@ class TestSatodime:
             (resp, sw1, sw2, status) = connector.card_get_status()
             assert sw1 == 0x90 and sw2 == 0x00
             assert connector.card_type == "Satodime"
-            assert status.get("setup_done") is False
             assert "protocol_major_version" in status
             assert "applet_major_version" in status
+        finally:
+            self._disconnect()
+
+    def test_fresh_applet_reports_setup_not_done(self):
+        """A newly installed Satodime is unclaimed until INS_SETUP runs.
+
+        Definition order matters: this must observe the applet before any test calls
+        _provision(). It is the hardware-side statement of why the views need a setup
+        step -- without one, every seal/unseal below fails with 0x9C04.
+        """
+        connector = self._connect()
+        try:
+            (_, _, _, status) = connector.card_get_status()
+            if status.get("setup_done"):
+                pytest.skip("card already claimed by an earlier test in this class")
+
+            connector.satodime_set_unlock_secret()
+            connector.satodime_set_unlock_counter()
+            connector.satodime_get_status()
+            (_, sw1, sw2, _, _) = connector.satodime_seal_key(0, os.urandom(32))
+            assert (sw1, sw2) == (0x9C, 0x04), "unclaimed card must refuse to seal"
         finally:
             self._disconnect()
 
@@ -471,6 +509,7 @@ class TestSatodime:
         """Seal an uninitialized slot and read back its pubkey, as the views do."""
         connector = self._connect()
         try:
+            self._provision()
             connector.satodime_set_unlock_secret()
             connector.satodime_set_unlock_counter()
 
@@ -488,6 +527,31 @@ class TestSatodime:
 
             (_, _, _, slot_status) = connector.satodime_get_keyslot_status(slot)
             assert slot_status.get("key_status_txt") == "Sealed"
+
+            # The card's 33-byte SEC pubkey has to survive the app's own derivation.
+            # ec.PublicKey() takes secp256k1's internal 64-byte point, so the views
+            # must use _satodime_pubkey (ec.PublicKey.parse); passing the raw SEC
+            # bytes raises "Pubkey should be 64 bytes long" on every sealed slot.
+            #
+            # Format matters as much as parsing: the official Satodime apps derive
+            # bech32 P2WPKH, so a legacy address here would send funds somewhere those
+            # apps never look.
+            from embit import networks
+            from seedsigner.views.smartcard_views import _satodime_address
+
+            address = _satodime_address(pub_read, networks.NETWORKS["main"])
+            assert re.match(r"^bc1q[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{38}$", address), address
+
+            # And the slot must be tagged BTC, or the official apps show it as an
+            # unknown asset with no balance lookup.
+            from seedsigner.views.smartcard_views import (
+                SATODIME_SLIP44_BTC, _satodime_slot_slip44, _satodime_write_slot_metadata,
+            )
+
+            assert _satodime_write_slot_metadata(connector, slot), "tagging the slot failed"
+            (_, _, _, tagged) = connector.satodime_get_keyslot_status(slot)
+            assert _satodime_slot_slip44(tagged) == SATODIME_SLIP44_BTC
+            assert tagged["key_slip44_txt"] == "BTC"
         finally:
             self._disconnect()
 
@@ -495,6 +559,7 @@ class TestSatodime:
         """Unsealing a sealed slot yields the private key (destructive — runs last)."""
         connector = self._connect()
         try:
+            self._provision()
             connector.satodime_set_unlock_secret()
             connector.satodime_set_unlock_counter()
 

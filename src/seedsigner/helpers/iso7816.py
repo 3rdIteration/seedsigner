@@ -50,6 +50,12 @@ ISO7816_STATUS_WORDS: Dict[int, str] = {
     0x9C32: "Import data too long",
     0x9C33: "Wrong MAC during import",
     0x9C38: "Wrong secret type",
+    # Satodime only, and only over a contactless reader: the applet skips the
+    # unlock-code check entirely on a contact interface, so these two never appear
+    # there. They mean the caller does not hold the card's unlock secret.
+    0x9C50: "Wrong unlock counter",
+    0x9C51: "Wrong unlock code",
+    0x9C54: "Unknown protocol media",
     0x9CFF: "Card internal error",
 }
 

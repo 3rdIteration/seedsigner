@@ -163,6 +163,36 @@ def simulated_satodime(monkeypatch):
 
 
 
+@contextmanager
+def simulated_satodime_raw(applet="satodime"):
+    """
+    Put a real Satodime applet behind PC/SC and leave ``init_satochip`` alone.
+
+    ``simulated_satodime`` hands the view a ready-made connector, which means every
+    line of ``init_satochip`` -- card detection, setup-state handling, PIN policy --
+    is skipped. That is exactly where the Satodime PIN-prompt bug lived (a factory-
+    fresh Satodime reports ``setup_done`` False, and the shared setup branch used to
+    prompt for a PIN the applet does not have). Patching only PC/SC means the views
+    run the same client code they run on a real card.
+
+    Yields the ``SimulatedCard`` so a test can reason about the applet directly.
+    """
+    import sys
+    from unittest.mock import MagicMock as _MagicMock
+
+    for name in [m for m in sys.modules if m == "pysatochip" or m.startswith("pysatochip.")]:
+        if isinstance(sys.modules[name], _MagicMock):
+            del sys.modules[name]
+
+    from jcardsim import open_card
+    from jcardsim.pcsc_shim import patched_pcsc
+
+    with open_card(applet) as card:
+        card.select()
+        with patched_pcsc(card):
+            yield card
+
+
 class FakePyGP:
     """
     Stand-in for the ``pygp`` native module used by the JavaCard DIY views.

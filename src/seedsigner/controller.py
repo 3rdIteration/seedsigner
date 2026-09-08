@@ -268,6 +268,11 @@ class Controller(Singleton):
     Satochip_Connector = None
     Satochip_PIN = None
     Satochip_Last_UID_SHA1 = None
+    # Satodime unlock secrets for this session, keyed by card UID. The card emits its
+    # 20-byte unlock secret exactly once, from INS_SETUP, and it can never be re-read;
+    # without it, a contactless reader cannot seal, unseal, reset or even transfer the
+    # card. Held in RAM only -- the user is walked through backing it up at claim time.
+    Satodime_unlock_secrets: dict | None = None
     GPG_Admin_PIN = None
     javacard_keys: dict | None = None
 
@@ -566,6 +571,7 @@ class Controller(Singleton):
                         self.Satochip_PIN = None
                         self.Satochip_Last_UID_SHA1 = None
                         self.Satochip_Connector = None
+                        self.Satodime_unlock_secrets = None
 
                     # Always drop any cached OpenPGP admin PIN when returning home
                     self.GPG_Admin_PIN = None
@@ -759,6 +765,7 @@ class Controller(Singleton):
         self.Satochip_PIN = None
         self.Satochip_Last_UID_SHA1 = None
         self.Satochip_Connector = None
+        self.Satodime_unlock_secrets = None
         self.GPG_Admin_PIN = None
         self.image_entropy_preview_frames = None
         self.image_entropy_final_image = None
