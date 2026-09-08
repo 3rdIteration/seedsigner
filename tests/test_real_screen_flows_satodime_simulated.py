@@ -50,7 +50,7 @@ from ui_driver import Back, UISession, select
 # tools_views must be imported first: it is a facade that star-imports smartcard_views.
 from seedsigner.views import tools_views
 from seedsigner.views import smartcard_views
-from seedsigner.helpers import seedkeeper_utils
+from seedsigner.helpers import satodime_coins, seedkeeper_utils
 from seedsigner.models.settings import SettingsConstants
 from seedsigner.views.view import MainMenuView
 
@@ -66,6 +66,9 @@ pytestmark = pytest.mark.skipif(
 BECH32_ADDRESS = re.compile(r"^bc1q[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{38}$")
 
 SW_SETUP_NOT_DONE = (0x9C, 0x04)
+
+# The Bitcoin CoinSpec, which is what these Satodime views render by default.
+BTC = satodime_coins.COINS[satodime_coins.SLIP44_BTC]
 
 
 def claim(connector):
@@ -211,8 +214,6 @@ class TestSatodimeConnectorAgainstRealApplet(SatodimeSimulatedFlowTest):
         except JCardSimUnavailable as exc:
             pytest.skip(str(exc))
 
-        from embit import networks
-
         with ctx as connector:
             claim(connector)
             connector.satodime_set_unlock_secret()
@@ -221,7 +222,7 @@ class TestSatodimeConnectorAgainstRealApplet(SatodimeSimulatedFlowTest):
             (_, sw1, sw2, _, pub_comp) = connector.satodime_seal_key(0, bytes(range(32)))
             assert (sw1, sw2) == (0x90, 0x00)
 
-            address = smartcard_views._satodime_address(pub_comp, networks.NETWORKS["main"])
+            address = smartcard_views._satodime_address(pub_comp, BTC, is_testnet=False)
             assert BECH32_ADDRESS.match(address), address
 
 
@@ -316,7 +317,7 @@ class TestSatodimeAddressesAgainstRealApplet(SatodimeSimulatedFlowTest):
             view.run()
 
             status_line, address = recorder.body_for("Slot 0").split("\n")
-            assert status_line == "Sealed"
+            assert status_line == "Sealed BTC", "the slot's coin belongs on screen"
             assert BECH32_ADDRESS.match(address), address
 
 
@@ -453,13 +454,15 @@ class TestSatodimeThroughRealInitSatochip(SatodimeSimulatedFlowTest):
             claim_view.run()
 
             view = smartcard_views.ToolsSatodimeSealSlotView()
-            recorder = ScreenRecorder(0, 0)  # slot picker, then the success screen
+            # slot picker -> coin picker (BTC is first) -> success screen
+            recorder = ScreenRecorder(0, 0, 0)
             view.run_screen = recorder
             view.run()
 
             assert "Seal Failed" not in recorder.titles, recorder.calls
+            assert recorder.titles[:2] == ["Select Slot", "Seal As"]
             headline, address = recorder.body_for("Success").split("\n")
-            assert headline == "Slot 0 sealed"
+            assert headline == "Slot 0 sealed BTC"
             assert BECH32_ADDRESS.match(address), address
 
     def test_contactless_without_the_secret_routes_to_restore(self, monkeypatch):
@@ -661,10 +664,8 @@ class TestMatchesTheOfficialSatodimeApp:
     APP_ADDRESS = "bc1qapd47as9kw384u5pkd4jvvj5pn8ds3s876k048"
 
     def test_address_matches_what_the_android_app_shows(self):
-        from embit import networks
-
         pub_comp = list(bytes.fromhex(self.SEALED_PUBKEY))
-        address = smartcard_views._satodime_address(pub_comp, networks.NETWORKS["main"])
+        address = smartcard_views._satodime_address(pub_comp, BTC, is_testnet=False)
         assert address == self.APP_ADDRESS
 
     def test_testnet_uses_the_same_key_with_the_testnet_hrp(self):
@@ -678,7 +679,7 @@ class TestMatchesTheOfficialSatodimeApp:
         pub_comp = list(bytes.fromhex(self.SEALED_PUBKEY))
         from embit import script
 
-        address = smartcard_views._satodime_address(pub_comp, networks.NETWORKS["test"])
+        address = smartcard_views._satodime_address(pub_comp, BTC, is_testnet=True)
         assert address.startswith("tb1q")
         # bech32 checksums cover the hrp, so the strings differ past the prefix; what
         # must match is the witness program they encode.

@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import time
 from binascii import hexlify
-from embit import psbt, script, ec, bip32
+from embit import psbt, script, ec, bip32, hashes
 from embit.base import EmbitError
 from embit.descriptor import Descriptor
 from embit.networks import NETWORKS
@@ -1589,6 +1589,63 @@ class PSBTParser():
                     raise Exception("Signing keyspends from within a taptree not yet implemented")
                 fingerprints.add(hexlify(derivation_path.fingerprint).decode())
         return list(fingerprints)
+
+
+    @staticmethod
+    def wif_can_sign_any_input(psbt: PSBT, wif_key) -> bool:
+        """
+            Returns True if a raw private key controls any input of this psbt.
+
+            A WIF has no BIP32 tree, so the fingerprint routing that steers seeds finds
+            nothing to match -- and the psbt an Electrum watch-only single-address wallet
+            exports carries no derivation fields at all, so there is nothing to match
+            against either. Both facts made ``has_matching_input_fingerprint`` answer
+            False for keys that sign the transaction perfectly well.
+
+            The test applied here is the one embit's ``PSBT.sign_with`` itself uses: the
+            key's pubkey, or its hash160, appearing in the input's script. Taproot is
+            checked against the input's declared internal key, since a p2tr scriptPubkey
+            holds the *tweaked* output key rather than the one we hold.
+
+            Like has_matching_input_fingerprint this is only a routing hint. It verifies
+            nothing; real verification happens once the key reaches a PSBTParser.
+        """
+        try:
+            pub = wif_key.privkey.get_public_key()
+        except Exception:
+            return False
+
+        sec = pub.sec()
+        pkh = hashes.hash160(sec)
+        xonly = pub.xonly()
+
+        for inp in psbt.inputs:
+            internal_key = getattr(inp, "taproot_internal_key", None)
+            if internal_key is not None:
+                try:
+                    if internal_key.xonly() == xonly:
+                        return True
+                except Exception:
+                    pass
+
+            script_obj = inp.witness_script or inp.redeem_script
+            if script_obj is None:
+                utxo = None
+                try:
+                    utxo = inp.utxo
+                except Exception:
+                    utxo = None
+                if utxo is None:
+                    continue
+                script_obj = utxo.script_pubkey
+
+            data = getattr(script_obj, "data", None)
+            if not data:
+                continue
+            if sec in data or pkh in data:
+                return True
+
+        return False
 
 
     @staticmethod

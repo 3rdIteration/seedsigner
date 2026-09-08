@@ -536,22 +536,43 @@ class TestSatodime:
             # Format matters as much as parsing: the official Satodime apps derive
             # bech32 P2WPKH, so a legacy address here would send funds somewhere those
             # apps never look.
-            from embit import networks
+            from seedsigner.helpers import satodime_coins
             from seedsigner.views.smartcard_views import _satodime_address
 
-            address = _satodime_address(pub_read, networks.NETWORKS["main"])
+            btc = satodime_coins.COINS[satodime_coins.SLIP44_BTC]
+            address = _satodime_address(pub_read, btc, is_testnet=False)
             assert re.match(r"^bc1q[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{38}$", address), address
 
-            # And the slot must be tagged BTC, or the official apps show it as an
-            # unknown asset with no balance lookup.
+            # And the slot must be tagged with its coin, or the official apps show it
+            # as an unknown asset with no balance lookup. Tag it as each supported coin
+            # in turn: this is the only place the round trip through the card's own
+            # metadata is exercised, and pysatochip resolves the symbol back for us, so
+            # a wrong slip44 shows up as a wrong name rather than silently passing.
             from seedsigner.views.smartcard_views import (
-                SATODIME_SLIP44_BTC, _satodime_slot_slip44, _satodime_write_slot_metadata,
+                _satodime_slot_slip44, _satodime_write_slot_metadata,
             )
 
-            assert _satodime_write_slot_metadata(connector, slot), "tagging the slot failed"
-            (_, _, _, tagged) = connector.satodime_get_keyslot_status(slot)
-            assert _satodime_slot_slip44(tagged) == SATODIME_SLIP44_BTC
-            assert tagged["key_slip44_txt"] == "BTC"
+            from pysatochip.CardDataParser import DICT_SLIP44_BY_CODE
+
+            for coin in satodime_coins.SEALABLE_COINS:
+                assert _satodime_write_slot_metadata(connector, slot, coin), \
+                    f"tagging the slot as {coin.symbol} failed"
+                (_, _, _, tagged) = connector.satodime_get_keyslot_status(slot)
+
+                # The slip44 the card gives back is the authority. pysatochip's own
+                # label table is incomplete -- it has no entry for POL -- which is
+                # exactly why satodime_coins carries the symbols rather than reading
+                # them off key_slip44_txt.
+                assert _satodime_slot_slip44(tagged) == coin.slip44, coin.symbol
+                if coin.slip44 in DICT_SLIP44_BY_CODE:
+                    assert tagged["key_slip44_txt"] == coin.symbol
+
+                # And the address the views render for this slot follows that tag.
+                coin_address = _satodime_address(pub_read, coin, is_testnet=False)
+                assert coin_address, coin.symbol
+
+            # Leave it as Bitcoin for the unseal test that follows.
+            assert _satodime_write_slot_metadata(connector, slot, btc)
         finally:
             self._disconnect()
 

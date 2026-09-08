@@ -44,7 +44,7 @@ from seedsigner.gui.screens.tools_screens import (
 )
 from seedsigner.gui.screens.screen import ButtonOption
 from seedsigner.hardware.microsd import MicroSD
-from seedsigner.helpers import embit_utils, ndef_helper, seedkeeper_utils
+from seedsigner.helpers import embit_utils, ndef_helper, satodime_coins, seedkeeper_utils
 from seedsigner.helpers.satochip_signer import (
     _call_with_timeout,
     _get_extended_key,
@@ -4584,12 +4584,12 @@ class SatochipLoadDescriptorDetailsView(View):
 
 
 # A Satodime keyslot records the *coin*, never the network: Javacryptotools'
-# Constants.MAP_SLIP44_BY_SYMBOL has a single BTC entry (0x80000000) and the official
-# apps carry testnet as a separate display flag. So SeedSigner writes BTC's slip44 too,
-# and takes mainnet/testnet from SETTING__NETWORK exactly as the app takes it from its
-# own settings.
-SATODIME_SLIP44_BTC = 0x80000000
-SATODIME_SLIP44_BTC_BYTES = [0x80, 0x00, 0x00, 0x00]
+# Constants.MAP_SLIP44_BY_SYMBOL has one entry per coin and no testnet variants, and the
+# official apps carry testnet as a separate display flag. So SeedSigner writes the coin's
+# slip44 and takes mainnet/testnet from SETTING__NETWORK exactly as the app takes it from
+# its own settings. Per-coin address and key formats live in satodime_coins.
+SATODIME_SLIP44_BTC = satodime_coins.SLIP44_BTC
+SATODIME_SLIP44_BTC_BYTES = satodime_coins.slip44_bytes(satodime_coins.SLIP44_BTC)
 
 # key_contract / key_tokenid are deprecated, but the applet still demands 34 bytes of
 # each. The official app sends a block whose second byte is the 32-byte length
@@ -4607,16 +4607,27 @@ def _satodime_pubkey(pub_comp):
     return ec.PublicKey.parse(bytes(pub_comp))
 
 
-def _satodime_address(pub_comp, net) -> str:
-    """Derive a slot's deposit address the way the official Satodime apps do.
+def _satodime_address(pub_comp, coin, is_testnet: bool) -> str:
+    """A slot's deposit address, in the format the official Satodime apps derive.
 
-    Javacryptotools' ``BaseCoin.pubToAddress()`` returns a segwit address whenever the
-    coin supports it, and ``Bitcoin`` sets ``segwit_supported = true`` -- so the phone
-    and desktop apps show bech32 P2WPKH. Deriving P2PKH here would print a *different*
-    address for the same key: still spendable, but the official app would show a zero
-    balance for anything deposited to it.
+    Each coin's rule comes straight from Javacryptotools: BTC and LTC are bech32
+    P2WPKH (``BaseCoin.pubToAddress`` returns segwit whenever the coin supports it),
+    BCH is CashAddr, XCP is legacy base58, and the EVM chains are keccak-derived.
+    Getting this wrong prints a *different* address for the same key -- still
+    spendable, but the official app would show a zero balance on anything sent to it.
     """
-    return script.p2wpkh(_satodime_pubkey(pub_comp)).address(network=net)
+    return coin.address(_satodime_pubkey(pub_comp), is_testnet)
+
+
+def _satodime_is_testnet(view) -> bool:
+    """Whether to render addresses for testnet, mirroring the app's testnet toggle."""
+    network = view.settings.get_value(SettingsConstants.SETTING__NETWORK)
+    return network != SettingsConstants.MAINNET
+
+
+def _satodime_slot_coin(slot_status):
+    """The CoinSpec a keyslot holds, or None when the official app cannot show it."""
+    return satodime_coins.coin_for_slip44(_satodime_slot_slip44(slot_status))
 
 
 def _satodime_slot_slip44(slot_status) -> int:
@@ -4632,29 +4643,32 @@ def _satodime_slot_slip44(slot_status) -> int:
     return SATODIME_SLIP44_BTC if value == 0 else value
 
 
-def _satodime_write_slot_metadata(connector, slot) -> bool:
-    """Tag a freshly sealed slot as Bitcoin, mirroring the official app's seal.
+def _satodime_write_slot_metadata(connector, slot, coin=None) -> bool:
+    """Tag a freshly sealed slot with its coin, mirroring the official app's seal.
 
     The app seals and then immediately sends SET_KEYSLOT_STATUS with the coin's slip44
     (NFCCardService.seal). Without it the slot reads back as slip44 0x00000000, which
     the official apps show as an unknown asset with no balance lookup.
     """
+    if coin is None:
+        coin = satodime_coins.COINS[satodime_coins.SLIP44_BTC]
     try:
         (_r, sw1, sw2) = connector.satodime_set_keyslot_status_part0(
             slot,
             0x00,                       # RFU1
             0x00,                       # RFU2
             0x00,                       # key_asset: the app leaves this Undefined
-            SATODIME_SLIP44_BTC_BYTES,
+            satodime_coins.slip44_bytes(coin.slip44),
             list(SATODIME_EMPTY_CONTRACT),
             list(SATODIME_EMPTY_CONTRACT),
         )
     except Exception:
-        logger.exception("Satodime: failed to tag slot %s as BTC", slot)
+        logger.exception("Satodime: failed to tag slot %s as %s", slot, coin.symbol)
         return False
     if sw1 != 0x90 or sw2 != 0x00:
         logger.warning(
-            "Satodime: failed to tag slot %s as BTC: %s", slot, format_sw_error(sw1, sw2)
+            "Satodime: failed to tag slot %s as %s: %s",
+            slot, coin.symbol, format_sw_error(sw1, sw2),
         )
         return False
     return True
@@ -5190,27 +5204,27 @@ class ToolsSatodimeAddressesView(View):
         self.loading_screen.stop()
 
         max_keys = status.get("max_num_keys", 0)
-        network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
-        embit_network = embit_utils.get_embit_network_name(network)
-        net = networks.NETWORKS[embit_network]
+        is_testnet = _satodime_is_testnet(self)
 
         for key_nbr in range(max_keys):
             try:
                 (_, _, _, slot_status) = Satochip_Connector.satodime_get_keyslot_status(key_nbr)
                 status_txt = slot_status.get("key_status_txt", "Unknown")
+                coin = _satodime_slot_coin(slot_status)
                 if status_txt == "Uninitialized":
                     # An empty slot holds no key, so the card answers get_pubkey with an
                     # empty body and pysatochip's parser raises. Don't ask.
                     text = f"{status_txt}\n\nSeal this slot first"
-                elif _satodime_slot_slip44(slot_status) != SATODIME_SLIP44_BTC:
-                    # Another app sealed this slot for a different chain. Rendering a
-                    # Bitcoin address from its key would invite a deposit that the
-                    # owner's wallet for that coin will never show.
-                    coin = slot_status.get("key_slip44_txt", "another coin")
-                    text = f"{status_txt}\n\nNot Bitcoin ({coin})"
+                elif coin is None:
+                    # Sealed by something for a chain the official app has no address
+                    # format for either. Guessing one would invite a deposit nobody's
+                    # wallet can find.
+                    label = slot_status.get("key_slip44_txt", "unknown")
+                    text = f"{status_txt}\n\nUnsupported coin\n{label}"
                 else:
                     (_, _, _, _, pub_comp) = Satochip_Connector.satodime_get_pubkey(key_nbr)
-                    text = f"{status_txt}\n{_satodime_address(pub_comp, net)}"
+                    address = _satodime_address(pub_comp, coin, is_testnet)
+                    text = f"{status_txt} {coin.symbol}\n{address}"
             except Exception as e:
                 text = str(e)
 
@@ -5273,6 +5287,24 @@ class ToolsSatodimeSealSlotView(View):
             return Destination(BackStackView)
 
         slot = available[selected]
+
+        # Which chain this vault is for. The card records only the coin, and the
+        # official apps read that back to pick an address format and a balance
+        # explorer -- so an untagged slot shows up there as an unknown asset.
+        coin_choice = self.run_screen(
+            ButtonListScreen,
+            title="Seal As",
+            is_button_text_centered=False,
+            button_data=[
+                ButtonOption(f"{c.symbol} - {c.display_name}")
+                for c in satodime_coins.SEALABLE_COINS
+            ],
+            show_back_button=True,
+        )
+        if coin_choice == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        coin = satodime_coins.SEALABLE_COINS[coin_choice]
+
         # Card-side sealing entropy; never logged or persisted (AGENTS security).
         entropy = os.urandom(32)
 
@@ -5291,21 +5323,18 @@ class ToolsSatodimeSealSlotView(View):
             )
             return Destination(BackStackView)
 
-        # Tag the slot as Bitcoin so the official Satodime apps recognise it. Advisory
-        # only: the key is already sealed and its address is valid either way, so a
-        # failure here is logged rather than shown as a failed seal.
-        _satodime_write_slot_metadata(Satochip_Connector, slot)
+        # Tag the slot with its coin so the official Satodime apps recognise it.
+        # Advisory only: the key is already sealed and its address is valid either
+        # way, so a failure here is logged rather than shown as a failed seal.
+        _satodime_write_slot_metadata(Satochip_Connector, slot, coin)
 
-        network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
-        embit_network = embit_utils.get_embit_network_name(network)
-        net = networks.NETWORKS[embit_network]
-        address = _satodime_address(pub_comp, net)
+        address = _satodime_address(pub_comp, coin, _satodime_is_testnet(self))
 
         self.run_screen(
             LargeIconStatusScreen,
             title="Success",
             status_headline=None,
-            text=f"Slot {slot} sealed\n{address}",
+            text=f"Slot {slot} sealed {coin.symbol}\n{address}",
             show_back_button=False,
         )
 
@@ -5373,22 +5402,26 @@ class ToolsSatodimeUnsealSlotView(View):
             )
             return Destination(BackStackView)
 
-        network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
-        embit_network = embit_utils.get_embit_network_name(network)
-        net = networks.NETWORKS[embit_network]
-        # WIF is secret material shown only on this screen; never logged. priv_list
-        # is dropped as soon as the display returns below (best-effort, AGENTS security).
-        wif = ec.PrivateKey(bytes(priv_list), network=net).wif()
+        # The key's import format follows the slot's coin: WIF for the bitcoin-likes,
+        # raw hex for the EVM chains, which is what those wallets' "import private
+        # key" fields take. Getting this wrong hands the user a string their wallet
+        # rejects, with no way to ask the card again.
+        (_, _, _, slot_status) = Satochip_Connector.satodime_get_keyslot_status(slot)
+        coin = _satodime_slot_coin(slot_status) or satodime_coins.COINS[satodime_coins.SLIP44_BTC]
+
+        # Secret material shown only on this screen; never logged. priv_list is dropped
+        # as soon as the display returns below (best-effort, AGENTS security).
+        secret = coin.privkey(bytes(priv_list), _satodime_is_testnet(self))
         del priv_list
 
         self.run_screen(
             LargeIconStatusScreen,
-            title="Unsealed",
+            title=f"Unsealed {coin.symbol}",
             status_headline=None,
-            text=wif,
+            text=secret,
             show_back_button=True,
         )
-        wif = None
+        secret = None
 
         return Destination(BackStackView)
 
@@ -5410,20 +5443,33 @@ class ToolsSatodimeSignTxView(View):
         (_, _, _, status) = Satochip_Connector.satodime_get_status()
         max_keys = status.get("max_num_keys", 0)
 
+        # Signing is Bitcoin-only: the PSBT flow below is a Bitcoin transaction
+        # signer, so only Bitcoin slots are offered. Other chains can still be
+        # viewed and unsealed -- the key is exported and imported elsewhere.
         available = []
         button_data = []
+        skipped_coins = set()
         for key_nbr in range(max_keys):
             (_, _, _, slot_status) = Satochip_Connector.satodime_get_keyslot_status(key_nbr)
-            if slot_status.get("key_status_txt") == "Sealed":
-                available.append(key_nbr)
-                button_data.append(ButtonOption(f"Slot {key_nbr}"))
+            if slot_status.get("key_status_txt") != "Sealed":
+                continue
+            coin = _satodime_slot_coin(slot_status)
+            if coin is None or coin.slip44 != satodime_coins.SLIP44_BTC:
+                skipped_coins.add(coin.symbol if coin else "unknown")
+                continue
+            available.append(key_nbr)
+            button_data.append(ButtonOption(f"Slot {key_nbr}"))
 
         if not available:
+            if skipped_coins:
+                text = "Signing is Bitcoin only.\nUnseal to export the key."
+            else:
+                text = "No sealed slots"
             self.run_screen(
                 WarningScreen,
-                title="Failed",
+                title="No Bitcoin Slots" if skipped_coins else "Failed",
                 status_headline=None,
-                text="No sealed slots",
+                text=text,
                 show_back_button=True,
             )
             return Destination(BackStackView)
@@ -5456,10 +5502,8 @@ class ToolsSatodimeSignTxView(View):
             )
             return Destination(BackStackView)
 
-        network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
-        embit_network = embit_utils.get_embit_network_name(network)
-        net = networks.NETWORKS[embit_network]
-        wif = ec.PrivateKey(bytes(priv_list), network=net).wif()
+        btc = satodime_coins.COINS[satodime_coins.SLIP44_BTC]
+        wif = btc.privkey(bytes(priv_list), _satodime_is_testnet(self))
         del priv_list
 
         # The WIF-derived key becomes the PSBT signing seed; the standard PSBT flow
