@@ -360,6 +360,56 @@ class TestPSBTSatochip(FlowTest):
         assert controller.psbt_parser is None
         assert controller.psbt_sign_with_satochip is False
 
+    def test_multisig_card_parser_uses_configured_network(self, monkeypatch):
+        """
+        A multisig PSBT signed with a smartcard (Satochip or Keycard) must be parsed
+        with the configured network rather than the parser's mainnet default. On a
+        non-mainnet network the wrong HRP silently rewrites every address shown on
+        screen (e.g. tb1q... -> bc1q...), so the parser's network and the rendered
+        destination address are both asserted here.
+        """
+        import base64
+
+        from seedsigner.views import scan_views, psbt_views
+        from seedsigner.views.view import MainMenuView
+        from seedsigner.helpers import seedkeeper_utils
+
+        psbt = PSBT.parse(a2b_base64(PSBTTestData.MULTISIG_NATIVE_SEGWIT_1_INPUT))
+        psbt.outputs.append(create_output(PSBTTestData.MULTISIG_NATIVE_SEGWIT_RECEIVE))
+        psbt_b64 = base64.b64encode(psbt.serialize()).decode()
+
+        def load_psbt_into_decoder(view: scan_views.ScanView):
+            view.decoder.add_data(psbt_b64)
+
+        class MockCard:
+            needs_2FA = False
+
+        monkeypatch.setattr(seedkeeper_utils, "init_satochip", lambda *args, **kwargs: MockCard())
+
+        controller = Controller.get_instance()
+        controller.storage.seeds = []
+        controller.psbt_parser = None
+        controller.psbt_sign_with_satochip = False
+
+        # Network on testnet -> addresses must render as tb1...
+        self.settings.set_value(SettingsConstants.SETTING__NETWORK, SettingsConstants.TESTNET)
+        self.settings.set_value(
+            SettingsConstants.SETTING__SATOCHIP_SUPPORT,
+            SettingsConstants.OPTION__ENABLED,
+        )
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(scan_views.ScanView, before_run=load_psbt_into_decoder),
+            FlowStep(psbt_views.PSBTSelectSeedView, button_data_selection=psbt_views.PSBTSelectSeedView.SATOCHIP),
+        ])
+
+        parser = controller.psbt_parser
+        assert parser is not None
+        assert parser.network == SettingsConstants.TESTNET
+        assert parser.is_multisig
+        assert parser.destination_addresses and parser.destination_addresses[0].startswith("tb1")
+
 
 class TestPSBTMultisigDescriptorMismatch(BaseTest):
 
