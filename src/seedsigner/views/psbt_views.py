@@ -205,7 +205,10 @@ class PSBTSelectSeedView(View):
 
             if is_multisig_psbt:
                 try:
-                    parser = PSBTParser(psbt)
+                    parser = PSBTParser(
+                        psbt,
+                        network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
+                    )
                     parser.parse()
                 except Exception as e:
                     logger.exception("Failed to parse PSBT with %s data", card_label)

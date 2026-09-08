@@ -4,6 +4,7 @@ import os
 import random
 from concurrent.futures import TimeoutError
 
+from embit.ec import PublicKey
 from embit.psbt import PSBT
 
 from seedsigner.helpers.iso7816 import format_sw_error
@@ -25,7 +26,9 @@ def sign_psbt_with_keycard(psbt: PSBT, connector, timeout: float | None = None) 
 
     Keycard shells may reject pubkey export for arbitrary child paths with
     SW=6982. For single-derivation inputs, this signer falls back to path-based
-    signing by setting the connector's current derivation path directly.
+    signing by setting the connector's current derivation path directly. For
+    multi-derivation (multisig) inputs, each candidate path's public key is
+    exported and matched against the derivation's public key before signing.
 
     If ``timeout`` is passed it overrides the configured setting value.
 
@@ -81,31 +84,49 @@ def sign_psbt_with_keycard(psbt: PSBT, connector, timeout: float | None = None) 
                 getattr(deriv, "fingerprint", b"").hex() if getattr(deriv, "fingerprint", None) is not None else "unknown",
             )
 
-            # Keycard backend: path-based fallback for single-derivation inputs.
             if len(inp.bip32_derivations) == 1:
+                # Keycard backend: path-based fallback for single-derivation
+                # inputs. Some Keycard shells reject extended-key export for
+                # arbitrary child paths (SW=6982), so with a single derivation
+                # there is no ambiguity: sign at the claimed path directly.
+                setattr(connector, "_last_path", path)
+                matched_or_fallback = True
+                logger.info(
+                    "Keycard signer input %d: using path-sign fallback path=%s",
+                    i,
+                    path,
+                )
+            else:
+                # Multisig: the input carries a derivation per cosigner. Only
+                # the derivation whose public key the card reproduces at that
+                # path is ours to sign.
                 try:
-                    setattr(connector, "_last_path", path)
-                    matched_or_fallback = True
-                    logger.info(
-                        "Keycard signer input %d: using path-sign fallback path=%s",
-                        i,
-                        path,
-                    )
+                    key, _chaincode = connector.card_bip32_get_extendedkey(path)
+                    card_pub = PublicKey.parse(key.get_public_key_bytes(compressed=True))
                 except Exception as e:
                     logger.info(
-                        "Keycard signer input %d: path-sign fallback failed path=%s error=%s",
+                        "Keycard signer input %d: pubkey export failed path=%s error=%s",
                         i,
                         path,
                         e,
                     )
                     continue
-            else:
-                # For multi-derivation inputs we avoid guessing.
+                if card_pub != pubkey:
+                    logger.info(
+                        "Keycard signer input %d: pubkey mismatch path=%s",
+                        i,
+                        path,
+                    )
+                    continue
+                # card_bip32_get_extendedkey already navigated the card to this
+                # path; make _last_path authoritative for the sign below.
+                setattr(connector, "_last_path", path)
+                matched_or_fallback = True
                 logger.info(
-                    "Keycard signer input %d: skipping non-single-derivation input",
+                    "Keycard signer input %d: matched card pubkey path=%s",
                     i,
+                    path,
                 )
-                continue
 
             tx_hash = psbt.sighash(i)
             extra_sigs = random.randint(1, in_tx_dummy_max) if random.random() < dummy_prob else 0
