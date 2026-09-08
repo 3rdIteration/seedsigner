@@ -140,7 +140,7 @@ on:
         description: 'Build Rust toolchain from source (ignore cached binary). Use when updating the Rust version'
         required: false
         type: boolean
-        default: 'false'
+        default: false
       release_tag:
         description: Upload artifacts to a GitHub Release with this tag (leave empty to skip release upload)
         required: false
@@ -214,7 +214,12 @@ jobs:
       testing_build: ${{ github.event.inputs['testing-build'] }}
       seedsigner_repo_url: https://github.com/${{ github.event.inputs['app-repo'] }}
       seedsigner_branch: ${{ github.event.inputs['source-ref'] }}
-      build_rust_from_source: ${{ github.event.inputs['build-rust-from-source'] }}
+      # github.event.inputs values are ALWAYS strings, even for a boolean
+      # input -- an unchecked box is the string "false". The callee declares
+      # build_rust_from_source as type: boolean and tests it with
+      # `!= true`, so compare here to produce a real boolean. Passing the
+      # raw value fails input evaluation before any job starts.
+      build_rust_from_source: ${{ github.event.inputs['build-rust-from-source'] == 'true' }}
       seedsigner_os_repo: ${{ github.event.inputs['os-repo'] }}
       seedsigner_os_ref: ${{ github.event.inputs['os-ref'] }}
       release_tag: ${{ github.event.inputs.release_tag }}
