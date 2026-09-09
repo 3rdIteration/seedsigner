@@ -86,10 +86,12 @@ class MockSatodimeConnector:
     without a physical card or jcardsim.
     """
     setup_done = True
+    UID_SHA1 = "aabbccddeeff0011"
 
     def __init__(self, states=(0, 0, 0), slip44=(0x80, 0x00, 0x00, 0x00)):
         self.states = list(states)
         self.slip44 = list(slip44)
+        self.unlock_secret = list(range(20))
 
     def satodime_get_status(self):
         return (b"", 0x90, 0x00, {"max_num_keys": len(self.states)})
@@ -99,6 +101,10 @@ class MockSatodimeConnector:
 
     def satodime_set_unlock_secret(self, *args, **kwargs): pass
     def satodime_set_unlock_counter(self, *args, **kwargs): pass
+
+    def card_setup(self, *args, **kwargs):
+        self.setup_done = True
+        return (b"", 0x90, 0x00)
 
 
 def _patch_satodime_connector(monkeypatch, **kwargs):
@@ -716,6 +722,75 @@ class TestMenuNavigationFlows(FlowTest):
             FlowStep(ToolsSatodimeView, button_data_selection=ToolsSatodimeView.CARD_SETTINGS),
             FlowStep(ToolsSatodimeCardSettingsView, screen_return_value=RET_CODE__BACK_BUTTON),
             FlowStep(ToolsSatodimeView),
+        ])
+
+    def test_smartcard_satodime_backup_unlock_skip_returns_to_card_settings(self, monkeypatch):
+        """Card Settings → Back Up Unlock Code → skip backup → returns to Card Settings.
+
+        Regression: the backup flow used to terminate with BackStackView, which pops TWO
+        views. Because ReshowUnlockView forwarded to BackupUnlockView without
+        skip_current_view, that double-pop re-ran ReshowUnlockView, which re-read the card
+        ("connecting to card") and forwarded straight back to the unlock-code menu --
+        an endless loop. Marking the forward as skip_current_view lets BackStackView pop
+        straight back to Card Settings.
+        """
+        from seedsigner.helpers import seedkeeper_utils
+        from seedsigner.views.smartcard_views import (
+            ToolsSmartcardMenuView, ToolsSatodimeView, ToolsSatodimeCardSettingsView,
+            ToolsSatodimeReshowUnlockView, ToolsSatodimeBackupUnlockView,
+        )
+
+        connector = _patch_satodime_connector(monkeypatch)
+        card_id = seedkeeper_utils.satodime_card_id(connector)
+
+        # The controller wipes Satodime_unlock_secrets when it routes through Home, so
+        # cache the secret just before ReshowUnlockView reads it (not before run_sequence).
+        def cache_secret(view):
+            seedkeeper_utils.cache_satodime_unlock_secret(self.controller, card_id, list(range(20)))
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.SMARTCARD),
+            FlowStep(ToolsSmartcardMenuView, button_data_selection=ToolsSmartcardMenuView.SATODIME),
+            FlowStep(ToolsSatodimeView, button_data_selection=ToolsSatodimeView.CARD_SETTINGS),
+            FlowStep(ToolsSatodimeCardSettingsView, button_data_selection=ToolsSatodimeCardSettingsView.BACKUP_UNLOCK, before_run=cache_secret),
+            FlowStep(ToolsSatodimeReshowUnlockView, is_redirect=True),
+            FlowStep(ToolsSatodimeBackupUnlockView, screen_return_value=3),  # Skip Verification
+            FlowStep(ToolsSatodimeCardSettingsView),  # back where we started, no loop
+        ])
+
+    def test_smartcard_satodime_claim_skip_returns_to_slot_menu(self, monkeypatch):
+        """Seal on an unclaimed card → claim → skip backup → back to the slot action.
+
+        Regression: the claim→backup is a two-view workflow. Without skip_current_view on
+        the ClaimView→BackupUnlockView forward, BackStackView from the backup flow popped
+        two views and re-ran ClaimView ("connecting to card", "Already Claimed") before
+        finally reaching the slot action. The forward must be skip_current_view so the
+        backup's BackStackView lands straight back on the slot action (which, now that the
+        card is claimed, continues the seal).
+        """
+        from seedsigner.helpers import seedkeeper_utils
+        from seedsigner.views.smartcard_views import (
+            ToolsSmartcardMenuView, ToolsSatodimeView, ToolsSatodimeSlotsView,
+            ToolsSatodimeSlotMenuView, ToolsSatodimeSealSlotView,
+            ToolsSatodimeClaimView, ToolsSatodimeBackupUnlockView,
+        )
+
+        connector = _patch_satodime_connector(monkeypatch)
+        connector.setup_done = False  # unclaimed card -> seal routes to the claim flow
+        monkeypatch.setattr(seedkeeper_utils, "satodime_connection_is_contactless", lambda c: True)
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.SMARTCARD),
+            FlowStep(ToolsSmartcardMenuView, button_data_selection=ToolsSmartcardMenuView.SATODIME),
+            FlowStep(ToolsSatodimeView, button_data_selection=ToolsSatodimeView.KEY_SLOTS),
+            FlowStep(ToolsSatodimeSlotsView, screen_return_value=0),  # pick "Slot 0" -> SlotMenu
+            FlowStep(ToolsSatodimeSlotMenuView, screen_return_value=0),  # pick "Seal Slot"
+            FlowStep(ToolsSatodimeSealSlotView, is_redirect=True),  # unclaimed -> ClaimView
+            FlowStep(ToolsSatodimeClaimView, screen_return_value=0),  # "Claim Card"
+            FlowStep(ToolsSatodimeBackupUnlockView, screen_return_value=3),  # Skip Verification
+            FlowStep(ToolsSatodimeSealSlotView),  # back on the slot action, no loop
         ])
 
     def test_smartcard_satodime_key_slots_uninitialized(self, monkeypatch):

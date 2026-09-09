@@ -4953,7 +4953,10 @@ class ToolsSatodimeClaimView(View):
             )
             return Destination(BackStackView)
 
-        return Destination(ToolsSatodimeBackupUnlockView, view_args=dict(card_id=card_id))
+        # ClaimView is a transient redirect; skip_current_view omits it from history so
+        # BackStackView from the backup flow pops straight back to the view that needed
+        # the claim (the slot-action view / card settings) instead of re-running this view.
+        return Destination(ToolsSatodimeBackupUnlockView, view_args=dict(card_id=card_id), skip_current_view=True)
 
 
 class ToolsSatodimeBackupUnlockView(View):
@@ -5038,7 +5041,7 @@ class ToolsSatodimeBackupUnlockView(View):
                     DireWarningScreen,
                     title="Skip Backup?",
                     status_headline=None,
-                    text="Without this code NFC use\nis lost for good.",
+                    text="Without this code, a contact reader is needed to reclaim ownership. NFC-only cards are locked.",
                     show_back_button=True,
                     button_data=[ButtonOption("Skip Anyway")],
                 )
@@ -5466,7 +5469,10 @@ class ToolsSatodimeReshowUnlockView(View):
             )
             return Destination(BackStackView)
 
-        return Destination(ToolsSatodimeBackupUnlockView, view_args=dict(card_id=card_id))
+        # Transient dispatcher: omit this view from history so the backup flow's
+        # BackStackView lands back on Card Settings, not on this forwarding view
+        # (which would re-show the unlock-code menu in a loop).
+        return Destination(ToolsSatodimeBackupUnlockView, view_args=dict(card_id=card_id), skip_current_view=True)
 
 
 class ToolsSatodimeSealSlotView(View):
