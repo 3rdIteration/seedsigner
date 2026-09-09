@@ -5346,7 +5346,7 @@ class ToolsSatodimeSlotMenuView(View):
     """
     SEAL = ButtonOption("Seal Slot (Initialise New Key)")
     VIEW_ADDRESS = ButtonOption("View Address (QR)")
-    UNSEAL = ButtonOption("Unseal Slot (View Private Key)")
+    UNSEAL = ButtonOption("Unseal Slot (Access Private Key)")
     VIEW_PRIVKEY = ButtonOption("View Private Key (QR)")
     SIGN_TX = ButtonOption("Sign Transaction")
     LOAD_KEY = ButtonOption("Load Key to SeedSigner")
