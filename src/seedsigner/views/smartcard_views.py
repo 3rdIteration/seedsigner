@@ -4643,6 +4643,153 @@ def _satodime_slot_slip44(slot_status) -> int:
     return SATODIME_SLIP44_BTC if value == 0 else value
 
 
+# A Satodime keyslot holds no seed backup anywhere off the card. That is the feature,
+# but it is also the one thing a user must grasp before sealing or re-sealing: if the
+# card is lost or destroyed, the funds sitting on that slot's address are gone. Both
+# the seal and re-seal guards below say this loudly.
+SATODIME_NO_BACKUP_WARNING = (
+    "There is no backup for this card.\n"
+    "If it's lost or destroyed, funds\n"
+    "are unrecoverable."
+)
+
+
+def _satodime_unseal_warning(view, confirm_label: str) -> bool:
+    """Loud heads-up before the irreversible ``SATODIME_UNSEAL_KEY`` step.
+
+    Unsealing exposes the slot's private key, and the applet then refuses to seal that
+    slot ever again (state goes to ``Unsealed``). Returns True when the user confirms,
+    False when they backed out.
+    """
+    selected = view.run_screen(
+        DireWarningScreen,
+        title="Unseal Slot",
+        status_headline=None,
+        text="Once unsealed, this slot\ncan never be re-sealed.",
+        show_back_button=True,
+        button_data=[ButtonOption(confirm_label)],
+    )
+    return selected != RET_CODE__BACK_BUTTON
+
+
+def _satodime_require_rng_health(view) -> bool:
+    """Fail closed unless the system RNG has passed its health monitor.
+
+    Sealing mints a new key out of these bytes, so a degraded RNG must refuse to seal
+    rather than ship a weaker key -- the same gate the password generator and the
+    image-entropy seed flow apply before they produce a secret. Returns True when the
+    RNG is healthy and sealing may continue.
+    """
+    if view.controller.hardware_rng_is_healthy:
+        return True
+
+    view.run_screen(
+        WarningScreen,
+        title="System RNG Error",
+        status_headline=None,
+        text=view.controller.hardware_rng_failure_reason or "System RNG health check failed.",
+        show_back_button=False,
+        button_data=[ButtonOption("I Understand")],
+    )
+    return False
+
+
+# The applet's per-slot state machine (state_array byte). Every command accepts exactly
+# one state and answers 0x9C52 otherwise: SEAL needs Uninitialized, UNSEAL needs Sealed,
+# and GET_PRIVKEY / RESET need Unsealed. Prefer these over matching key_status_txt.
+SATODIME_SLOT_UNINITIALIZED = "uninitialized"
+SATODIME_SLOT_SEALED = "sealed"
+SATODIME_SLOT_UNSEALED = "unsealed"
+SATODIME_SLOT_UNKNOWN = "unknown"
+
+
+def _satodime_slot_state(slot_status) -> str:
+    """The slot's applet state, from the numeric ``key_status`` byte.
+
+    The byte and ``key_status_txt`` both come from pysatochip's DIC_STATE
+    (0=Uninitialized, 1=Sealed, 2=Unsealed); reading the byte directly avoids any
+    dependence on the exact text a pysatochip build emits.
+    """
+    state = slot_status.get("key_status")
+    if state == 0:
+        return SATODIME_SLOT_UNINITIALIZED
+    if state == 1:
+        return SATODIME_SLOT_SEALED
+    if state == 2:
+        return SATODIME_SLOT_UNSEALED
+    return SATODIME_SLOT_UNKNOWN
+
+
+def _satodime_state_label(state: str) -> str:
+    if state == SATODIME_SLOT_UNINITIALIZED:
+        return "Uninitialized"
+    if state == SATODIME_SLOT_SEALED:
+        return "Sealed"
+    if state == SATODIME_SLOT_UNSEALED:
+        return "Unsealed"
+    return "Unknown"
+
+
+def _satodime_slot_label(key_nbr, state, coin, address) -> str:
+    """One line for the slot list: true state, coin, and the address when it has one."""
+    label = f"Slot {key_nbr} - {_satodime_state_label(state)}"
+    if state in (SATODIME_SLOT_SEALED, SATODIME_SLOT_UNSEALED):
+        if coin is None:
+            return label + " - Unsupported"
+        label += f" - {coin.symbol}"
+        if address:
+            label += f" - {address}"
+    return label
+
+
+def _satodime_read_slot(connector, key_nbr, is_testnet: bool):
+    """Read one keyslot's status, state, coin and (for a live slot) deposit address.
+
+    Returns ``(slot_status, state, coin, address)``. A read failure (e.g. the card
+    answers get_pubkey with an empty body on an empty slot) yields ``None`` for the
+    degraded fields so callers can fail gracefully instead of leaking an exception.
+    """
+    try:
+        (_, _, _, slot_status) = connector.satodime_get_keyslot_status(key_nbr)
+        state = _satodime_slot_state(slot_status)
+        coin = None
+        address = None
+        if state != SATODIME_SLOT_UNINITIALIZED:
+            coin = _satodime_slot_coin(slot_status)
+            if coin is not None:
+                (_, _, _, _, pub_comp) = connector.satodime_get_pubkey(key_nbr)
+                address = _satodime_address(pub_comp, coin, is_testnet)
+        return slot_status, state, coin, address
+    except Exception:
+        logger.exception("Satodime: slot %s read failed", key_nbr)
+        return None, SATODIME_SLOT_UNKNOWN, None, None
+
+
+def _satodime_build_cache(connector, is_testnet: bool) -> dict:
+    """Snapshot every keyslot's state, coin and address once.
+
+    The result is cached on the Controller so that navigating the slot list, per-slot
+    action menus, and view-address screens never has to touch the card again. Only
+    state-changing operations (seal/unseal/reset) invalidate the affected entry.
+    """
+    (_, _, _, status) = connector.satodime_get_status()
+    max_keys = status.get("max_num_keys", 0)
+    card_id = seedkeeper_utils.satodime_card_id(connector)
+    slots = []
+    for key_nbr in range(max_keys):
+        _slot_status, state, coin, address = _satodime_read_slot(connector, key_nbr, is_testnet)
+        slots.append((state, coin, address))
+    return {"card_id": card_id, "max_keys": max_keys, "slots": slots}
+
+
+def _satodime_cached_slot(controller, slot: int):
+    """(state, coin, address) for ``slot`` from the Controller's cache, or None."""
+    cache = controller.satodime_slot_cache
+    if cache and 0 <= slot < len(cache["slots"]):
+        return cache["slots"][slot]
+    return None
+
+
 def _satodime_write_slot_metadata(connector, slot, coin=None) -> bool:
     """Tag a freshly sealed slot with its coin, mirroring the official app's seal.
 
@@ -5069,22 +5216,13 @@ def _satodime_scan_text(view):
 
 
 class ToolsSatodimeView(View):
-    VIEW_ADDRESSES = ButtonOption("View Deposit Addresses")
-    SEAL_SLOT = ButtonOption("Seal Slot")
-    UNSEAL_SLOT = ButtonOption("Unseal Slot")
-    SIGN_TX = ButtonOption("Sign Transaction")
+    """Main Satodime menu: Key Slots, Transfer Ownership, Card Settings."""
+    KEY_SLOTS = ButtonOption("Key Slots")
     TRANSFER = ButtonOption("Transfer Ownership")
     CARD_SETTINGS = ButtonOption("Card Settings")
 
     def run(self):
-        button_data = [
-            self.VIEW_ADDRESSES,
-            self.SEAL_SLOT,
-            self.UNSEAL_SLOT,
-            self.SIGN_TX,
-            self.TRANSFER,
-            self.CARD_SETTINGS,
-        ]
+        button_data = [self.KEY_SLOTS, self.TRANSFER, self.CARD_SETTINGS]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -5096,18 +5234,163 @@ class ToolsSatodimeView(View):
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        if button_data[selected_menu_num] == self.VIEW_ADDRESSES:
-            return Destination(ToolsSatodimeAddressesView)
-        elif button_data[selected_menu_num] == self.SEAL_SLOT:
-            return Destination(ToolsSatodimeSealSlotView)
-        elif button_data[selected_menu_num] == self.UNSEAL_SLOT:
-            return Destination(ToolsSatodimeUnsealSlotView)
-        elif button_data[selected_menu_num] == self.SIGN_TX:
-            return Destination(ToolsSatodimeSignTxView)
+        if button_data[selected_menu_num] == self.KEY_SLOTS:
+            return Destination(ToolsSatodimeSlotsView)
         elif button_data[selected_menu_num] == self.TRANSFER:
             return Destination(ToolsSatodimeTransferOwnershipView)
         elif button_data[selected_menu_num] == self.CARD_SETTINGS:
             return Destination(ToolsSatodimeCardSettingsView)
+
+
+class ToolsSatodimeSlotsView(View):
+    """The slot list. Reads every keyslot from the card once and caches the result so
+    that subsequent navigation (per-slot menus, View Address) never has to touch the
+    card again until a state-changing operation invalidates the cache for that slot.
+    """
+
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        # Use the cache if it's still valid for this session.
+        if self.controller.satodime_slot_cache:
+            return self._show_list(self.controller.satodime_slot_cache)
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satodime"], require_pin=False)
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        redirect = _satodime_prepare(self, Satochip_Connector, needs_unlock=False)
+        if redirect:
+            return redirect
+
+        self.loading_screen = LoadingScreenThread(text="Fetching Slots\n\n\n\n\n\n")
+        self.loading_screen.start()
+        try:
+            is_testnet = _satodime_is_testnet(self)
+            self.controller.satodime_slot_cache = _satodime_build_cache(Satochip_Connector, is_testnet)
+        finally:
+            self.loading_screen.stop()
+
+        if not self.controller.satodime_slot_cache["slots"]:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text="No slots found",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        return self._show_list(self.controller.satodime_slot_cache)
+
+    def _show_list(self, cache):
+        slots_data = cache["slots"]
+        button_data = [
+            ButtonOption(_satodime_slot_label(key_nbr, state, coin, address))
+            for key_nbr, (state, coin, address) in enumerate(slots_data)
+        ]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Satodime",
+            is_button_text_centered=False,
+            button_data=button_data,
+            show_back_button=True,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        return Destination(ToolsSatodimeSlotMenuView, view_args=dict(slot=selected_menu_num))
+
+
+class ToolsSatodimeSlotMenuView(View):
+    """Actions for one keyslot, filtered by its current applet state.
+
+    Reads the slot's state from the Controller cache (built by ToolsSatodimeSlotsView)
+    so it never touches the card on its own. State-changing action views (seal, unseal,
+    reset) update the cache entry so returning here after an action reflects the new
+    state immediately.
+    """
+    SEAL = ButtonOption("Seal Slot")
+    VIEW_ADDRESS = ButtonOption("View Address")
+    UNSEAL = ButtonOption("Unseal Slot")
+    VIEW_PRIVKEY = ButtonOption("View Private Key")
+    SIGN_TX = ButtonOption("Sign Transaction")
+    LOAD_KEY = ButtonOption("Load Key to SeedSigner")
+    RESET = ButtonOption("Reset Slot")
+
+    def __init__(self, slot: int = 0):
+        super().__init__()
+        self.slot = slot
+
+    def run(self):
+        cached = _satodime_cached_slot(self.controller, self.slot)
+        if cached is None:
+            # Cache not built yet (e.g. reached via a stale back stack). Rebuild.
+            return Destination(ToolsSatodimeSlotsView)
+
+        state, coin, _address = cached
+
+        if state == SATODIME_SLOT_UNKNOWN:
+            self.run_screen(
+                WarningScreen,
+                title=f"Slot {self.slot}",
+                status_headline="Unknown State",
+                text="This slot is in\nan unknown state.",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        coin_is_btc = coin is not None and coin.slip44 == satodime_coins.SLIP44_BTC
+
+        actions = []
+        if state == SATODIME_SLOT_UNINITIALIZED:
+            actions = [self.SEAL]
+        elif state == SATODIME_SLOT_SEALED:
+            if coin is not None:
+                actions.append(self.VIEW_ADDRESS)
+            actions.append(self.UNSEAL)
+            if coin_is_btc:
+                actions.append(self.SIGN_TX)
+        else:  # SATODIME_SLOT_UNSEALED
+            # get_pubkey works on unsealed slots too, so the deposit address is
+            # still viewable (the key is exposed, but the address is public data).
+            if coin is not None:
+                actions.append(self.VIEW_ADDRESS)
+                actions.append(self.VIEW_PRIVKEY)
+            if coin_is_btc:
+                actions.append(self.SIGN_TX)
+                actions.append(self.LOAD_KEY)
+            actions.append(self.RESET)
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title=f"Slot {self.slot}",
+            is_button_text_centered=False,
+            button_data=actions,
+            show_back_button=True,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        choice = actions[selected]
+        args = dict(slot=self.slot)
+        if choice == self.SEAL:
+            return Destination(ToolsSatodimeSealSlotView, view_args=args)
+        if choice == self.VIEW_ADDRESS:
+            return Destination(ToolsSatodimeViewAddressView, view_args=args)
+        if choice == self.UNSEAL:
+            return Destination(ToolsSatodimeUnsealSlotView, view_args=args)
+        if choice == self.VIEW_PRIVKEY:
+            return Destination(ToolsSatodimeViewPrivateKeyView, view_args=args)
+        if choice == self.SIGN_TX:
+            return Destination(ToolsSatodimeSignTxView, view_args=args)
+        if choice == self.LOAD_KEY:
+            return Destination(ToolsSatodimeLoadKeyView, view_args=args)
+        if choice == self.RESET:
+            return Destination(ToolsSatodimeResetSlotView, view_args=args)
 
 
 class ToolsSatodimeCardSettingsView(View):
@@ -5186,63 +5469,16 @@ class ToolsSatodimeReshowUnlockView(View):
         return Destination(ToolsSatodimeBackupUnlockView, view_args=dict(card_id=card_id))
 
 
-class ToolsSatodimeAddressesView(View):
-    def run(self):
-        from seedsigner.gui.screens.screen import LoadingScreenThread
-
-        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satodime"], require_pin=False)
-        if not Satochip_Connector:
-            return Destination(BackStackView)
-
-        redirect = _satodime_prepare(self, Satochip_Connector, needs_unlock=False)
-        if redirect:
-            return redirect
-
-        self.loading_screen = LoadingScreenThread(text="Fetching Slots\n\n\n\n\n\n")
-        self.loading_screen.start()
-        (_, _, _, status) = Satochip_Connector.satodime_get_status()
-        self.loading_screen.stop()
-
-        max_keys = status.get("max_num_keys", 0)
-        is_testnet = _satodime_is_testnet(self)
-
-        for key_nbr in range(max_keys):
-            try:
-                (_, _, _, slot_status) = Satochip_Connector.satodime_get_keyslot_status(key_nbr)
-                status_txt = slot_status.get("key_status_txt", "Unknown")
-                coin = _satodime_slot_coin(slot_status)
-                if status_txt == "Uninitialized":
-                    # An empty slot holds no key, so the card answers get_pubkey with an
-                    # empty body and pysatochip's parser raises. Don't ask.
-                    text = f"{status_txt}\n\nSeal this slot first"
-                elif coin is None:
-                    # Sealed by something for a chain the official app has no address
-                    # format for either. Guessing one would invite a deposit nobody's
-                    # wallet can find.
-                    label = slot_status.get("key_slip44_txt", "unknown")
-                    text = f"{status_txt}\n\nUnsupported coin\n{label}"
-                else:
-                    (_, _, _, _, pub_comp) = Satochip_Connector.satodime_get_pubkey(key_nbr)
-                    address = _satodime_address(pub_comp, coin, is_testnet)
-                    text = f"{status_txt} {coin.symbol}\n{address}"
-            except Exception as e:
-                text = str(e)
-
-            ret = self.run_screen(
-                LargeIconStatusScreen,
-                title=f"Slot {key_nbr}",
-                status_headline=None,
-                text=text,
-                show_back_button=True,
-                button_data=[ButtonOption("Next")],
-            )
-            if ret == RET_CODE__BACK_BUTTON:
-                break
-
-        return Destination(BackStackView)
-
-
 class ToolsSatodimeSealSlotView(View):
+    """Seal an (uninitialized) keyslot: pick a coin, then mint the key on-card."""
+
+    def __init__(self, slot: int = 0):
+        super().__init__()
+        self.slot = slot
+
+    def _done(self):
+        return Destination(ToolsSatodimeSlotMenuView, view_args=dict(slot=self.slot))
+
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
 
@@ -5254,39 +5490,29 @@ class ToolsSatodimeSealSlotView(View):
         if redirect:
             return redirect
 
-        (_, _, _, status) = Satochip_Connector.satodime_get_status()
-        max_keys = status.get("max_num_keys", 0)
+        is_testnet = _satodime_is_testnet(self)
+        cached = _satodime_cached_slot(self.controller, self.slot)
+        state = cached[0] if cached else SATODIME_SLOT_UNKNOWN
 
-        available = []
-        button_data = []
-        for key_nbr in range(max_keys):
-            (_, _, _, slot_status) = Satochip_Connector.satodime_get_keyslot_status(key_nbr)
-            if slot_status.get("key_status_txt") == "Uninitialized":
-                available.append(key_nbr)
-                button_data.append(ButtonOption(f"Slot {key_nbr}"))
-
-        if not available:
+        if state != SATODIME_SLOT_UNINITIALIZED:
+            # Re-seal of a previously used slot. The applet refuses it (0x9C52) and
+            # the user needs to understand why: no backup, and re-sealing orphans any
+            # funds on the old address.
             self.run_screen(
-                WarningScreen,
-                title="Failed",
+                DireWarningScreen,
+                title="Cannot Re-Seal",
                 status_headline=None,
-                text="No uninitialized slots",
+                text=f"{SATODIME_NO_BACKUP_WARNING}\nThis slot was already sealed.",
                 show_back_button=True,
+                button_data=[ButtonOption("OK")],
             )
-            return Destination(BackStackView)
+            return self._done()
 
-        selected = self.run_screen(
-            ButtonListScreen,
-            title="Select Slot",
-            is_button_text_centered=False,
-            button_data=button_data,
-            show_back_button=True,
-        )
-
-        if selected == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
-
-        slot = available[selected]
+        # Sealing mints a new key from system-RNG entropy; refuse (fail closed) if the
+        # background health monitor has flagged the source, mirroring the password
+        # generator and image-entropy seed flows.
+        if not _satodime_require_rng_health(self):
+            return self._done()
 
         # Which chain this vault is for. The card records only the coin, and the
         # official apps read that back to pick an address format and a balance
@@ -5302,46 +5528,115 @@ class ToolsSatodimeSealSlotView(View):
             show_back_button=True,
         )
         if coin_choice == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
+            return self._done()
         coin = satodime_coins.SEALABLE_COINS[coin_choice]
 
+        # Loud, no skips: a Satodime backs its keys on nothing but the card. If the
+        # card is lost or destroyed, the funds on this fresh address are gone.
+        selected = self.run_screen(
+            DireWarningScreen,
+            title="No Backup",
+            status_headline=None,
+            text=SATODIME_NO_BACKUP_WARNING,
+            show_back_button=True,
+            button_data=[ButtonOption("Seal Slot")],
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return self._done()
+
         # Card-side sealing entropy; never logged or persisted (AGENTS security).
+        #
+        # Re-check the RNG monitor here as well as at flow entry: it runs continuously
+        # and can turn unhealthy while the user was stepping through the pickers, and
+        # this is the moment its bytes actually get folded into the key. The per-draw
+        # quality check then catches a single low-entropy draw the background monitor
+        # (one sample/minute) could miss.
+        if not _satodime_require_rng_health(self):
+            return self._done()
+
+        from seedsigner.views.tools_views import _ensure_entropy_quality
         entropy = os.urandom(32)
+        try:
+            _ensure_entropy_quality(
+                entropy,
+                "System RNG entropy too low.\nTry again later.",
+                min_entropy=4.0,
+            )
+        except ValueError as e:
+            self.run_screen(
+                WarningScreen,
+                title="System RNG Error",
+                status_headline=None,
+                text=str(e),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return self._done()
 
         self.loading_screen = LoadingScreenThread(text="Sealing Slot\n\n\n\n\n\n")
         self.loading_screen.start()
-        (_, sw1, sw2, _, pub_comp) = Satochip_Connector.satodime_seal_key(slot, entropy)
+        (_, sw1, sw2, _, pub_comp) = Satochip_Connector.satodime_seal_key(self.slot, entropy)
         self.loading_screen.stop()
 
         if sw1 != 0x90 or sw2 != 0x00:
-            self.run_screen(
-                WarningScreen,
-                title="Seal Failed",
-                status_headline=None,
-                text=format_sw_error(sw1, sw2),
-                show_back_button=True,
-            )
-            return Destination(BackStackView)
+            # 0x9C52 means the slot was somehow not Uninitialized -- e.g. the state
+            # changed under us. That is the re-seal case again.
+            if sw1 == 0x9C and sw2 == 0x52:
+                self.run_screen(
+                    DireWarningScreen,
+                    title="Cannot Re-Seal",
+                    status_headline=None,
+                    text=f"{SATODIME_NO_BACKUP_WARNING}\nThis slot was already sealed.",
+                    show_back_button=True,
+                    button_data=[ButtonOption("OK")],
+                )
+            else:
+                self.run_screen(
+                    WarningScreen,
+                    title="Seal Failed",
+                    status_headline=None,
+                    text=format_sw_error(sw1, sw2),
+                    show_back_button=True,
+                )
+            return self._done()
 
         # Tag the slot with its coin so the official Satodime apps recognise it.
         # Advisory only: the key is already sealed and its address is valid either
         # way, so a failure here is logged rather than shown as a failed seal.
-        _satodime_write_slot_metadata(Satochip_Connector, slot, coin)
+        _satodime_write_slot_metadata(Satochip_Connector, self.slot, coin)
 
-        address = _satodime_address(pub_comp, coin, _satodime_is_testnet(self))
+        address = _satodime_address(pub_comp, coin, is_testnet)
+
+        # Update the cache so the slot menu immediately reflects the new state.
+        if self.controller.satodime_slot_cache:
+            self.controller.satodime_slot_cache["slots"][self.slot] = (
+                SATODIME_SLOT_SEALED, coin, address,
+            )
 
         self.run_screen(
             LargeIconStatusScreen,
             title="Success",
             status_headline=None,
-            text=f"Slot {slot} sealed {coin.symbol}\n{address}",
+            text=f"Slot {self.slot} sealed {coin.symbol}\n{address}",
             show_back_button=False,
         )
 
-        return Destination(BackStackView)
+        return self._done()
 
 
 class ToolsSatodimeUnsealSlotView(View):
+    """Unseal a sealed keyslot: exposes the key permanently (cannot be re-sealed).
+
+    Only flips the state; the key itself is shown via "View Private Key".
+    """
+
+    def __init__(self, slot: int = 0):
+        super().__init__()
+        self.slot = slot
+
+    def _done(self):
+        return Destination(ToolsSatodimeSlotMenuView, view_args=dict(slot=self.slot))
+
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
 
@@ -5353,43 +5648,26 @@ class ToolsSatodimeUnsealSlotView(View):
         if redirect:
             return redirect
 
-        (_, _, _, status) = Satochip_Connector.satodime_get_status()
-        max_keys = status.get("max_num_keys", 0)
+        is_testnet = _satodime_is_testnet(self)
+        cached = _satodime_cached_slot(self.controller, self.slot)
+        state, _coin, _address = cached if cached else (SATODIME_SLOT_UNKNOWN, None, None)
 
-        available = []
-        button_data = []
-        for key_nbr in range(max_keys):
-            (_, _, _, slot_status) = Satochip_Connector.satodime_get_keyslot_status(key_nbr)
-            if slot_status.get("key_status_txt") == "Sealed":
-                available.append(key_nbr)
-                button_data.append(ButtonOption(f"Slot {key_nbr}"))
-
-        if not available:
+        if state != SATODIME_SLOT_SEALED:
             self.run_screen(
                 WarningScreen,
-                title="Failed",
+                title=f"Slot {self.slot}",
                 status_headline=None,
-                text="No sealed slots",
+                text="This slot cannot be unsealed\nfrom its current state.",
                 show_back_button=True,
             )
-            return Destination(BackStackView)
+            return self._done()
 
-        selected = self.run_screen(
-            ButtonListScreen,
-            title="Select Slot",
-            is_button_text_centered=False,
-            button_data=button_data,
-            show_back_button=True,
-        )
-
-        if selected == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
-
-        slot = available[selected]
+        if not _satodime_unseal_warning(self, "Unseal Slot"):
+            return self._done()
 
         self.loading_screen = LoadingScreenThread(text="Unsealing Slot\n\n\n\n\n\n")
         self.loading_screen.start()
-        (_, sw1, sw2, _, priv_list) = Satochip_Connector.satodime_unseal_key(slot)
+        (_, sw1, sw2, _, _priv_list) = Satochip_Connector.satodime_unseal_key(self.slot)
         self.loading_screen.stop()
 
         if sw1 != 0x90 or sw2 != 0x00:
@@ -5400,33 +5678,40 @@ class ToolsSatodimeUnsealSlotView(View):
                 text=format_sw_error(sw1, sw2),
                 show_back_button=True,
             )
-            return Destination(BackStackView)
+            return self._done()
 
-        # The key's import format follows the slot's coin: WIF for the bitcoin-likes,
-        # raw hex for the EVM chains, which is what those wallets' "import private
-        # key" fields take. Getting this wrong hands the user a string their wallet
-        # rejects, with no way to ask the card again.
-        (_, _, _, slot_status) = Satochip_Connector.satodime_get_keyslot_status(slot)
-        coin = _satodime_slot_coin(slot_status) or satodime_coins.COINS[satodime_coins.SLIP44_BTC]
-
-        # Secret material shown only on this screen; never logged. priv_list is dropped
-        # as soon as the display returns below (best-effort, AGENTS security).
-        secret = coin.privkey(bytes(priv_list), _satodime_is_testnet(self))
-        del priv_list
+        # Update the cache: the slot is now unsealed (address is unchanged).
+        if self.controller.satodime_slot_cache:
+            _s, coin, address = self.controller.satodime_slot_cache["slots"][self.slot]
+            self.controller.satodime_slot_cache["slots"][self.slot] = (
+                SATODIME_SLOT_UNSEALED, coin, address,
+            )
 
         self.run_screen(
             LargeIconStatusScreen,
-            title=f"Unsealed {coin.symbol}",
+            title="Unsealed",
             status_headline=None,
-            text=secret,
-            show_back_button=True,
+            text=f"Slot {self.slot} is now unsealed.\nIt can never be re-sealed.",
+            show_back_button=False,
         )
-        secret = None
 
-        return Destination(BackStackView)
+        return self._done()
 
 
 class ToolsSatodimeSignTxView(View):
+    """Sign a Bitcoin PSBT with this slot's key.
+
+    On a Sealed slot unsealing is part of signing (irreversible, so warned); on an
+    already-Unsealed slot the revealed key is read directly.
+    """
+
+    def __init__(self, slot: int = 0):
+        super().__init__()
+        self.slot = slot
+
+    def _done(self):
+        return Destination(ToolsSatodimeSlotMenuView, view_args=dict(slot=self.slot))
+
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
         from seedsigner.models.wif import WIFKey
@@ -5440,70 +5725,56 @@ class ToolsSatodimeSignTxView(View):
         if redirect:
             return redirect
 
-        (_, _, _, status) = Satochip_Connector.satodime_get_status()
-        max_keys = status.get("max_num_keys", 0)
+        is_testnet = _satodime_is_testnet(self)
+        cached = _satodime_cached_slot(self.controller, self.slot)
+        state, coin, _address = cached if cached else (SATODIME_SLOT_UNKNOWN, None, None)
 
-        # Signing is Bitcoin-only: the PSBT flow below is a Bitcoin transaction
-        # signer, so only Bitcoin slots are offered. Other chains can still be
-        # viewed and unsealed -- the key is exported and imported elsewhere.
-        available = []
-        button_data = []
-        skipped_coins = set()
-        for key_nbr in range(max_keys):
-            (_, _, _, slot_status) = Satochip_Connector.satodime_get_keyslot_status(key_nbr)
-            if slot_status.get("key_status_txt") != "Sealed":
-                continue
-            coin = _satodime_slot_coin(slot_status)
-            if coin is None or coin.slip44 != satodime_coins.SLIP44_BTC:
-                skipped_coins.add(coin.symbol if coin else "unknown")
-                continue
-            available.append(key_nbr)
-            button_data.append(ButtonOption(f"Slot {key_nbr}"))
-
-        if not available:
-            if skipped_coins:
-                text = "Signing is Bitcoin only.\nUnseal to export the key."
-            else:
-                text = "No sealed slots"
+        # The PSBT flow below is a Bitcoin transaction signer.
+        if coin is None or coin.slip44 != satodime_coins.SLIP44_BTC:
             self.run_screen(
                 WarningScreen,
-                title="No Bitcoin Slots" if skipped_coins else "Failed",
+                title="Not Bitcoin",
                 status_headline=None,
-                text=text,
+                text="Signing only works with\nBitcoin slots.",
                 show_back_button=True,
             )
-            return Destination(BackStackView)
+            return self._done()
 
-        selected = self.run_screen(
-            ButtonListScreen,
-            title="Select Slot",
-            is_button_text_centered=False,
-            button_data=button_data,
-            show_back_button=True,
-        )
+        if state == SATODIME_SLOT_SEALED:
+            if not _satodime_unseal_warning(self, "Sign & Unseal"):
+                return self._done()
+            loading_text = "Unsealing Slot\n\n\n\n\n\n"
+            fetcher = lambda: Satochip_Connector.satodime_unseal_key(self.slot)
+        elif state == SATODIME_SLOT_UNSEALED:
+            loading_text = "Loading Key\n\n\n\n\n\n"
+            fetcher = lambda: Satochip_Connector.satodime_get_privkey(self.slot)
+        else:
+            self.run_screen(
+                WarningScreen,
+                title=f"Slot {self.slot}",
+                status_headline=None,
+                text="This slot cannot be used\nto sign from its current state.",
+                show_back_button=True,
+            )
+            return self._done()
 
-        if selected == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
-
-        slot = available[selected]
-
-        self.loading_screen = LoadingScreenThread(text="Unsealing Slot\n\n\n\n\n\n")
+        self.loading_screen = LoadingScreenThread(text=loading_text)
         self.loading_screen.start()
-        (_, sw1, sw2, _, priv_list) = Satochip_Connector.satodime_unseal_key(slot)
+        (_, sw1, sw2, _, priv_list) = fetcher()
         self.loading_screen.stop()
 
         if sw1 != 0x90 or sw2 != 0x00:
             self.run_screen(
                 WarningScreen,
-                title="Unseal Failed",
+                title="Read Failed",
                 status_headline=None,
                 text=format_sw_error(sw1, sw2),
                 show_back_button=True,
             )
-            return Destination(BackStackView)
+            return self._done()
 
         btc = satodime_coins.COINS[satodime_coins.SLIP44_BTC]
-        wif = btc.privkey(bytes(priv_list), _satodime_is_testnet(self))
+        wif = btc.privkey(bytes(priv_list), is_testnet)
         del priv_list
 
         # The WIF-derived key becomes the PSBT signing seed; the standard PSBT flow
@@ -5512,6 +5783,281 @@ class ToolsSatodimeSignTxView(View):
         wif = None
 
         return Destination(ScanPSBTView)
+
+
+class ToolsSatodimeLoadKeyView(View):
+    """Load an unsealed Bitcoin slot's WIF key into SeedSigner as the signing key.
+
+    The key stays loaded for the session; the next PSBT the user scans will auto-select
+    it as the signer. Bitcoin-only, like signing.
+    """
+
+    def __init__(self, slot: int = 0):
+        super().__init__()
+        self.slot = slot
+
+    def _done(self):
+        return Destination(ToolsSatodimeSlotMenuView, view_args=dict(slot=self.slot))
+
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        from seedsigner.models.wif import WIFKey
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satodime"], require_pin=False)
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        redirect = _satodime_prepare(self, Satochip_Connector, needs_unlock=True)
+        if redirect:
+            return redirect
+
+        is_testnet = _satodime_is_testnet(self)
+        cached = _satodime_cached_slot(self.controller, self.slot)
+        state, coin, _address = cached if cached else (SATODIME_SLOT_UNKNOWN, None, None)
+
+        if (state != SATODIME_SLOT_UNSEALED or coin is None
+                or coin.slip44 != satodime_coins.SLIP44_BTC):
+            self.run_screen(
+                WarningScreen,
+                title="Not Loadable",
+                status_headline=None,
+                text="Only an unsealed Bitcoin\nslot can be loaded.",
+                show_back_button=True,
+            )
+            return self._done()
+
+        self.loading_screen = LoadingScreenThread(text="Loading Key\n\n\n\n\n\n")
+        self.loading_screen.start()
+        (_, sw1, sw2, _, priv_list) = Satochip_Connector.satodime_get_privkey(self.slot)
+        self.loading_screen.stop()
+
+        if sw1 != 0x90 or sw2 != 0x00:
+            self.run_screen(
+                WarningScreen,
+                title="Read Failed",
+                status_headline=None,
+                text=format_sw_error(sw1, sw2),
+                show_back_button=True,
+            )
+            return self._done()
+
+        btc = satodime_coins.COINS[satodime_coins.SLIP44_BTC]
+        wif = btc.privkey(bytes(priv_list), is_testnet)
+        del priv_list
+
+        key = WIFKey(wif)
+        wif = None
+
+        # The WIF-derived key becomes the PSBT signing seed; the standard PSBT flow
+        # owns and clears controller.psbt_seed on completion / exit (AGENTS security).
+        self.controller.psbt_seed = key
+
+        # Show what was loaded so the user can confirm the right slot was picked.
+        pub_comp = list(key.privkey.get_public_key().sec())
+        address = _satodime_address(pub_comp, btc, is_testnet)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Key Loaded",
+            status_headline=None,
+            text=f"Slot {self.slot} BTC\n{address}",
+            show_back_button=False,
+        )
+
+        return self._done()
+
+
+class ToolsSatodimeViewAddressView(View):
+    """Show a slot's deposit address as a QR code (from cache -- zero card reads)."""
+
+    def __init__(self, slot: int = 0):
+        super().__init__()
+        self.slot = slot
+
+    def _done(self):
+        return Destination(ToolsSatodimeSlotMenuView, view_args=dict(slot=self.slot))
+
+    def run(self):
+        from seedsigner.gui.screens.screen import QRDisplayScreen
+        from seedsigner.models.encode_qr import GenericStaticQrEncoder
+
+        _state, coin, address = _satodime_cached_slot(self.controller, self.slot) or (None, None, None)
+
+        if address is None:
+            if coin is None:
+                self.run_screen(
+                    WarningScreen,
+                    title=f"Slot {self.slot}",
+                    status_headline="Unsupported Coin",
+                    text="This slot holds a coin\nSeedSigner can't address.",
+                    show_back_button=True,
+                )
+            else:
+                self.run_screen(
+                    WarningScreen,
+                    title=f"Slot {self.slot}",
+                    status_headline="No Address",
+                    text="Could not read an address\nfor this slot.",
+                    show_back_button=True,
+                )
+            return self._done()
+
+        self.run_screen(QRDisplayScreen, qr_encoder=GenericStaticQrEncoder(data=address))
+
+        return self._done()
+
+
+class ToolsSatodimeViewPrivateKeyView(View):
+    """Show an unsealed slot's private key (WIF or hex) as a QR code."""
+
+    def __init__(self, slot: int = 0):
+        super().__init__()
+        self.slot = slot
+
+    def _done(self):
+        return Destination(ToolsSatodimeSlotMenuView, view_args=dict(slot=self.slot))
+
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread, QRDisplayScreen
+        from seedsigner.models.encode_qr import GenericStaticQrEncoder
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satodime"], require_pin=False)
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        redirect = _satodime_prepare(self, Satochip_Connector, needs_unlock=True)
+        if redirect:
+            return redirect
+
+        is_testnet = _satodime_is_testnet(self)
+        cached = _satodime_cached_slot(self.controller, self.slot)
+        state, coin, _address = cached if cached else (SATODIME_SLOT_UNKNOWN, None, None)
+
+        if state != SATODIME_SLOT_UNSEALED:
+            self.run_screen(
+                WarningScreen,
+                title=f"Slot {self.slot}",
+                status_headline=None,
+                text="Unseal this slot first to\nview its private key.",
+                show_back_button=True,
+            )
+            return self._done()
+
+        if coin is None:
+            # No known format for this slot's coin; refuse rather than guess.
+            self.run_screen(
+                WarningScreen,
+                title=f"Slot {self.slot}",
+                status_headline="Unsupported Coin",
+                text="No private key format\nis known for this coin.",
+                show_back_button=True,
+            )
+            return self._done()
+
+        self.loading_screen = LoadingScreenThread(text="Reading Key\n\n\n\n\n\n")
+        self.loading_screen.start()
+        (_, sw1, sw2, _, priv_list) = Satochip_Connector.satodime_get_privkey(self.slot)
+        self.loading_screen.stop()
+
+        if sw1 != 0x90 or sw2 != 0x00:
+            self.run_screen(
+                WarningScreen,
+                title="Read Failed",
+                status_headline=None,
+                text=format_sw_error(sw1, sw2),
+                show_back_button=True,
+            )
+            return self._done()
+
+        # The key's import format follows the slot's coin: WIF for the bitcoin-likes,
+        # raw hex for the EVM chains. Secret shown only here; dropped as soon as the
+        # display returns (AGENTS security).
+        secret = coin.privkey(bytes(priv_list), is_testnet)
+        del priv_list
+
+        self.run_screen(QRDisplayScreen, qr_encoder=GenericStaticQrEncoder(data=secret))
+        secret = None
+
+        return self._done()
+
+
+class ToolsSatodimeResetSlotView(View):
+    """Reset an unsealed slot back to the Uninitialized state, erasing its key."""
+
+    def __init__(self, slot: int = 0):
+        super().__init__()
+        self.slot = slot
+
+    def _done(self):
+        return Destination(ToolsSatodimeSlotMenuView, view_args=dict(slot=self.slot))
+
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satodime"], require_pin=False)
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        redirect = _satodime_prepare(self, Satochip_Connector, needs_unlock=True)
+        if redirect:
+            return redirect
+
+        is_testnet = _satodime_is_testnet(self)
+        cached = _satodime_cached_slot(self.controller, self.slot)
+        state = cached[0] if cached else SATODIME_SLOT_UNKNOWN
+
+        if state != SATODIME_SLOT_UNSEALED:
+            self.run_screen(
+                WarningScreen,
+                title=f"Slot {self.slot}",
+                status_headline=None,
+                text="Only an unsealed slot\ncan be reset.",
+                show_back_button=True,
+            )
+            return self._done()
+
+        # Resetting abolishes the key entirely; the card has no backup, so say it loudly.
+        selected = self.run_screen(
+            DireWarningScreen,
+            title="Reset Slot",
+            status_headline=None,
+            text=f"{SATODIME_NO_BACKUP_WARNING}\nReset erases this slot's key.",
+            show_back_button=True,
+            button_data=[ButtonOption("Reset Slot")],
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return self._done()
+
+        self.loading_screen = LoadingScreenThread(text="Resetting Slot\n\n\n\n\n\n")
+        self.loading_screen.start()
+        (_, sw1, sw2) = Satochip_Connector.satodime_reset_key(self.slot)
+        self.loading_screen.stop()
+
+        if sw1 != 0x90 or sw2 != 0x00:
+            self.run_screen(
+                WarningScreen,
+                title="Reset Failed",
+                status_headline=None,
+                text=format_sw_error(sw1, sw2),
+                show_back_button=True,
+            )
+            return self._done()
+
+        # Update the cache: the slot is now Uninitialized again.
+        if self.controller.satodime_slot_cache:
+            self.controller.satodime_slot_cache["slots"][self.slot] = (
+                SATODIME_SLOT_UNINITIALIZED, None, None,
+            )
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Reset",
+            status_headline=None,
+            text=f"Slot {self.slot} reset.\nIt can be sealed again.",
+            show_back_button=False,
+        )
+
+        return self._done()
 
 
 class ToolsSatodimeTransferOwnershipView(View):

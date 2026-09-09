@@ -55,6 +55,10 @@ ISO7816_STATUS_WORDS: Dict[int, str] = {
     # there. They mean the caller does not hold the card's unlock secret.
     0x9C50: "Wrong unlock counter",
     0x9C51: "Wrong unlock code",
+    # Satodime only: the slot is not in the right state for the requested command.
+    # SEAL accepts only Uninitialized slots; UNSEAL only Sealed ones. A slot that
+    # was sealed and then spent (state Unsealed) can never be re-sealed.
+    0x9C52: "Incorrect keyslot state",
     0x9C54: "Unknown protocol media",
     0x9CFF: "Card internal error",
 }
