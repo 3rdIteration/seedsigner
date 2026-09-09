@@ -4890,6 +4890,17 @@ class ToolsSatodimeClaimView(View):
         if not Satochip_Connector:
             return Destination(BackStackView)
 
+        # Claiming is only meaningful over NFC — contact readers never use the ownership key.
+        if not seedkeeper_utils.satodime_connection_is_contactless(Satochip_Connector):
+            self.run_screen(
+                WarningScreen,
+                title="Not Applicable",
+                status_headline=None,
+                text="Contact readers do not use\nthe ownership key.",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
         if _satodime_is_claimed(Satochip_Connector):
             self.run_screen(
                 WarningScreen,
@@ -5122,6 +5133,17 @@ class ToolsSatodimeRestoreUnlockView(View):
     def run(self):
         Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satodime"], require_pin=False)
         if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        # Restoring the ownership key is only meaningful over NFC.
+        if not seedkeeper_utils.satodime_connection_is_contactless(Satochip_Connector):
+            self.run_screen(
+                WarningScreen,
+                title="Not Applicable",
+                status_headline=None,
+                text="Contact readers do not use\nthe ownership key.",
+                show_back_button=True,
+            )
             return Destination(BackStackView)
 
         card_id = seedkeeper_utils.satodime_card_id(Satochip_Connector)
@@ -5461,26 +5483,27 @@ class ToolsSatodimeReshowUnlockView(View):
         if not Satochip_Connector:
             return Destination(BackStackView)
 
+        # Backing up the ownership key is only meaningful over NFC.
+        if not seedkeeper_utils.satodime_connection_is_contactless(Satochip_Connector):
+            self.run_screen(
+                WarningScreen,
+                title="Not Applicable",
+                status_headline=None,
+                text="Contact readers do not use\nthe ownership key.",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
         card_id = seedkeeper_utils.satodime_card_id(Satochip_Connector)
         cached_secret = seedkeeper_utils.get_cached_satodime_unlock_secret(self.controller, card_id)
         if not cached_secret:
-            # Contact readers never need the ownership key; NFC cards only reveal it once.
-            if not seedkeeper_utils.satodime_connection_is_contactless(Satochip_Connector):
-                self.run_screen(
-                    WarningScreen,
-                    title="No Ownership Key",
-                    status_headline=None,
-                    text="The card only reveals it\nwhen first claimed.",
-                    show_back_button=True,
-                )
-            else:
-                self.run_screen(
-                    WarningScreen,
-                    title="Not Applicable",
-                    status_headline=None,
-                    text="Contact readers do not use\nthe ownership key.",
-                    show_back_button=True,
-                )
+            self.run_screen(
+                WarningScreen,
+                title="No Ownership Key",
+                status_headline=None,
+                text="The card only reveals it\nwhen first claimed.",
+                show_back_button=True,
+            )
             return Destination(BackStackView)
 
         # Transient dispatcher: omit this view from history so the backup flow's

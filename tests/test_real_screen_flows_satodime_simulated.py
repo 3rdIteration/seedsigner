@@ -935,6 +935,8 @@ class TestBackupAndRestoreViews(SatodimeSimulatedFlowTest):
         except JCardSimUnavailable as exc:
             pytest.skip(str(exc))
 
+        # Simulate NFC — the restore flow is only available over contactless.
+        monkeypatch.setattr(seedkeeper_utils, "satodime_connection_is_contactless", lambda c: True)
         other = seedkeeper_utils.format_satodime_unlock_payload("ffffffffffffffff", self.SECRET)
         monkeypatch.setattr(smartcard_views, "_satodime_scan_text", lambda view: other)
 
@@ -953,6 +955,8 @@ class TestBackupAndRestoreViews(SatodimeSimulatedFlowTest):
         except JCardSimUnavailable as exc:
             pytest.skip(str(exc))
 
+        # Simulate NFC — the restore flow is only available over contactless.
+        monkeypatch.setattr(seedkeeper_utils, "satodime_connection_is_contactless", lambda c: True)
         with ctx:
             card_id = seedkeeper_utils.satodime_card_id(_fresh_connector())
             payload = seedkeeper_utils.format_satodime_unlock_payload(card_id, self.SECRET)

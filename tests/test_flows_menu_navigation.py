@@ -758,6 +758,8 @@ class TestMenuNavigationFlows(FlowTest):
         )
 
         connector = _patch_satodime_connector(monkeypatch)
+        # Simulate NFC — the backup flow is only available over contactless.
+        monkeypatch.setattr(seedkeeper_utils, "satodime_connection_is_contactless", lambda c: True)
         card_id = seedkeeper_utils.satodime_card_id(connector)
 
         # The controller wipes Satodime_unlock_secrets when it routes through Home, so
