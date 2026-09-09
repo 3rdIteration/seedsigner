@@ -470,6 +470,7 @@ class Controller(Singleton):
             used. Only used by the test suite.
         """
         from seedsigner.views import MainMenuView, BackStackView, RemoveMicroSDWarningView
+        from seedsigner.views.smartcard_views import ToolsSmartcardMenuView
         from seedsigner.views.screensaver import OpeningSplashView
         from seedsigner.models.settings_definition import SettingsConstants
         from seedsigner.views.desktop_warning import DesktopWarningView
@@ -583,6 +584,11 @@ class Controller(Singleton):
 
                     # Always drop the cached Satodime slot data (it's read-only display
                     # state that could go stale across sessions).
+                    self.satodime_slot_cache = None
+
+                elif next_destination.View_cls == ToolsSmartcardMenuView:
+                    # Returning to the smartcard menu ends the applet session; drop any
+                    # cached Satodime slot data so re-entering Key Slots reads fresh state.
                     self.satodime_slot_cache = None
                 
                 logger.info(f"\nback_stack: {self.back_stack}")

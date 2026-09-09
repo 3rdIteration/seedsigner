@@ -4648,9 +4648,13 @@ def _satodime_slot_slip44(slot_status) -> int:
 # card is lost or destroyed, the funds sitting on that slot's address are gone. Both
 # the seal and re-seal guards below say this loudly.
 SATODIME_NO_BACKUP_WARNING = (
-    "There is no backup for this card.\n"
-    "If it's lost or destroyed, funds\n"
-    "are unrecoverable."
+    "There is no backup for this card. If it's lost or destroyed, funds are unrecoverable."
+)
+
+# The re-seal refusal needs both facts in one message; kept as its own constant so the
+# combined text stays within the warning screen's 4-line budget.
+SATODIME_RESEAL_REFUSAL_TEXT = (
+    "This slot is already sealed. No backup exists: if the card is lost or destroyed, funds are gone."
 )
 
 
@@ -5312,10 +5316,10 @@ class ToolsSatodimeSlotMenuView(View):
     reset) update the cache entry so returning here after an action reflects the new
     state immediately.
     """
-    SEAL = ButtonOption("Seal Slot")
-    VIEW_ADDRESS = ButtonOption("View Address")
-    UNSEAL = ButtonOption("Unseal Slot")
-    VIEW_PRIVKEY = ButtonOption("View Private Key")
+    SEAL = ButtonOption("Seal Slot (Initialise New Key)")
+    VIEW_ADDRESS = ButtonOption("View Address (QR)")
+    UNSEAL = ButtonOption("Unseal Slot (View Private Key)")
+    VIEW_PRIVKEY = ButtonOption("View Private Key (QR)")
     SIGN_TX = ButtonOption("Sign Transaction")
     LOAD_KEY = ButtonOption("Load Key to SeedSigner")
     RESET = ButtonOption("Reset Slot")
@@ -5397,12 +5401,12 @@ class ToolsSatodimeCardSettingsView(View):
     """Card-management functions scoped to a Satodime card.
 
     Only the subset of the former 'Common Functions' that Satodime supports is
-    offered here: Card Info, Genuine Check and Configure NDEF (Change PIN/Label/NFC
-    and Factory Reset are not implemented by the Satodime applet).
+    offered here: Card Info and Genuine Check (Change PIN/Label/NFC, Factory Reset
+    and NDEF are not implemented by the Satodime applet -- NDEF only exists in the
+    unreleased v0.2-beta applet build, so offering it would just fail on every card).
     """
     INFO = ButtonOption("Card Info")
     GENUINE = ButtonOption("Genuine Check")
-    CONFIGURE_NDEF = ButtonOption("Configure NDEF")
     BACKUP_UNLOCK = ButtonOption("Back Up Unlock Code")
     RESTORE_UNLOCK = ButtonOption("Restore Unlock Code")
 
@@ -5412,7 +5416,6 @@ class ToolsSatodimeCardSettingsView(View):
         button_data = [
             self.INFO,
             self.GENUINE,
-            self.CONFIGURE_NDEF,
             self.BACKUP_UNLOCK,
             self.RESTORE_UNLOCK,
         ]
@@ -5432,9 +5435,6 @@ class ToolsSatodimeCardSettingsView(View):
 
         elif button_data[selected_menu_num] == self.GENUINE:
             return Destination(ToolsSmartcardGenuineCheckView, view_args=dict(card_filter=self._CARD_FILTER))
-
-        elif button_data[selected_menu_num] == self.CONFIGURE_NDEF:
-            return Destination(ToolsCommonNdefView, view_args=dict(card_filter=self._CARD_FILTER))
 
         elif button_data[selected_menu_num] == self.BACKUP_UNLOCK:
             # Re-showing the code only works while it is still cached from this
@@ -5502,7 +5502,7 @@ class ToolsSatodimeSealSlotView(View):
                 DireWarningScreen,
                 title="Cannot Re-Seal",
                 status_headline=None,
-                text=f"{SATODIME_NO_BACKUP_WARNING}\nThis slot was already sealed.",
+                text=SATODIME_RESEAL_REFUSAL_TEXT,
                 show_back_button=True,
                 button_data=[ButtonOption("OK")],
             )
@@ -5586,7 +5586,7 @@ class ToolsSatodimeSealSlotView(View):
                     DireWarningScreen,
                     title="Cannot Re-Seal",
                     status_headline=None,
-                    text=f"{SATODIME_NO_BACKUP_WARNING}\nThis slot was already sealed.",
+                    text=SATODIME_RESEAL_REFUSAL_TEXT,
                     show_back_button=True,
                     button_data=[ButtonOption("OK")],
                 )
@@ -6016,12 +6016,13 @@ class ToolsSatodimeResetSlotView(View):
             )
             return self._done()
 
-        # Resetting abolishes the key entirely; the card has no backup, so say it loudly.
+        # Resetting abolishes the key entirely; there is no backup on the card, so say
+        # it loudly: the private key itself is gone for good.
         selected = self.run_screen(
             DireWarningScreen,
             title="Reset Slot",
             status_headline=None,
-            text=f"{SATODIME_NO_BACKUP_WARNING}\nReset erases this slot's key.",
+            text="This permanently erases the slot's private key.\nFunds are lost unless you backed up the key.",
             show_back_button=True,
             button_data=[ButtonOption("Reset Slot")],
         )

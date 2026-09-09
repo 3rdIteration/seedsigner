@@ -657,7 +657,11 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend
 
     is_keycard_backend = getattr(Satochip_Connector, "is_keycard_backend", False)
 
-    if require_pin:
+    # Satodime has no PIN (the applet ignores it entirely), so shared views that pass
+    # require_pin=True must not prompt for one -- see the Satodime branch below.
+    is_satodime = getattr(Satochip_Connector, "card_type", None) == "Satodime"
+
+    if require_pin and not is_satodime:
         # Prompt for pin if one hasn't been set, otherwise a cached pin will be used
         if parentObject.controller.Satochip_PIN is None:
             print("No Cached pin, prompting for pin")
@@ -672,6 +676,9 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend
             card_pin = list(pin_str.encode("utf-8"))
         else:
             card_pin = parentObject.controller.Satochip_PIN
+    elif is_satodime:
+        # Satodime has no PIN; bind the variable so the cache step below stays safe.
+        card_pin = None
 
     parentObject.loading_screen = LoadingScreenThread(text="Connecting to Card")
     parentObject.loading_screen.start()
@@ -970,8 +977,10 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend
     parentObject.controller.Satochip_Connector = Satochip_Connector
     parentObject.controller.Satochip_Last_UID_SHA1 = Satochip_Connector.UID_SHA1
 
-    # Only cache pin if we are using it
-    if require_pin:
+    # Only cache pin if we are using it. Satodime never uses (or overwrites) the
+    # cached Satochip PIN: wiping it here would make a later reconnect to the same
+    # Satochip card call set_pin(0, None).
+    if require_pin and not is_satodime:
         parentObject.controller.Satochip_PIN = card_pin
 
     return parentObject.controller.Satochip_Connector

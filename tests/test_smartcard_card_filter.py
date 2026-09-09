@@ -88,14 +88,13 @@ class TestCardSettingsRouting(BaseTest):
         for option, target in (
             (smartcard_views.ToolsSatodimeCardSettingsView.INFO, smartcard_views.ToolsSmartcardInfoView),
             (smartcard_views.ToolsSatodimeCardSettingsView.GENUINE, smartcard_views.ToolsSmartcardGenuineCheckView),
-            (smartcard_views.ToolsSatodimeCardSettingsView.CONFIGURE_NDEF, smartcard_views.ToolsCommonNdefView),
         ):
             dest = self._route(smartcard_views.ToolsSatodimeCardSettingsView(), option)
             assert dest.View_cls is target
             assert dest.view_args["card_filter"] == ["satodime"]
 
     def test_satodime_menu_offers_only_supported_settings(self):
-        """Satodime has no Change PIN/Label/NFC or Factory Reset in its Card Settings."""
+        """Satodime has no Change PIN/Label/NFC, Factory Reset or NDEF in its Card Settings."""
         captured = {}
 
         def capture_only(screen_cls, **kwargs):
@@ -111,6 +110,8 @@ class TestCardSettingsRouting(BaseTest):
         labels = [b.button_label for b in captured["button_data"]]
         assert "Card Info" in labels
         assert "Genuine Check" in labels
-        assert "Configure NDEF" in labels
+        # NDEF only exists in the unreleased Satodime v0.2-beta applet; offering it on
+        # every card would just fail, so it is not offered at all.
+        assert "Configure NDEF" not in labels
         assert "Change PIN" not in labels
         assert "Factory Reset Card" not in labels

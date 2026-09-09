@@ -413,6 +413,30 @@ class TestSatodimeThroughRealInitSatochip(SatodimeSimulatedFlowTest):
             for title in recorder.titles:
                 assert "PIN" not in (title or ""), f"Satodime must never ask for a PIN: {title}"
 
+    def test_genuine_check_on_satodime_neither_prompts_nor_clobbers_the_pin_cache(self):
+        """
+        Genuine Check calls init_satochip with the default require_pin=True. Satodime has
+        no PIN, so that path must not prompt -- and it must still bind card_pin for the
+        'cache the pin' step (an unbound read there raised UnboundLocalError on-device).
+        A cached Satochip PIN from another card type must survive the Satodime connect.
+        """
+        try:
+            ctx = simulated_satodime_raw()
+        except JCardSimUnavailable as exc:
+            pytest.skip(str(exc))
+
+        with ctx:
+            self.controller.Satochip_PIN = [0x31, 0x32, 0x33]
+
+            view = smartcard_views.ToolsSmartcardGenuineCheckView(card_filter=["satodime"])
+            recorder = ScreenRecorder(RET_CODE__BACK_BUTTON, RET_CODE__BACK_BUTTON)
+            view.run_screen = recorder
+            view.run()
+
+            for title in recorder.titles:
+                assert "PIN" not in (title or ""), f"Satodime must never ask for a PIN: {title}"
+            assert self.controller.Satochip_PIN == [0x31, 0x32, 0x33]
+
     def test_state_change_on_an_unclaimed_card_routes_to_the_claim_view(self):
         """Seal needs setup, so it must send the user to claim rather than fail 0x9C04."""
         try:
@@ -570,7 +594,9 @@ class TestSatodimeThroughRealInitSatochip(SatodimeSimulatedFlowTest):
             recorder = ScreenRecorder(RET_CODE__BACK_BUTTON)
             menu.run_screen = recorder
             menu.run()
-            assert [o.button_label for o in recorder.calls[0][1]["button_data"]] == ["Seal Slot"]
+            assert [o.button_label for o in recorder.calls[0][1]["button_data"]] == [
+                "Seal Slot (Initialise New Key)",
+            ]
 
             # Sealed BTC: View Address, Unseal, Sign Transaction.
             _seal_slot_zero()
@@ -579,7 +605,7 @@ class TestSatodimeThroughRealInitSatochip(SatodimeSimulatedFlowTest):
             menu.run_screen = recorder
             menu.run()
             assert [o.button_label for o in recorder.calls[0][1]["button_data"]] == [
-                "View Address", "Unseal Slot", "Sign Transaction",
+                "View Address (QR)", "Unseal Slot (View Private Key)", "Sign Transaction",
             ]
 
             # Unsealed BTC: View Address, View Private Key, Sign Transaction, Load Key, Reset Slot.
@@ -589,7 +615,7 @@ class TestSatodimeThroughRealInitSatochip(SatodimeSimulatedFlowTest):
             menu.run_screen = recorder
             menu.run()
             assert [o.button_label for o in recorder.calls[0][1]["button_data"]] == [
-                "View Address", "View Private Key", "Sign Transaction",
+                "View Address (QR)", "View Private Key (QR)", "Sign Transaction",
                 "Load Key to SeedSigner", "Reset Slot",
             ]
 

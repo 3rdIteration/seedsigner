@@ -739,7 +739,7 @@ class TestMenuNavigationFlows(FlowTest):
             FlowStep(ToolsSmartcardMenuView, button_data_selection=ToolsSmartcardMenuView.SATODIME),
             FlowStep(ToolsSatodimeView, button_data_selection=ToolsSatodimeView.KEY_SLOTS),
             FlowStep(ToolsSatodimeSlotsView, screen_return_value=0),  # pick "Slot 0" -> SlotMenu
-            FlowStep(ToolsSatodimeSlotMenuView, screen_return_value=0),  # pick "Seal Slot"
+            FlowStep(ToolsSatodimeSlotMenuView, screen_return_value=0),  # pick "Seal Slot (Initialise New Key)"
             FlowStep(ToolsSatodimeSealSlotView, screen_return_value=RET_CODE__BACK_BUTTON),  # back out of coin picker
             FlowStep(ToolsSatodimeSlotMenuView, screen_return_value=RET_CODE__BACK_BUTTON),  # back to slot list
             FlowStep(ToolsSatodimeSlotsView, screen_return_value=RET_CODE__BACK_BUTTON),  # back to main menu
@@ -784,6 +784,40 @@ class TestMenuNavigationFlows(FlowTest):
             FlowStep(ToolsSatodimeSlotMenuView, screen_return_value=RET_CODE__BACK_BUTTON),  # back to slot list
             FlowStep(ToolsSatodimeSlotsView, screen_return_value=RET_CODE__BACK_BUTTON),  # back to main menu
             FlowStep(ToolsSatodimeView),
+        ])
+
+    def test_smartcard_satodime_cache_wiped_at_smartcard_menu(self, monkeypatch):
+        """The cached slot data must be dropped when the user backs out to the smartcard menu.
+
+        ToolsSatodimeSlotsView builds controller.satodime_slot_cache; backing all the way
+        out through the Satodime menu to the smartcard menu must clear it so re-entering
+        Key Slots reads fresh state from the card (same as returning Home does).
+        """
+        from seedsigner.views.smartcard_views import (
+            ToolsSmartcardMenuView, ToolsSatodimeView, ToolsSatodimeSlotsView,
+        )
+
+        _patch_satodime_connector(monkeypatch)
+
+        def cache_built(view):
+            assert self.controller.satodime_slot_cache is not None, \
+                "ToolsSatodimeSlotsView should have built the slot cache"
+
+        def cache_wiped(view):
+            assert self.controller.satodime_slot_cache is None, \
+                "backing out to the smartcard menu must drop the cached Satodime session"
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.SMARTCARD),
+            FlowStep(ToolsSmartcardMenuView, button_data_selection=ToolsSmartcardMenuView.SATODIME),
+            FlowStep(ToolsSatodimeView, button_data_selection=ToolsSatodimeView.KEY_SLOTS),
+            # Build the cache, then back out: Slots -> Satodime menu (still cached) -> smartcard menu.
+            FlowStep(ToolsSatodimeSlotsView, screen_return_value=RET_CODE__BACK_BUTTON),
+            FlowStep(ToolsSatodimeView, before_run=cache_built,
+                     screen_return_value=RET_CODE__BACK_BUTTON),
+            FlowStep(ToolsSmartcardMenuView, before_run=cache_wiped,
+                     screen_return_value=RET_CODE__BACK_BUTTON),
         ])
 
     def test_smartcard_satochip_card_settings(self):

@@ -63,11 +63,72 @@ def why_unavailable() -> str | None:
     jar = jcardsim_jar()
     if not jar.is_file():
         return f"jcardsim jar not found at {jar} (set {JCARDSIM_JAR_ENV})"
-    return None
+    return _why_under_provisioned()
 
 
 def simulator_available() -> bool:
     return why_unavailable() is None
+
+
+# Each simulated card is its own JVM (~250-400MB RSS). CI runners are fresh VMs running
+# one pytest at a time, but on a developer machine the suite shares RAM with an IDE, a
+# browser and -- if someone runs several pytests in parallel -- other test processes.
+# Rather than let that pile-up page the whole machine to a freeze, refuse to spawn a JVM
+# when there isn't comfortable headroom: every caller already turns JCardSimUnavailable
+# into a clean skip with this reason as its message.
+_MIN_FREE_RAM_MB_ENV = "SEEDSIGNER_JCARDSIM_MIN_FREE_RAM_MB"
+_DEFAULT_MIN_FREE_RAM_MB = 3072
+
+
+def _free_physical_ram_mb() -> int | None:
+    """Free physical RAM in MB, or None where it cannot be determined cheaply."""
+    if os.name == "nt":
+        import ctypes
+
+        class _MemoryStatusEx(ctypes.Structure):
+            _fields_ = [
+                ("dwLength", ctypes.c_ulong),
+                ("dwMemoryLoad", ctypes.c_ulong),
+                ("ullTotalPhys", ctypes.c_ulonglong),
+                ("ullAvailPhys", ctypes.c_ulonglong),
+                ("ullTotalPageFile", ctypes.c_ulonglong),
+                ("ullAvailPageFile", ctypes.c_ulonglong),
+                ("ullTotalVirtual", ctypes.c_ulonglong),
+                ("ullAvailVirtual", ctypes.c_ulonglong),
+                ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
+            ]
+
+        status = _MemoryStatusEx()
+        status.dwLength = ctypes.sizeof(_MemoryStatusEx)
+        if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+            return None
+        return int(status.ullAvailPhys // (1024 * 1024))
+
+    try:
+        for line in Path("/proc/meminfo").read_text(encoding="ascii").splitlines():
+            if line.startswith("MemAvailable:"):
+                return int(line.split()[1]) // 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
+def _why_under_provisioned() -> str | None:
+    """A reason to skip on memory grounds, or None if there is headroom."""
+    try:
+        threshold_mb = int(os.environ.get(_MIN_FREE_RAM_MB_ENV, _DEFAULT_MIN_FREE_RAM_MB))
+    except ValueError:
+        threshold_mb = _DEFAULT_MIN_FREE_RAM_MB
+
+    free_mb = _free_physical_ram_mb()
+    if free_mb is None:
+        return None  # cannot measure; do not block the suite on a guess
+    if free_mb < threshold_mb:
+        return (
+            f"insufficient free RAM for a jcardsim JVM ({free_mb}MB free, "
+            f"{threshold_mb}MB required; raise {_MIN_FREE_RAM_MB_ENV} to override)"
+        )
+    return None
 
 
 def _launcher_classes() -> Path:
