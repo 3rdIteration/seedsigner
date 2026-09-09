@@ -5223,13 +5223,14 @@ def _satodime_scan_text(view):
 
 
 class ToolsSatodimeView(View):
-    """Main Satodime menu: Key Slots, Transfer Ownership, Card Settings."""
+    """Main Satodime menu: Key Slots, Claim Ownership, Transfer Ownership, Card Settings."""
     KEY_SLOTS = ButtonOption("Key Slots")
+    CLAIM_OWNERSHIP = ButtonOption("Claim Ownership")
     TRANSFER = ButtonOption("Transfer Ownership")
     CARD_SETTINGS = ButtonOption("Card Settings")
 
     def run(self):
-        button_data = [self.KEY_SLOTS, self.TRANSFER, self.CARD_SETTINGS]
+        button_data = [self.KEY_SLOTS, self.CLAIM_OWNERSHIP, self.TRANSFER, self.CARD_SETTINGS]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -5243,6 +5244,8 @@ class ToolsSatodimeView(View):
 
         if button_data[selected_menu_num] == self.KEY_SLOTS:
             return Destination(ToolsSatodimeSlotsView)
+        elif button_data[selected_menu_num] == self.CLAIM_OWNERSHIP:
+            return Destination(ToolsSatodimeClaimView)
         elif button_data[selected_menu_num] == self.TRANSFER:
             return Destination(ToolsSatodimeTransferOwnershipView)
         elif button_data[selected_menu_num] == self.CARD_SETTINGS:

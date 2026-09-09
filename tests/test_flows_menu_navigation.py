@@ -724,6 +724,23 @@ class TestMenuNavigationFlows(FlowTest):
             FlowStep(ToolsSatodimeView),
         ])
 
+    def test_smartcard_satodime_claim_ownership_from_menu(self, monkeypatch):
+        """Tools → Smartcard → Satodime → Claim Ownership → already claimed warning."""
+        from seedsigner.views.smartcard_views import (
+            ToolsSmartcardMenuView, ToolsSatodimeView, ToolsSatodimeClaimView,
+        )
+
+        _patch_satodime_connector(monkeypatch)
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.SMARTCARD),
+            FlowStep(ToolsSmartcardMenuView, button_data_selection=ToolsSmartcardMenuView.SATODIME),
+            FlowStep(ToolsSatodimeView, button_data_selection=ToolsSatodimeView.CLAIM_OWNERSHIP),
+            FlowStep(ToolsSatodimeClaimView, screen_return_value=RET_CODE__BACK_BUTTON),  # "Already Claimed"
+            FlowStep(ToolsSatodimeView),
+        ])
+
     def test_smartcard_satodime_backup_unlock_skip_returns_to_card_settings(self, monkeypatch):
         """Card Settings → Back Up Unlock Code → skip backup → returns to Card Settings.
 
