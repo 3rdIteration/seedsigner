@@ -118,10 +118,15 @@ class TestSmartcardViewsModuleLevelSymbols:
 
         for name in (
             "ToolsSatodimeView",
-            "ToolsSatodimeAddressesView",
+            "ToolsSatodimeSlotsView",
+            "ToolsSatodimeSlotMenuView",
+            "ToolsSatodimeViewAddressView",
+            "ToolsSatodimeViewPrivateKeyView",
+            "ToolsSatodimeResetSlotView",
             "ToolsSatodimeSealSlotView",
             "ToolsSatodimeUnsealSlotView",
             "ToolsSatodimeSignTxView",
+            "ToolsSatodimeLoadKeyView",
             "ToolsSatodimeTransferOwnershipView",
             "ToolsSatodimeCardSettingsView",
         ):

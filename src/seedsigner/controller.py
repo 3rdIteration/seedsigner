@@ -273,6 +273,11 @@ class Controller(Singleton):
     # without it, a contactless reader cannot seal, unseal, reset or even transfer the
     # card. Held in RAM only -- the user is walked through backing it up at claim time.
     Satodime_unlock_secrets: dict | None = None
+    # Cached slot data for the Satodime slot-centric menus: avoids re-reading the card
+    # when navigating the slot list, per-slot action menus, and view-address QR. Cleared
+    # on Home alongside the session secrets above. Keys: card_id (str), max_keys (int),
+    # slots (list of (state, coin, address) tuples), built once by ToolsSatodimeSlotsView.
+    satodime_slot_cache: dict | None = None
     GPG_Admin_PIN = None
     javacard_keys: dict | None = None
 
@@ -575,6 +580,10 @@ class Controller(Singleton):
 
                     # Always drop any cached OpenPGP admin PIN when returning home
                     self.GPG_Admin_PIN = None
+
+                    # Always drop the cached Satodime slot data (it's read-only display
+                    # state that could go stale across sessions).
+                    self.satodime_slot_cache = None
                 
                 logger.info(f"\nback_stack: {self.back_stack}")
 
@@ -766,6 +775,7 @@ class Controller(Singleton):
         self.Satochip_Last_UID_SHA1 = None
         self.Satochip_Connector = None
         self.Satodime_unlock_secrets = None
+        self.satodime_slot_cache = None
         self.GPG_Admin_PIN = None
         self.image_entropy_preview_frames = None
         self.image_entropy_final_image = None

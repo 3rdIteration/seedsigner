@@ -48,6 +48,7 @@ from real_screen_fixtures import simulated_satodime, simulated_satodime_raw
 from ui_driver import Back, UISession, select
 
 # tools_views must be imported first: it is a facade that star-imports smartcard_views.
+from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
 from seedsigner.views import tools_views
 from seedsigner.views import smartcard_views
 from seedsigner.helpers import satodime_coins, seedkeeper_utils
@@ -77,6 +78,46 @@ def claim(connector):
 
     (_resp, sw1, sw2) = seedkeeper_utils.claim_satodime_ownership(connector)
     assert (sw1, sw2) == (0x90, 0x00), f"satodime setup failed: {sw1:#x} {sw2:#x}"
+
+
+def _seal_slot_zero():
+    """Claim + seal slot 0 (BTC) by driving the real views. Call inside ``with ctx:``.
+
+    The seal view now reads slot state from the Controller cache, so we pre-build it
+    first (by reading slot 0 as uninitialized). The seal view updates the cache on
+    success, so subsequent views see the new Sealed state.
+    """
+    claim_view = smartcard_views.ToolsSatodimeClaimView()
+    claim_view.run_screen = ScreenRecorder(0, 0)
+    claim_view.run()
+
+    # Pre-populate cache: slot 0 is Uninitialized.
+    _populate_cache([(smartcard_views.SATODIME_SLOT_UNINITIALIZED, None, None)])
+
+    seal_view = smartcard_views.ToolsSatodimeSealSlotView(0)
+    seal_view.run_screen = ScreenRecorder(0, 0, 0)  # Seal As (BTC) -> No Backup -> Success
+    seal_view.run()
+
+
+def _unseal_slot_zero():
+    """Unseal slot 0 by driving the real UnsealSlotView. Call inside ``with ctx:``.
+
+    The unseal view reads slot state from the cache; _seal_slot_zero already set the
+    cache to Sealed. The unseal view updates the cache to Unsealed on success.
+    """
+    view = smartcard_views.ToolsSatodimeUnsealSlotView(0)
+    view.run_screen = ScreenRecorder(0, 0)  # confirm unseal warning -> ack Unsealed
+    view.run()
+
+
+def _populate_cache(slots):
+    """Set the controller slot cache directly (avoids a card read in test helpers)."""
+    from seedsigner.controller import Controller
+    Controller.get_instance().satodime_slot_cache = {
+        "card_id": "test",
+        "max_keys": max(len(slots), 3),
+        "slots": list(slots) + [(smartcard_views.SATODIME_SLOT_UNINITIALIZED, None, None)] * max(0, 3 - len(slots)),
+    }
 
 
 class ScreenRecorder:
@@ -226,16 +267,14 @@ class TestSatodimeConnectorAgainstRealApplet(SatodimeSimulatedFlowTest):
             assert BECH32_ADDRESS.match(address), address
 
 
-class TestSatodimeAddressesAgainstRealApplet(SatodimeSimulatedFlowTest):
-    """
-    Satodime > View Deposit Addresses renders a real slot screen.
+class TestSatodimeSlotListAgainstRealApplet(SatodimeSimulatedFlowTest):
+    """The slot-centric Satodime menu renders the real slot list.
 
-    We render exactly one slot then press BACK, which the view treats as 'stop iterating'.
-    That exercises satodime_get_status + get_keyslot_status(0) + get_pubkey(0) end to end
-    without depending on how many slots the applet reports.
+    We open the list then press BACK, exercising satodime_get_status + get_keyslot_status
+    end to end without depending on how many slots the applet reports.
     """
 
-    def test_renders_one_slot(self, monkeypatch):
+    def test_renders_the_slot_list(self, monkeypatch):
         try:
             ctx = simulated_satodime(monkeypatch)
         except JCardSimUnavailable as exc:
@@ -254,8 +293,8 @@ class TestSatodimeAddressesAgainstRealApplet(SatodimeSimulatedFlowTest):
                 pytest.skip("no satodime slots to render")
 
             session = UISession(script=(
-                select(smartcard_views.ToolsSatodimeView.VIEW_ADDRESSES)
-                + [Back()]  # render slot 0, then stop iterating
+                select(0)   # ToolsSatodimeView: "Key Slots"
+                + [Back()]   # open the slot list, then leave it
             ))
             self.run_sequence(
                 [
@@ -265,17 +304,17 @@ class TestSatodimeAddressesAgainstRealApplet(SatodimeSimulatedFlowTest):
                     FlowStep(smartcard_views.ToolsSmartcardMenuView,
                              button_data_selection=smartcard_views.ToolsSmartcardMenuView.SATODIME),
                     FlowStep(smartcard_views.ToolsSatodimeView, real_screens=True),
-                    FlowStep(smartcard_views.ToolsSatodimeAddressesView, real_screens=True),
+                    FlowStep(smartcard_views.ToolsSatodimeSlotsView, real_screens=True),
                     FlowStep(smartcard_views.ToolsSatodimeView),
                 ],
                 ui_session=session,
             )
 
-    def test_empty_slot_says_so_instead_of_leaking_a_parser_error(self, monkeypatch):
+    def test_empty_slot_labelled_uninitialized_not_a_parser_error(self, monkeypatch):
         """
         A fresh card's slots hold no key, so ``satodime_get_pubkey`` returns an empty
-        body and pysatochip's parser raises. The view used to call it anyway and paint
-        the exception text -- which is what the user saw on a brand new Satodime.
+        body and pysatochip's parser raises. The slot-list build must skip the pubkey
+        lookup for empty slots and label them Uninitialized -- not paint an exception.
         """
         try:
             ctx = simulated_satodime(monkeypatch)
@@ -285,19 +324,25 @@ class TestSatodimeAddressesAgainstRealApplet(SatodimeSimulatedFlowTest):
         with ctx as connector:
             claim(connector)
 
-            view = smartcard_views.ToolsSatodimeAddressesView()
-            recorder = ScreenRecorder(0, 0, 0)  # "Next" on each of the 3 slots
+            view = smartcard_views.ToolsSatodimeSlotsView()
+            recorder = ScreenRecorder(RET_CODE__BACK_BUTTON)
             view.run_screen = recorder
             view.run()
 
-            assert recorder.titles == ["Slot 0", "Slot 1", "Slot 2"]
-            for body in recorder.texts:
-                assert body.startswith("Uninitialized"), body
-                assert "error" not in body.lower(), body
-                assert "expected at least" not in body, body
+            list_cls, list_kwargs = recorder.calls[0]
+            assert list_cls == "ButtonListScreen"
+            labels = [opt.button_label for opt in list_kwargs["button_data"]]
+            for label in labels[:3]:
+                assert "Uninitialized" in label, label
+            assert not any("error" in l.lower() for l in labels), labels
+            assert not any("expected at least" in l for l in labels), labels
 
-    def test_sealed_slot_renders_an_address(self, monkeypatch):
-        """After sealing, the slot screen must show an address -- not an exception."""
+    def test_sealed_slot_within_a_real_slot_list(self, monkeypatch):
+        """
+        After sealing, the slot row carries the sealed coin and the address, and
+        selecting the slot routes into its action menu where "View Address" renders
+        that address as a QR code -- not an exception.
+        """
         try:
             ctx = simulated_satodime(monkeypatch)
         except JCardSimUnavailable as exc:
@@ -311,13 +356,26 @@ class TestSatodimeAddressesAgainstRealApplet(SatodimeSimulatedFlowTest):
             (_, sw1, sw2, _, _) = connector.satodime_seal_key(0, bytes(range(32)))
             assert (sw1, sw2) == (0x90, 0x00)
 
-            view = smartcard_views.ToolsSatodimeAddressesView()
-            recorder = ScreenRecorder(0, 0, 0)
-            view.run_screen = recorder
+            list_view = smartcard_views.ToolsSatodimeSlotsView()
+            recorder = ScreenRecorder(0)  # pick "Slot 0" -> its action menu
+            list_view.run_screen = recorder
+            dest = list_view.run()
+
+            labels = [opt.button_label for opt in recorder.calls[0][1]["button_data"]]
+            assert dest.View_cls is smartcard_views.ToolsSatodimeSlotMenuView
+            assert dest.view_args == {"slot": 0}
+            assert "Sealed - BTC" in labels[0], labels[0]
+            address = labels[0].rsplit(" - ", 1)[-1]
+            assert BECH32_ADDRESS.match(address), address
+
+            # "View Address" on that slot renders the address as a QR code.
+            view = smartcard_views.ToolsSatodimeViewAddressView(0)
+            qr_recorder = ScreenRecorder(RET_CODE__BACK_BUTTON)  # dismiss the QR
+            view.run_screen = qr_recorder
             view.run()
 
-            status_line, address = recorder.body_for("Slot 0").split("\n")
-            assert status_line == "Sealed BTC", "the slot's coin belongs on screen"
+            qr_call = next(c for c in qr_recorder.calls if c[0] == "QRDisplayScreen")
+            address = qr_call[1]["qr_encoder"].data
             assert BECH32_ADDRESS.match(address), address
 
 
@@ -336,8 +394,8 @@ class TestSatodimeThroughRealInitSatochip(SatodimeSimulatedFlowTest):
         anyway, because it keys off ``setup_done`` alone -- so the user got a PIN keyboard
         on a card that has no PIN.
 
-        Reads also must not force a claim: status, keyslot and pubkey all work on an
-        unclaimed card, so browsing deposit addresses should just work.
+        Reads also must not force a claim: the slot list is reachable on an unclaimed
+        card, so browsing it should just work.
         """
         try:
             ctx = simulated_satodime_raw()
@@ -345,12 +403,13 @@ class TestSatodimeThroughRealInitSatochip(SatodimeSimulatedFlowTest):
             pytest.skip(str(exc))
 
         with ctx:
-            view = smartcard_views.ToolsSatodimeAddressesView()
-            recorder = ScreenRecorder(0, 0, 0)
+            view = smartcard_views.ToolsSatodimeSlotsView()
+            recorder = ScreenRecorder(RET_CODE__BACK_BUTTON)
             view.run_screen = recorder
             view.run()
 
-            assert recorder.titles == ["Slot 0", "Slot 1", "Slot 2"]
+            # The slot list is reachable, and nothing ever prompts for a PIN.
+            assert recorder.titles[0] == "Satodime"
             for title in recorder.titles:
                 assert "PIN" not in (title or ""), f"Satodime must never ask for a PIN: {title}"
 
@@ -362,7 +421,7 @@ class TestSatodimeThroughRealInitSatochip(SatodimeSimulatedFlowTest):
             pytest.skip(str(exc))
 
         with ctx:
-            view = smartcard_views.ToolsSatodimeSealSlotView()
+            view = smartcard_views.ToolsSatodimeSealSlotView(0)
             recorder = ScreenRecorder()  # no screen should be shown at all
             view.run_screen = recorder
             dest = view.run()
@@ -442,6 +501,8 @@ class TestSatodimeThroughRealInitSatochip(SatodimeSimulatedFlowTest):
         This is what would have caught 0x9C04 (no setup ever ran) *and* the bad embit
         constructor, because it drives the views and asserts on the address the success
         screen actually renders.
+
+        Sealing must pass through the loud no-backup warning first.
         """
         try:
             ctx = simulated_satodime_raw()
@@ -453,17 +514,252 @@ class TestSatodimeThroughRealInitSatochip(SatodimeSimulatedFlowTest):
             claim_view.run_screen = ScreenRecorder(0, 0)
             claim_view.run()
 
-            view = smartcard_views.ToolsSatodimeSealSlotView()
-            # slot picker -> coin picker (BTC is first) -> success screen
+            # What ToolsSatodimeSlotsView would have cached for a fresh card.
+            _populate_cache([(smartcard_views.SATODIME_SLOT_UNINITIALIZED, None, None)])
+
+            view = smartcard_views.ToolsSatodimeSealSlotView(0)
+            # coin picker (BTC is first) -> no-backup warning -> success
             recorder = ScreenRecorder(0, 0, 0)
             view.run_screen = recorder
             view.run()
 
             assert "Seal Failed" not in recorder.titles, recorder.calls
-            assert recorder.titles[:2] == ["Select Slot", "Seal As"]
+            assert recorder.titles == ["Seal As", "No Backup", "Success"]
+            # The no-backup warning is the loud point of this screen.
+            assert "no backup" in recorder.body_for("No Backup").lower(), recorder.calls
             headline, address = recorder.body_for("Success").split("\n")
             assert headline == "Slot 0 sealed BTC"
             assert BECH32_ADDRESS.match(address), address
+
+    def test_reseal_of_a_sealed_slot_is_refused_with_the_warning(self):
+        """
+        The applet only ever seals an Uninitialized slot (it answers 0x9C52 otherwise),
+        and re-sealing a slot that already holds -- or held -- a key would orphan the
+        funds and there is no backup. The slot-centric SealSlotView must refuse with the
+        same loud no-backup warning.
+        """
+        try:
+            ctx = simulated_satodime_raw()
+        except JCardSimUnavailable as exc:
+            pytest.skip(str(exc))
+
+        with ctx:
+            _seal_slot_zero()
+
+            view = smartcard_views.ToolsSatodimeSealSlotView(0)
+            recorder = ScreenRecorder(0)  # ack the Cannot Re-Seal refusal
+            view.run_screen = recorder
+            view.run()
+
+            assert recorder.titles == ["Cannot Re-Seal"]
+            assert "no backup" in recorder.calls[0][1]["text"].lower()
+
+    def test_slot_menu_shows_state_appropriate_actions(self):
+        """The per-slot action menu only offers actions valid for the slot's state:
+        [Seal] when uninitialized, [View Address, Unseal, Sign] when sealed, and
+        [View Address, View Private Key, Sign, Load Key, Reset] when unsealed (BTC)."""
+        try:
+            ctx = simulated_satodime_raw()
+        except JCardSimUnavailable as exc:
+            pytest.skip(str(exc))
+
+        with ctx:
+            # Uninitialized: only Seal. (Cache as ToolsSatodimeSlotsView would build it.)
+            _populate_cache([(smartcard_views.SATODIME_SLOT_UNINITIALIZED, None, None)])
+            menu = smartcard_views.ToolsSatodimeSlotMenuView(0)
+            recorder = ScreenRecorder(RET_CODE__BACK_BUTTON)
+            menu.run_screen = recorder
+            menu.run()
+            assert [o.button_label for o in recorder.calls[0][1]["button_data"]] == ["Seal Slot"]
+
+            # Sealed BTC: View Address, Unseal, Sign Transaction.
+            _seal_slot_zero()
+            menu = smartcard_views.ToolsSatodimeSlotMenuView(0)
+            recorder = ScreenRecorder(RET_CODE__BACK_BUTTON)
+            menu.run_screen = recorder
+            menu.run()
+            assert [o.button_label for o in recorder.calls[0][1]["button_data"]] == [
+                "View Address", "Unseal Slot", "Sign Transaction",
+            ]
+
+            # Unsealed BTC: View Address, View Private Key, Sign Transaction, Load Key, Reset Slot.
+            _unseal_slot_zero()
+            menu = smartcard_views.ToolsSatodimeSlotMenuView(0)
+            recorder = ScreenRecorder(RET_CODE__BACK_BUTTON)
+            menu.run_screen = recorder
+            menu.run()
+            assert [o.button_label for o in recorder.calls[0][1]["button_data"]] == [
+                "View Address", "View Private Key", "Sign Transaction",
+                "Load Key to SeedSigner", "Reset Slot",
+            ]
+
+    def test_unseal_warning_blocks_and_confirms(self):
+        """
+        Unsealing permanently exposes a slot's private key and the applet then refuses
+        to seal it again. The flow must warn before the unseal APDU, and backing out of
+        that warning must leave the slot sealed.
+        """
+        try:
+            ctx = simulated_satodime_raw()
+        except JCardSimUnavailable as exc:
+            pytest.skip(str(exc))
+
+        with ctx:
+            _seal_slot_zero()
+
+            # Backing out of the warning leaves the slot sealed.
+            view = smartcard_views.ToolsSatodimeUnsealSlotView(0)
+            recorder = ScreenRecorder(RET_CODE__BACK_BUTTON)  # back out of the warning
+            view.run_screen = recorder
+            view.run()
+
+            (_, _, _, slot_status) = _fresh_connector().satodime_get_keyslot_status(0)
+            assert slot_status["key_status_txt"] == "Sealed"
+
+            # Confirming the warning unseals; the slot is then Unsealed.
+            view = smartcard_views.ToolsSatodimeUnsealSlotView(0)
+            recorder = ScreenRecorder(0, 0)  # confirm warning, ack Unsealed
+            view.run_screen = recorder
+            view.run()
+
+            assert recorder.titles == ["Unseal Slot", "Unsealed"]
+            (_, _, _, slot_status) = _fresh_connector().satodime_get_keyslot_status(0)
+            assert slot_status["key_status_txt"] == "Unsealed"
+
+    def test_view_private_key_shows_wif_qr(self):
+        """An unsealed BTC slot's private key is shown as a QR (WIF)."""
+        try:
+            ctx = simulated_satodime_raw()
+        except JCardSimUnavailable as exc:
+            pytest.skip(str(exc))
+
+        with ctx:
+            _seal_slot_zero()
+            _unseal_slot_zero()
+
+            view = smartcard_views.ToolsSatodimeViewPrivateKeyView(0)
+            recorder = ScreenRecorder(RET_CODE__BACK_BUTTON)  # dismiss the QR
+            view.run_screen = recorder
+            view.run()
+
+            qr_call = next(c for c in recorder.calls if c[0] == "QRDisplayScreen")
+            # A BTC WIF starts with K or L (mainnet) or c (testnet); never an exception.
+            assert qr_call[1]["qr_encoder"].data[0] in "KLc"
+
+    def test_load_key_loads_an_unsealed_bitcoin_slot(self):
+        """
+        Load Key to SeedSigner reads an already-unsealed BTC slot's WIF and stages it as
+        psbt_seed, landing back on the slot's action menu.
+        """
+        try:
+            ctx = simulated_satodime_raw()
+        except JCardSimUnavailable as exc:
+            pytest.skip(str(exc))
+
+        with ctx:
+            _seal_slot_zero()
+            _unseal_slot_zero()
+
+            view = smartcard_views.ToolsSatodimeLoadKeyView(0)
+            recorder = ScreenRecorder(0)  # ack "Key Loaded"
+            view.run_screen = recorder
+            dest = view.run()
+
+            from seedsigner.models.wif import WIFKey
+
+            assert recorder.titles == ["Key Loaded"]
+            assert dest.View_cls is smartcard_views.ToolsSatodimeSlotMenuView
+            assert isinstance(self.controller.psbt_seed, WIFKey)
+            _, address = recorder.body_for("Key Loaded").split("\n")
+            assert BECH32_ADDRESS.match(address), address
+
+    def test_reset_slot_clears_an_unsealed_slot(self):
+        """Resetting an unsealed slot erases its key back to Uninitialized, after the
+        loud no-backup warning."""
+        try:
+            ctx = simulated_satodime_raw()
+        except JCardSimUnavailable as exc:
+            pytest.skip(str(exc))
+
+        with ctx:
+            _seal_slot_zero()
+            _unseal_slot_zero()
+
+            view = smartcard_views.ToolsSatodimeResetSlotView(0)
+            recorder = ScreenRecorder(0, 0)  # confirm Reset warning, ack Reset
+            view.run_screen = recorder
+            view.run()
+
+            assert recorder.titles == ["Reset Slot", "Reset"]
+            (_, _, _, slot_status) = _fresh_connector().satodime_get_keyslot_status(0)
+            assert slot_status["key_status_txt"] == "Uninitialized"
+
+    def test_seal_fails_closed_when_the_rng_health_monitor_has_failed(self, monkeypatch):
+        """
+        Sealing mints a new key from system-RNG entropy, so it must refuse -- not
+        warn-and-continue -- when the background RNG health monitor has flagged the
+        source, exactly like the password generator and image-entropy seed flows.
+        """
+        try:
+            ctx = simulated_satodime_raw()
+        except JCardSimUnavailable as exc:
+            pytest.skip(str(exc))
+
+        monkeypatch.setattr(
+            type(self.controller), "hardware_rng_is_healthy", property(lambda self: False)
+        )
+        monkeypatch.setattr(
+            type(self.controller), "hardware_rng_failure_reason", property(lambda self: "test RNG failure")
+        )
+
+        with ctx:
+            claim_view = smartcard_views.ToolsSatodimeClaimView()
+            claim_view.run_screen = ScreenRecorder(0, 0)
+            claim_view.run()
+
+            # What ToolsSatodimeSlotsView would have cached for a fresh card.
+            _populate_cache([(smartcard_views.SATODIME_SLOT_UNINITIALIZED, None, None)])
+
+            view = smartcard_views.ToolsSatodimeSealSlotView(0)
+            recorder = ScreenRecorder(0)  # ack the RNG error gate; nothing else should render
+            view.run_screen = recorder
+            view.run()
+
+            assert recorder.titles == ["System RNG Error"]
+            assert "Sealing" not in " ".join(recorder.titles)
+
+    def test_seal_fails_closed_when_the_entropy_draw_is_low_quality(self, monkeypatch):
+        """
+        Belt-and-suspenders over the background monitor (which samples once a minute):
+        the actual bytes folded into the card's key are sanity-checked, and a
+        low-entropy draw aborts the seal.
+        """
+        try:
+            ctx = simulated_satodime_raw()
+        except JCardSimUnavailable as exc:
+            pytest.skip(str(exc))
+
+        with ctx:
+            claim_view = smartcard_views.ToolsSatodimeClaimView()
+            claim_view.run_screen = ScreenRecorder(0, 0)
+            claim_view.run()
+
+            # What ToolsSatodimeSlotsView would have cached for a fresh card.
+            _populate_cache([(smartcard_views.SATODIME_SLOT_UNINITIALIZED, None, None)])
+
+            # Stop the background monitor so its own reads don't consume the patch,
+            # then make the seal's os.urandom(32) always return a constant block.
+            if self.controller.rng_monitor_thread:
+                self.controller.rng_monitor_thread.stop()
+            monkeypatch.setattr(smartcard_views.os, "urandom", lambda n: b"\x00" * n)
+
+            view = smartcard_views.ToolsSatodimeSealSlotView(0)
+            # coin picker (BTC) -> no-backup warning -> RNG error gate
+            recorder = ScreenRecorder(0, 0, 0)
+            view.run_screen = recorder
+            view.run()
+
+            assert recorder.titles == ["Seal As", "No Backup", "System RNG Error"]
 
     def test_contactless_without_the_secret_routes_to_restore(self, monkeypatch):
         """
@@ -487,7 +783,7 @@ class TestSatodimeThroughRealInitSatochip(SatodimeSimulatedFlowTest):
                 seedkeeper_utils, "satodime_connection_is_contactless", lambda connector: True
             )
 
-            view = smartcard_views.ToolsSatodimeSealSlotView()
+            view = smartcard_views.ToolsSatodimeSealSlotView(0)
             recorder = ScreenRecorder(0)  # accept "Restore Code"
             view.run_screen = recorder
             dest = view.run()

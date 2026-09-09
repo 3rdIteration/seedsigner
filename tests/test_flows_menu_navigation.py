@@ -78,6 +78,39 @@ def _patch_gpg_verify_file(view):
     view.controller.gpg_keys_imported = True
 
 
+class MockSatodimeConnector:
+    """Cardless Stand-in for the pysatochip Satodime connector.
+
+    Satisfies the slot-centric Satodime menu with three slots defaulting to a given
+    per-slot key_status byte, so the menu-navigation tests can reach the new views
+    without a physical card or jcardsim.
+    """
+    setup_done = True
+
+    def __init__(self, states=(0, 0, 0), slip44=(0x80, 0x00, 0x00, 0x00)):
+        self.states = list(states)
+        self.slip44 = list(slip44)
+
+    def satodime_get_status(self):
+        return (b"", 0x90, 0x00, {"max_num_keys": len(self.states)})
+
+    def satodime_get_keyslot_status(self, key_nbr):
+        return (b"", 0x90, 0x00, {"key_status": self.states[key_nbr], "key_slip44": self.slip44})
+
+    def satodime_set_unlock_secret(self, *args, **kwargs): pass
+    def satodime_set_unlock_counter(self, *args, **kwargs): pass
+
+
+def _patch_satodime_connector(monkeypatch, **kwargs):
+    """Route init_satochip to a MockSatodimeConnector over a (fake) contact reader."""
+    from seedsigner.helpers import seedkeeper_utils
+
+    connector = MockSatodimeConnector(**kwargs)
+    monkeypatch.setattr(seedkeeper_utils, "init_satochip", lambda *a, **k: connector)
+    monkeypatch.setattr(seedkeeper_utils, "satodime_connection_is_contactless", lambda c: False)
+    return connector
+
+
 class _FakePyGP:
     """Stand-in for the ``pygp`` native module used by the Javacard DIY views.
 
@@ -682,6 +715,74 @@ class TestMenuNavigationFlows(FlowTest):
             FlowStep(ToolsSmartcardMenuView, button_data_selection=ToolsSmartcardMenuView.SATODIME),
             FlowStep(ToolsSatodimeView, button_data_selection=ToolsSatodimeView.CARD_SETTINGS),
             FlowStep(ToolsSatodimeCardSettingsView, screen_return_value=RET_CODE__BACK_BUTTON),
+            FlowStep(ToolsSatodimeView),
+        ])
+
+    def test_smartcard_satodime_key_slots_uninitialized(self, monkeypatch):
+        """Tools → Smartcard → Satodime → Key Slots → Slots → (uninitialized) → Seal → BACK.
+
+        Exercises the cached slot list (ToolsSatodimeSlotsView), the cache-driven
+        ToolsSatodimeSlotMenuView, and ToolsSatodimeSealSlotView run() so a missing
+        import can't hide behind the menus.
+        """
+        from seedsigner.helpers import seedkeeper_utils
+        from seedsigner.views.smartcard_views import (
+            ToolsSmartcardMenuView, ToolsSatodimeView, ToolsSatodimeSlotsView,
+            ToolsSatodimeSlotMenuView, ToolsSatodimeSealSlotView,
+        )
+
+        _patch_satodime_connector(monkeypatch)
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.SMARTCARD),
+            FlowStep(ToolsSmartcardMenuView, button_data_selection=ToolsSmartcardMenuView.SATODIME),
+            FlowStep(ToolsSatodimeView, button_data_selection=ToolsSatodimeView.KEY_SLOTS),
+            FlowStep(ToolsSatodimeSlotsView, screen_return_value=0),  # pick "Slot 0" -> SlotMenu
+            FlowStep(ToolsSatodimeSlotMenuView, screen_return_value=0),  # pick "Seal Slot"
+            FlowStep(ToolsSatodimeSealSlotView, screen_return_value=RET_CODE__BACK_BUTTON),  # back out of coin picker
+            FlowStep(ToolsSatodimeSlotMenuView, screen_return_value=RET_CODE__BACK_BUTTON),  # back to slot list
+            FlowStep(ToolsSatodimeSlotsView, screen_return_value=RET_CODE__BACK_BUTTON),  # back to main menu
+            FlowStep(ToolsSatodimeView),
+        ])
+
+    def test_smartcard_satodime_key_slots_sealed(self, monkeypatch):
+        """Tools → Smartcard → Satodime → Key Slots → Sealed slot → action menu → BACK.
+
+        Exercises ToolsSatodimeSlotMenuView run() for a sealed Bitcoin slot (which
+        offers View Address / Unseal / Sign Transaction), and the run() of
+        ToolsSatodimeViewAddressView and ToolsSatodimeUnsealSlotView.
+        """
+        from seedsigner.helpers import seedkeeper_utils
+        from seedsigner.views import smartcard_views
+        from seedsigner.views.smartcard_views import (
+            ToolsSmartcardMenuView, ToolsSatodimeView, ToolsSatodimeSlotsView,
+            ToolsSatodimeSlotMenuView, ToolsSatodimeViewAddressView,
+            ToolsSatodimeUnsealSlotView,
+        )
+
+        btc = smartcard_views.satodime_coins.COINS[smartcard_views.satodime_coins.SLIP44_BTC]
+        _patch_satodime_connector(monkeypatch, states=(1, 0, 0))
+        monkeypatch.setattr(
+            smartcard_views, "_satodime_read_slot",
+            lambda connector, key_nbr, is_testnet: (None, smartcard_views.SATODIME_SLOT_SEALED, btc, "bc1qtest"),
+        )
+        monkeypatch.setattr(
+            seedkeeper_utils, "satodime_card_id", lambda connector: "test",
+        )
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.SMARTCARD),
+            FlowStep(ToolsSmartcardMenuView, button_data_selection=ToolsSmartcardMenuView.SATODIME),
+            FlowStep(ToolsSatodimeView, button_data_selection=ToolsSatodimeView.KEY_SLOTS),
+            FlowStep(ToolsSatodimeSlotsView, screen_return_value=0),  # pick "Slot 0" -> SlotMenu
+            FlowStep(ToolsSatodimeSlotMenuView, screen_return_value=0),  # "View Address"
+            FlowStep(ToolsSatodimeViewAddressView, screen_return_value=RET_CODE__BACK_BUTTON),  # dismiss QR
+            FlowStep(ToolsSatodimeSlotMenuView, screen_return_value=1),  # "Unseal Slot"
+            FlowStep(ToolsSatodimeUnsealSlotView, screen_return_value=RET_CODE__BACK_BUTTON),  # back out of warning
+            FlowStep(ToolsSatodimeSlotMenuView, screen_return_value=RET_CODE__BACK_BUTTON),  # back to slot list
+            FlowStep(ToolsSatodimeSlotsView, screen_return_value=RET_CODE__BACK_BUTTON),  # back to main menu
             FlowStep(ToolsSatodimeView),
         ])
 
