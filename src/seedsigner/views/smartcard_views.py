@@ -4860,11 +4860,11 @@ def _satodime_prepare(view, connector, needs_unlock: bool):
         # than letting the operation fail with a status word.
         selected = view.run_screen(
             WarningScreen,
-            title="Code Required",
+            title="Key Required",
             status_headline=None,
-            text="NFC needs this card's\nunlock code.",
+            text="NFC needs this card's\nownership key.",
             show_back_button=True,
-            button_data=[ButtonOption("Restore Code")],
+            button_data=[ButtonOption("Restore Key")],
         )
         if selected == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
@@ -4874,7 +4874,7 @@ def _satodime_prepare(view, connector, needs_unlock: bool):
 
 
 class ToolsSatodimeClaimView(View):
-    """Claim an unowned Satodime, then walk the user through backing up its unlock code.
+    """Claim an unowned Satodime, then walk the user through backing up its ownership key.
 
     INS_SETUP is the only time the card ever emits its 20-byte unlock secret. On a
     contactless reader that secret is required for every later state change -- seal,
@@ -4960,10 +4960,10 @@ class ToolsSatodimeClaimView(View):
 
 
 class ToolsSatodimeBackupUnlockView(View):
-    """Show the unlock code as a QR and make the user prove they captured it.
+    """Show the ownership key as a QR and make the user prove they captured it.
 
     The read-back is the point: a QR the user never scanned is a backup they cannot be
-    sure they have. They photograph the code, then hold the photo up to the camera.
+    sure they have. They photograph the key, then hold the photo up to the camera.
     MicroSD is offered as a second copy, not as a substitute.
     """
 
@@ -4984,7 +4984,7 @@ class ToolsSatodimeBackupUnlockView(View):
         if not secret:
             self.run_screen(
                 WarningScreen,
-                title="No Unlock Code",
+                title="No Ownership Key",
                 status_headline=None,
                 text="Claim the card first.",
                 show_back_button=True,
@@ -4995,7 +4995,7 @@ class ToolsSatodimeBackupUnlockView(View):
 
         self.run_screen(
             DireWarningScreen,
-            title="Unlock Code",
+            title="Ownership Key",
             status_headline=None,
             text="Back this up now. It can\nnever be shown again.",
             show_back_button=False,
@@ -5008,7 +5008,7 @@ class ToolsSatodimeBackupUnlockView(View):
             WarningScreen,
             title="Not Theft Proof",
             status_headline=None,
-            text="A contact reader can unseal\nthis card without the code.",
+            text="A contact reader can unseal\nthis card without this key.",
             show_back_button=False,
             button_data=[ButtonOption("I Understand")],
         )
@@ -5041,7 +5041,7 @@ class ToolsSatodimeBackupUnlockView(View):
                     DireWarningScreen,
                     title="Skip Backup?",
                     status_headline=None,
-                    text="Without this code, a contact reader is needed to reclaim ownership. NFC-only cards are locked.",
+                    text="Without this key, a contact reader is needed to reclaim ownership. NFC-only cards are locked.",
                     show_back_button=True,
                     button_data=[ButtonOption("Skip Anyway")],
                 )
@@ -5063,7 +5063,7 @@ class ToolsSatodimeBackupUnlockView(View):
                 WarningScreen,
                 title="No Match",
                 status_headline=None,
-                text="That is not this card's\nunlock code.",
+                text="That is not this card's\nownership key.",
                 show_back_button=False,
                 button_data=[ButtonOption("Try Again")],
             )
@@ -5114,7 +5114,7 @@ class ToolsSatodimeBackupUnlockView(View):
 
 
 class ToolsSatodimeRestoreUnlockView(View):
-    """Load a previously backed-up unlock code back into this session."""
+    """Load a previously backed-up ownership key back into this session."""
 
     SCAN = ButtonOption("Scan Backup QR")
     MICROSD = ButtonOption("Load from MicroSD")
@@ -5128,7 +5128,7 @@ class ToolsSatodimeRestoreUnlockView(View):
 
         selected = self.run_screen(
             ButtonListScreen,
-            title="Unlock Code",
+            title="Ownership Key",
             is_button_text_centered=False,
             button_data=[self.SCAN, self.MICROSD],
             show_back_button=True,
@@ -5150,7 +5150,7 @@ class ToolsSatodimeRestoreUnlockView(View):
                 WarningScreen,
                 title="Not a Backup",
                 status_headline=None,
-                text="That is not a Satodime\nunlock code.",
+                text="That is not a Satodime\nownership key.",
                 show_back_button=True,
             )
             return Destination(BackStackView)
@@ -5169,7 +5169,7 @@ class ToolsSatodimeRestoreUnlockView(View):
         seedkeeper_utils.cache_satodime_unlock_secret(self.controller, card_id, secret)
         self.run_screen(
             LargeIconStatusScreen,
-            title="Unlock Code Set",
+            title="Ownership Key Set",
             status_headline=None,
             text="Loaded for this session.",
             show_back_button=False,
@@ -5413,8 +5413,8 @@ class ToolsSatodimeCardSettingsView(View):
     """
     INFO = ButtonOption("Card Info")
     GENUINE = ButtonOption("Genuine Check")
-    BACKUP_UNLOCK = ButtonOption("Back Up Unlock Code")
-    RESTORE_UNLOCK = ButtonOption("Restore Unlock Code")
+    BACKUP_UNLOCK = ButtonOption("Back Up Ownership Key")
+    RESTORE_UNLOCK = ButtonOption("Restore Ownership Key")
 
     _CARD_FILTER = ["satodime"]
 
@@ -5465,7 +5465,7 @@ class ToolsSatodimeReshowUnlockView(View):
         if not seedkeeper_utils.get_cached_satodime_unlock_secret(self.controller, card_id):
             self.run_screen(
                 WarningScreen,
-                title="No Unlock Code",
+                title="No Ownership Key",
                 status_headline=None,
                 text="The card only reveals it\nwhen first claimed.",
                 show_back_button=True,

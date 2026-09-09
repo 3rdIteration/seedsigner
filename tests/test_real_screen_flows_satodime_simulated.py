@@ -810,11 +810,11 @@ class TestSatodimeThroughRealInitSatochip(SatodimeSimulatedFlowTest):
             )
 
             view = smartcard_views.ToolsSatodimeSealSlotView(0)
-            recorder = ScreenRecorder(0)  # accept "Restore Code"
+            recorder = ScreenRecorder(0)  # accept "Restore Key"
             view.run_screen = recorder
             dest = view.run()
 
-            assert recorder.titles == ["Code Required"]
+            assert recorder.titles == ["Key Required"]
             assert dest.View_cls is smartcard_views.ToolsSatodimeRestoreUnlockView
 
 
@@ -892,7 +892,7 @@ class TestBackupAndRestoreViews(SatodimeSimulatedFlowTest):
         view.run()
 
         assert recorder.titles == [
-            "Unlock Code", "Not Theft Proof", None, "Verify Backup", "Backup Verified",
+            "Ownership Key", "Not Theft Proof", None, "Verify Backup", "Backup Verified",
         ]
 
     def test_a_wrong_scan_does_not_count_as_verified(self, monkeypatch):
@@ -927,7 +927,7 @@ class TestBackupAndRestoreViews(SatodimeSimulatedFlowTest):
         view.run_screen = recorder
         view.run()
 
-        assert recorder.titles == ["No Unlock Code"]
+        assert recorder.titles == ["No Ownership Key"]
 
     def test_restore_rejects_another_card_s_backup(self, monkeypatch):
         try:
@@ -944,7 +944,7 @@ class TestBackupAndRestoreViews(SatodimeSimulatedFlowTest):
             view.run_screen = recorder
             view.run()
 
-            assert recorder.titles == ["Unlock Code", "Wrong Card"]
+            assert recorder.titles == ["Ownership Key", "Wrong Card"]
             assert not (self.controller.Satodime_unlock_secrets or {})
 
     def test_restore_loads_this_card_s_backup(self, monkeypatch):
@@ -963,7 +963,7 @@ class TestBackupAndRestoreViews(SatodimeSimulatedFlowTest):
             view.run_screen = recorder
             view.run()
 
-            assert recorder.titles == ["Unlock Code", "Unlock Code Set"]
+            assert recorder.titles == ["Ownership Key", "Ownership Key Set"]
             assert self.controller.Satodime_unlock_secrets[card_id] == self.SECRET
 
 
