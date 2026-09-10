@@ -4842,35 +4842,45 @@ def _satodime_prepare(view, connector, needs_unlock: bool):
     Read-only views (status, keyslot, pubkey) pass False -- they work on an unclaimed
     card and over either medium, so they must not drag the user through a claim.
 
+    The connection medium is never assumed: whatever secret is cached (or the zeroed
+    placeholder) is applied and the operation proceeds. Over contact the applet skips
+    the unlock check entirely; over NFC without a real key it rejects with 0x9C51,
+    which the caller turns into a restore prompt (_satodime_handle_unlock_error).
+
     Returns a ``Destination`` to redirect to, or None to carry on.
     """
     if needs_unlock and not _satodime_is_claimed(connector):
         return Destination(ToolsSatodimeClaimView)
 
-    have_secret = seedkeeper_utils.apply_satodime_unlock_secret(view.controller, connector)
+    seedkeeper_utils.apply_satodime_unlock_secret(view.controller, connector)
     connector.satodime_set_unlock_counter()
 
-    if (
-        needs_unlock
-        and not have_secret
-        and seedkeeper_utils.satodime_connection_is_contactless(connector)
-    ):
-        # Over NFC the applet checks HMAC(unlock_secret, ...), so the zeroed
-        # placeholder would just earn a 0x9C51. Send the user to restore it rather
-        # than letting the operation fail with a status word.
-        selected = view.run_screen(
-            WarningScreen,
-            title="Key Required",
-            status_headline=None,
-            text="NFC needs this card's\nownership key.",
-            show_back_button=True,
-            button_data=[ButtonOption("Restore Key")],
-        )
-        if selected == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
-        return Destination(ToolsSatodimeRestoreUnlockView)
-
     return None
+
+
+def _satodime_handle_unlock_error(view, sw1: int, sw2: int):
+    """Turn an NFC unlock rejection into a restore prompt.
+
+    The applet answers 0x9C50 (wrong counter) or 0x9C51 (wrong code) when it is on a
+    contactless reader and the zeroed placeholder secret was sent instead of the real
+    ownership key. Over contact these status words never occur, so this is a no-op
+    there. Returns a ``Destination`` to redirect to when the error was an unlock
+    failure (restore flow, or back out), else None for any other status word.
+    """
+    if sw1 != 0x9C or sw2 not in (0x50, 0x51):
+        return None
+
+    selected = view.run_screen(
+        WarningScreen,
+        title="Key Required",
+        status_headline=None,
+        text="This card needs its\nownership key.",
+        show_back_button=True,
+        button_data=[ButtonOption("Restore Key")],
+    )
+    if selected == RET_CODE__BACK_BUTTON:
+        return Destination(BackStackView)
+    return Destination(ToolsSatodimeRestoreUnlockView)
 
 
 class ToolsSatodimeClaimView(View):
@@ -4888,17 +4898,6 @@ class ToolsSatodimeClaimView(View):
 
         Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satodime"], require_pin=False)
         if not Satochip_Connector:
-            return Destination(BackStackView)
-
-        # Claiming is only meaningful over NFC — contact readers never use the ownership key.
-        if not seedkeeper_utils.satodime_connection_is_contactless(Satochip_Connector):
-            self.run_screen(
-                WarningScreen,
-                title="Not Applicable",
-                status_headline=None,
-                text="Contact readers do not use\nthe ownership key.",
-                show_back_button=True,
-            )
             return Destination(BackStackView)
 
         if _satodime_is_claimed(Satochip_Connector):
@@ -4952,18 +4951,10 @@ class ToolsSatodimeClaimView(View):
             self.controller, card_id, list(Satochip_Connector.unlock_secret)
         )
 
-        if not seedkeeper_utils.satodime_connection_is_contactless(Satochip_Connector):
-            # Contact reader: the applet never checks the unlock code, so the secret
-            # buys the user nothing here and the backup flow would be pure friction.
-            self.run_screen(
-                LargeIconStatusScreen,
-                title="Card Claimed",
-                status_headline=None,
-                text="Ready to use.",
-                show_back_button=False,
-            )
-            return Destination(BackStackView)
-
+        # Always offer the backup: over NFC this key is required for every later state
+        # change and cannot be re-read; over contact it buys nothing but the user can
+        # skip. The medium cannot be detected reliably (dual-interface readers), so we
+        # err on the side of offering rather than silently skipping.
         # ClaimView is a transient redirect; skip_current_view omits it from history so
         # BackStackView from the backup flow pops straight back to the view that needed
         # the claim (the slot-action view / card settings) instead of re-running this view.
@@ -5133,17 +5124,6 @@ class ToolsSatodimeRestoreUnlockView(View):
     def run(self):
         Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satodime"], require_pin=False)
         if not Satochip_Connector:
-            return Destination(BackStackView)
-
-        # Restoring the ownership key is only meaningful over NFC.
-        if not seedkeeper_utils.satodime_connection_is_contactless(Satochip_Connector):
-            self.run_screen(
-                WarningScreen,
-                title="Not Applicable",
-                status_headline=None,
-                text="Contact readers do not use\nthe ownership key.",
-                show_back_button=True,
-            )
             return Destination(BackStackView)
 
         card_id = seedkeeper_utils.satodime_card_id(Satochip_Connector)
@@ -5483,17 +5463,6 @@ class ToolsSatodimeReshowUnlockView(View):
         if not Satochip_Connector:
             return Destination(BackStackView)
 
-        # Backing up the ownership key is only meaningful over NFC.
-        if not seedkeeper_utils.satodime_connection_is_contactless(Satochip_Connector):
-            self.run_screen(
-                WarningScreen,
-                title="Not Applicable",
-                status_headline=None,
-                text="Contact readers do not use\nthe ownership key.",
-                show_back_button=True,
-            )
-            return Destination(BackStackView)
-
         card_id = seedkeeper_utils.satodime_card_id(Satochip_Connector)
         cached_secret = seedkeeper_utils.get_cached_satodime_unlock_secret(self.controller, card_id)
         if not cached_secret:
@@ -5622,6 +5591,9 @@ class ToolsSatodimeSealSlotView(View):
         self.loading_screen.stop()
 
         if sw1 != 0x90 or sw2 != 0x00:
+            redirect = _satodime_handle_unlock_error(self, sw1, sw2)
+            if redirect:
+                return redirect
             # 0x9C52 means the slot was somehow not Uninitialized -- e.g. the state
             # changed under us. That is the re-seal case again.
             if sw1 == 0x9C and sw2 == 0x52:
@@ -5714,6 +5686,9 @@ class ToolsSatodimeUnsealSlotView(View):
         self.loading_screen.stop()
 
         if sw1 != 0x90 or sw2 != 0x00:
+            redirect = _satodime_handle_unlock_error(self, sw1, sw2)
+            if redirect:
+                return redirect
             self.run_screen(
                 WarningScreen,
                 title="Unseal Failed",
@@ -5807,6 +5782,9 @@ class ToolsSatodimeSignTxView(View):
         self.loading_screen.stop()
 
         if sw1 != 0x90 or sw2 != 0x00:
+            redirect = _satodime_handle_unlock_error(self, sw1, sw2)
+            if redirect:
+                return redirect
             self.run_screen(
                 WarningScreen,
                 title="Read Failed",
@@ -6078,9 +6056,12 @@ class ToolsSatodimeResetSlotView(View):
         self.loading_screen.stop()
 
         if sw1 != 0x90 or sw2 != 0x00:
+            redirect = _satodime_handle_unlock_error(self, sw1, sw2)
+            if redirect:
+                return redirect
             self.run_screen(
                 WarningScreen,
-                title="Reset Failed",
+                title="Read Failed",
                 status_headline=None,
                 text=format_sw_error(sw1, sw2),
                 show_back_button=True,
@@ -6130,6 +6111,9 @@ class ToolsSatodimeTransferOwnershipView(View):
                 show_back_button=False,
             )
         else:
+            redirect = _satodime_handle_unlock_error(self, sw1, sw2)
+            if redirect:
+                return redirect
             self.run_screen(
                 WarningScreen,
                 title="Transfer Failed",

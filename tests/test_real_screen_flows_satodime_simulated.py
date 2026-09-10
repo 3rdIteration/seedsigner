@@ -158,26 +158,6 @@ def _fresh_connector():
     return CardConnector(card_filter=["satodime"])
 
 
-class _StubConnection:
-    def __init__(self, reader):
-        self._reader = reader
-
-    def getReader(self):
-        return self._reader
-
-
-class _StubCardService:
-    def __init__(self, reader):
-        self.connection = _StubConnection(reader)
-
-
-def _connector_reporting_reader(reader):
-    class Stub:
-        cardservice = _StubCardService(reader)
-
-    return Stub()
-
-
 class SatodimeSimulatedFlowTest(FlowTest):
 
     def setup_method(self):
@@ -453,53 +433,28 @@ class TestSatodimeThroughRealInitSatochip(SatodimeSimulatedFlowTest):
             assert dest.View_cls is smartcard_views.ToolsSatodimeClaimView
             assert recorder.titles == []
 
-    def test_claim_over_contact_skips_the_backup_flow(self):
-        """
-        A contact reader ignores the unlock code entirely, so there is nothing to back
-        up and the user should not be walked through a QR ceremony for nothing.
-        """
+    def test_claim_always_routes_to_the_backup_flow(self):
+        """The connection medium cannot be detected reliably (dual-interface readers),
+        so claiming always hands off to the backup ceremony; a user who doesn't need
+        the key can skip it there. The freshly minted secret must be cached either way."""
         try:
             ctx = simulated_satodime_raw()
         except JCardSimUnavailable as exc:
             pytest.skip(str(exc))
 
         with ctx:
-            assert not seedkeeper_utils.satodime_connection_is_contactless(
-                _fresh_connector()
-            ), "the jcardsim shim should look like a contact reader"
-
             view = smartcard_views.ToolsSatodimeClaimView()
-            recorder = ScreenRecorder(0, 0)  # confirm claim, then acknowledge success
-            view.run_screen = recorder
-            view.run()
-
-            assert recorder.titles == ["Card Unclaimed", "Card Claimed"]
-
-            cached = self.controller.Satodime_unlock_secrets or {}
-            (secret,) = list(cached.values())
-            assert len(secret) == 20
-            assert any(secret), "the card must hand back a real secret, not zeros"
-
-    def test_claim_over_contactless_routes_to_the_backup_flow(self, monkeypatch):
-        """Over NFC the secret is the only thing standing between the user and a
-        stranded card, so claiming must hand straight off to the backup ceremony."""
-        try:
-            ctx = simulated_satodime_raw()
-        except JCardSimUnavailable as exc:
-            pytest.skip(str(exc))
-
-        monkeypatch.setattr(
-            seedkeeper_utils, "satodime_connection_is_contactless", lambda connector: True
-        )
-
-        with ctx:
-            view = smartcard_views.ToolsSatodimeClaimView()
-            recorder = ScreenRecorder(0)
+            recorder = ScreenRecorder(0)  # confirm claim
             view.run_screen = recorder
             dest = view.run()
 
             assert dest.View_cls is smartcard_views.ToolsSatodimeBackupUnlockView
             assert dest.view_args["card_id"]
+
+            cached = self.controller.Satodime_unlock_secrets or {}
+            (secret,) = list(cached.values())
+            assert len(secret) == 20
+            assert any(secret), "the card must hand back a real secret, not zeros"
 
     def test_declining_the_claim_leaves_the_card_untouched(self):
         """Choosing Cancel must abort and leave ``setup_done`` False."""
@@ -605,7 +560,7 @@ class TestSatodimeThroughRealInitSatochip(SatodimeSimulatedFlowTest):
             menu.run_screen = recorder
             menu.run()
             assert [o.button_label for o in recorder.calls[0][1]["button_data"]] == [
-                "View Address (QR)", "Unseal Slot (View Private Key)", "Sign Transaction",
+                "View Address (QR)", "Unseal Slot (Access Private Key)", "Sign Transaction",
             ]
 
             # Unsealed BTC: View Address, View Private Key, Sign Transaction, Load Key, Reset Slot.
@@ -787,11 +742,12 @@ class TestSatodimeThroughRealInitSatochip(SatodimeSimulatedFlowTest):
 
             assert recorder.titles == ["Seal As", "No Backup", "System RNG Error"]
 
-    def test_contactless_without_the_secret_routes_to_restore(self, monkeypatch):
+    def test_nfc_unlock_rejection_routes_to_restore(self, monkeypatch):
         """
-        Over NFC the applet checks HMAC(unlock_secret, ...), so a claimed card whose
-        secret this session does not hold cannot seal. The user must be sent to restore
-        it rather than shown a raw 0x9C51.
+        Over NFC the applet checks HMAC(unlock_secret, ...) and answers 0x9C51 when the
+        zeroed placeholder was sent instead of the real key. The user must be sent to
+        restore it rather than shown a raw status word. (jcardsim simulates contact, so
+        the rejection is faked at the connector level.)
         """
         try:
             ctx = simulated_satodime_raw()
@@ -800,21 +756,28 @@ class TestSatodimeThroughRealInitSatochip(SatodimeSimulatedFlowTest):
 
         with ctx:
             claim_view = smartcard_views.ToolsSatodimeClaimView()
-            claim_view.run_screen = ScreenRecorder(0, 0)
+            claim_view.run_screen = ScreenRecorder(0)  # confirm claim
             claim_view.run()
 
             # Simulate a later session: card still claimed, secret no longer in RAM.
             self.controller.Satodime_unlock_secrets = None
-            monkeypatch.setattr(
-                seedkeeper_utils, "satodime_connection_is_contactless", lambda connector: True
-            )
+            _populate_cache([(smartcard_views.SATODIME_SLOT_UNINITIALIZED, None, None)])
+
+            real_init = seedkeeper_utils.init_satochip
+            def init_with_nfc_rejection(*a, **kw):
+                conn = real_init(*a, **kw)
+                if conn is not None and not getattr(conn, "_nfc_seal_patched", False):
+                    conn.satodime_seal_key = lambda *args, **kwargs: (b"", 0x9C, 0x51, None, None)
+                    conn._nfc_seal_patched = True
+                return conn
+            monkeypatch.setattr(seedkeeper_utils, "init_satochip", init_with_nfc_rejection)
 
             view = smartcard_views.ToolsSatodimeSealSlotView(0)
-            recorder = ScreenRecorder(0)  # accept "Restore Key"
+            recorder = ScreenRecorder(0, 0, 0)  # coin, no-backup warning, accept "Restore Key"
             view.run_screen = recorder
             dest = view.run()
 
-            assert recorder.titles == ["Key Required"]
+            assert recorder.titles == ["Seal As", "No Backup", "Key Required"]
             assert dest.View_cls is smartcard_views.ToolsSatodimeRestoreUnlockView
 
 
@@ -841,34 +804,6 @@ class TestUnlockSecretPayload:
     ])
     def test_rejects_junk(self, text):
         assert seedkeeper_utils.parse_satodime_unlock_payload(text) is None
-
-
-class TestContactlessDetection:
-    """Which medium we are on decides whether the secret matters at all."""
-
-    @pytest.mark.parametrize("reader,expected", [
-        ("Identive SCR33xx v2.0 USB SC Reader 0", False),
-        ("jcardsim simulator", False),
-        ("SEC1210 Contact Reader", False),
-        ("ACS ACR122U PICC Interface", True),
-        ("PN532 via GPIO", True),
-        ("Some NFC Reader", True),
-    ])
-    def test_reader_names(self, reader, expected):
-        connector = _connector_reporting_reader(reader)
-        assert seedkeeper_utils.satodime_connection_is_contactless(connector) is expected
-
-    def test_unknown_reader_fails_safe_to_contactless(self):
-        """Better to offer a backup that wasn't needed than to skip one that was."""
-        class Exploding:
-            @property
-            def cardservice(self):
-                raise RuntimeError("no reader")
-
-        assert seedkeeper_utils.satodime_connection_is_contactless(Exploding()) is True
-        assert seedkeeper_utils.satodime_connection_is_contactless(
-            _connector_reporting_reader("")
-        ) is True
 
 
 class TestBackupAndRestoreViews(SatodimeSimulatedFlowTest):
@@ -935,8 +870,6 @@ class TestBackupAndRestoreViews(SatodimeSimulatedFlowTest):
         except JCardSimUnavailable as exc:
             pytest.skip(str(exc))
 
-        # Simulate NFC — the restore flow is only available over contactless.
-        monkeypatch.setattr(seedkeeper_utils, "satodime_connection_is_contactless", lambda c: True)
         other = seedkeeper_utils.format_satodime_unlock_payload("ffffffffffffffff", self.SECRET)
         monkeypatch.setattr(smartcard_views, "_satodime_scan_text", lambda view: other)
 
@@ -955,8 +888,6 @@ class TestBackupAndRestoreViews(SatodimeSimulatedFlowTest):
         except JCardSimUnavailable as exc:
             pytest.skip(str(exc))
 
-        # Simulate NFC — the restore flow is only available over contactless.
-        monkeypatch.setattr(seedkeeper_utils, "satodime_connection_is_contactless", lambda c: True)
         with ctx:
             card_id = seedkeeper_utils.satodime_card_id(_fresh_connector())
             payload = seedkeeper_utils.format_satodime_unlock_payload(card_id, self.SECRET)

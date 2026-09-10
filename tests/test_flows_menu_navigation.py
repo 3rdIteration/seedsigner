@@ -108,12 +108,11 @@ class MockSatodimeConnector:
 
 
 def _patch_satodime_connector(monkeypatch, **kwargs):
-    """Route init_satochip to a MockSatodimeConnector over a (fake) contact reader."""
+    """Route init_satochip to a MockSatodimeConnector."""
     from seedsigner.helpers import seedkeeper_utils
 
     connector = MockSatodimeConnector(**kwargs)
     monkeypatch.setattr(seedkeeper_utils, "init_satochip", lambda *a, **k: connector)
-    monkeypatch.setattr(seedkeeper_utils, "satodime_connection_is_contactless", lambda c: False)
     return connector
 
 
@@ -758,8 +757,6 @@ class TestMenuNavigationFlows(FlowTest):
         )
 
         connector = _patch_satodime_connector(monkeypatch)
-        # Simulate NFC — the backup flow is only available over contactless.
-        monkeypatch.setattr(seedkeeper_utils, "satodime_connection_is_contactless", lambda c: True)
         card_id = seedkeeper_utils.satodime_card_id(connector)
 
         # The controller wipes Satodime_unlock_secrets when it routes through Home, so
@@ -797,7 +794,6 @@ class TestMenuNavigationFlows(FlowTest):
 
         connector = _patch_satodime_connector(monkeypatch)
         connector.setup_done = False  # unclaimed card -> seal routes to the claim flow
-        monkeypatch.setattr(seedkeeper_utils, "satodime_connection_is_contactless", lambda c: True)
 
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),

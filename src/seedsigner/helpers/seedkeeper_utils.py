@@ -533,33 +533,6 @@ def parse_satodime_unlock_payload(text: str):
     return (card_id, list(secret))
 
 
-# Reader-name fragments that mean "this connection is contactless". The Satodime
-# applet keys its unlock-code enforcement off the APDU protocol media, not off any
-# setting, so the medium of the *actual* connection is what matters -- and PN532 is
-# enabled by default, which makes the interface setting alone useless as a signal.
-CONTACTLESS_READER_MARKERS = ("nfc", "pn532", "pn53", "acr122", "contactless", "rc522")
-
-
-def satodime_connection_is_contactless(connector) -> bool:
-    """Whether this card is talking to us over a contactless reader.
-
-    Matters because the applet skips the unlock-code check entirely on a contact
-    interface: over USB the zeroed placeholder secret is accepted, so there is nothing
-    to back up and nothing to restore. Over NFC the same operations need the real
-    20-byte secret.
-
-    Fails safe: when the reader cannot be identified we answer True, so the user is
-    offered the backup rather than silently left without one.
-    """
-    try:
-        name = connector.cardservice.connection.getReader()
-    except Exception:
-        return True
-    if not name:
-        return True
-    name = str(name).lower()
-    return any(marker in name for marker in CONTACTLESS_READER_MARKERS)
-
 
 def satodime_unlock_backup_filename(card_id: str) -> str:
     """Deterministic name, so a restore can find the file without the user typing it."""
