@@ -47,7 +47,7 @@ for _name in [m for m in sys.modules if m == "pysatochip" or m.startswith("pysat
 
 from jcardsim import JCardSimUnavailable, why_unavailable
 from real_screen_fixtures import simulated_satodime, simulated_satodime_raw
-from ui_driver import Back, UISession, select
+from ui_driver import Back, UISession, make_noise_frame, select
 
 # tools_views must be imported first: it is a facade that star-imports smartcard_views.
 from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
@@ -946,6 +946,53 @@ class TestBackupAndRestoreViews(SatodimeSimulatedFlowTest):
             "Ownership Key", "Not Theft Proof", "If You Lose It", "Back Up Ownership Key",
             None, "Verify Backup", "Backup Verified",
         ]
+
+    def test_scanning_the_rendered_qr_back_verifies_end_to_end(self, monkeypatch):
+        """The scan-back loop with the real decode path -- no _satodime_scan_text mock.
+
+        The code is created exactly the way the screenshot generator renders QR screens
+        (the encoder's part_to_image at display size), that frame is fed back through the
+        camera stand-in, and the view's real ScanScreen + DecodeQR classify and read it.
+        Every other test in this class monkeypatches _satodime_scan_text away, so only
+        this one catches encoder/decoder mismatches -- e.g. a payload that DecodeQR
+        classifies as anything but TEXT can never verify on device (the reported
+        scan-back failure)."""
+        from seedsigner.hardware.buttons import HardwareButtonsConstants as K
+        from seedsigner.models.decode_qr import DecodeQR
+
+        if not DecodeQR.is_qr_scanner_available():
+            pytest.skip(DecodeQR.get_qr_scanner_error())
+
+        from real_screen_fixtures import use_microsd
+        use_microsd(monkeypatch, Path(tempfile.mkdtemp(prefix="satodime_test_")))  # empty: no matching backup on the card
+        payload = self._seed_cache()
+
+        # Create the code the way the screenshot generator renders QR screens.
+        from seedsigner.models.encode_qr import GenericStaticQrEncoder
+        encoder = GenericStaticQrEncoder(data=payload)
+        qr_frame = encoder.part_to_image(encoder.cur_part(), 240, 240, border=2, background_color="ffffff")
+
+        # The rendered frame must actually decode to the payload before we trust it.
+        assert DecodeQR.extract_qr_data(qr_frame, is_binary=True) == payload.encode("utf-8")
+
+        script = (
+            [K.KEY_PRESS, K.KEY_PRESS, K.KEY_PRESS]  # three intro warnings -> continue
+            + select("Show QR Code")                 # chooser
+            + [K.KEY_PRESS]                          # leave the QR screen
+            + select("Scan It Back")                 # verify menu
+            + [K.KEY_PRESS]                          # "Backup Verified" OK
+        )
+        session = UISession(
+            script=script,
+            camera_frames=[make_noise_frame(), qr_frame, make_noise_frame()],  # miss, code, trailing for the preview thread
+            poll_responses=[False, False],                 # ScanScreen polls LEFT+RIGHT per non-decoding frame
+        )
+        with session:
+            view = smartcard_views.ToolsSatodimeBackupUnlockView(card_id=self.CARD_ID)
+            dest = view.run()
+
+        assert dest.View_cls is smartcard_views.BackStackView
+        assert len(session.renderer.frames) > 0
 
     def test_a_wrong_scan_does_not_count_as_verified(self, monkeypatch):
         from real_screen_fixtures import use_microsd

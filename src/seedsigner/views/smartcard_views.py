@@ -5363,12 +5363,14 @@ def _satodime_scan_text(view):
     """Scan one plain-text QR, returning its contents or None."""
     from seedsigner.gui.screens.scan_screens import ScanScreen
     from seedsigner.models.decode_qr import DecodeQR
-    from seedsigner.models.qr_type import QRType
 
-    decoder = DecodeQR()
+    # is_text=True: without it, DecodeQR runs detect_segment_type() on the payload and
+    # classifies this card's backup string as INVALID (it matches no known format), so
+    # the scan-back could never verify. Same pattern as the GPG text-QR scans.
+    decoder = DecodeQR(is_text=True)
     ScanScreen(decoder=decoder, instructions_text="Scan the backup QR").display()
     view.controller.reset_screensaver_timeout()
-    if not decoder.is_complete or decoder.qr_type != QRType.TEXT:
+    if not decoder.is_complete:
         return None
     return decoder.get_text()
 
