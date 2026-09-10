@@ -6,8 +6,15 @@ import pytest
 # Mock hardware-dependent modules so unit tests can run without them
 sys.modules.setdefault('RPi', MagicMock())
 sys.modules.setdefault('RPi.GPIO', MagicMock())
-sys.modules.setdefault('pyzbar', MagicMock())
-sys.modules.setdefault('pyzbar.pyzbar', MagicMock())
+# Only mock pyzbar if it cannot really be imported (e.g. the native zbar library is
+# missing). A blanket MagicMock makes DecodeQR.is_qr_scanner_available() lie -- it
+# reports "available" while extract_qr_data() silently decodes nothing, which breaks
+# any test that exercises real QR decoding (see test_real_screen_flows_satodime_simulated.py).
+try:
+    from pyzbar import pyzbar  # noqa: F401
+except Exception:
+    sys.modules.setdefault('pyzbar', MagicMock())
+    sys.modules.setdefault('pyzbar.pyzbar', MagicMock())
 sys.modules.setdefault('pysatochip', MagicMock())
 sys.modules.setdefault('pysatochip.JCconstants', MagicMock())
 sys.modules.setdefault('pysatochip.util', MagicMock())

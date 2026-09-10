@@ -337,14 +337,19 @@ class TestMenuNavigationFlows(FlowTest):
         (verifies the ``import time`` fix in ``gpg_views.py``). The View calls
         ``ScanScreen(...).display()`` directly (not ``run_screen``), so mark it
         as a redirect. ``BackStackView`` pops back to ``ToolsTextQRView``.
+
+        ScanScreen is stubbed: the harness can't drive a live camera loop, and with
+        a real pyzbar installed the mocked camera's MagicMock frames would crash
+        zbar's pixel unpacking inside the real scan loop.
         """
-        self.run_sequence([
-            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
-            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.TEXTQRCODE),
-            FlowStep(tools_views.ToolsTextQRView, button_data_selection=ButtonOption("Decode QR code")),
-            FlowStep(tools_views.ToolsTextQRScanQRCodeView, is_redirect=True),
-            FlowStep(tools_views.ToolsTextQRView),
-        ])
+        with patch("seedsigner.gui.screens.scan_screens.ScanScreen"):
+            self.run_sequence([
+                FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+                FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.TEXTQRCODE),
+                FlowStep(tools_views.ToolsTextQRView, button_data_selection=ButtonOption("Decode QR code")),
+                FlowStep(tools_views.ToolsTextQRScanQRCodeView, is_redirect=True),
+                FlowStep(tools_views.ToolsTextQRView),
+            ])
 
     def test_tools_password_generator(self):
         """Tools → Password Generator → BACK → ToolsMenu."""

@@ -957,11 +957,19 @@ class TestBackupAndRestoreViews(SatodimeSimulatedFlowTest):
         this one catches encoder/decoder mismatches -- e.g. a payload that DecodeQR
         classifies as anything but TEXT can never verify on device (the reported
         scan-back failure)."""
+        from unittest.mock import MagicMock
+
         from seedsigner.hardware.buttons import HardwareButtonsConstants as K
         from seedsigner.models.decode_qr import DecodeQR
+        import seedsigner.models.decode_qr as decode_qr_module
 
         if not DecodeQR.is_qr_scanner_available():
             pytest.skip(DecodeQR.get_qr_scanner_error())
+        # conftest installs a MagicMock pyzbar when no native zbar library is present;
+        # that mock makes is_qr_scanner_available() report True while decoding nothing,
+        # so skip rather than run against it.
+        if isinstance(decode_qr_module.pyzbar, MagicMock):
+            pytest.skip("pyzbar is mocked in this environment (no native zbar library)")
 
         from real_screen_fixtures import use_microsd
         use_microsd(monkeypatch, Path(tempfile.mkdtemp(prefix="satodime_test_")))  # empty: no matching backup on the card
