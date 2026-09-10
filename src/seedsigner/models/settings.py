@@ -4,6 +4,8 @@ import json
 import os
 import pathlib
 import platform
+import shutil
+import subprocess
 import sys
 import threading
 
@@ -82,6 +84,69 @@ def _get_rpi_type() -> str:
     if not model:
         return "Unknown"
     return model.title()
+
+
+def _is_i2c_device_detected(address_hex: str, bus_candidates: tuple[int, ...] = (1, 0)) -> bool:
+    """
+    Probe I2C buses for a specific address using i2cdetect.
+
+    Returns False if i2cdetect isn't available or probing fails.
+    """
+    if not shutil.which("i2cdetect"):
+        return False
+
+    normalized = address_hex.lower().replace("0x", "")
+    for bus_number in bus_candidates:
+        dev_path = f"/dev/i2c-{bus_number}"
+        if not os.path.exists(dev_path):
+            continue
+        try:
+            result = subprocess.run(
+                ["i2cdetect", "-y", str(bus_number), f"0x{normalized}", f"0x{normalized}"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=1,
+            )
+            if result.returncode != 0:
+                logger.debug(
+                    "i2cdetect failed on /dev/i2c-%s (rc=%s): %s",
+                    bus_number,
+                    result.returncode,
+                    (result.stderr or "").strip(),
+                )
+                continue
+            if f" {normalized} " in f" {result.stdout.lower()} " or " uu " in f" {result.stdout.lower()} ":
+                logger.info("Detected I2C device at 0x%s on /dev/i2c-%s", normalized, bus_number)
+                return True
+        except Exception as e:
+            logger.debug("I2C probe failed on /dev/i2c-%s: %s", bus_number, e)
+            continue
+    return False
+
+
+def _maybe_activate_pn532_on_startup(settings_obj: "Settings") -> None:
+    """
+    Ensure IFD-NFC is activated on startup when PN532 is configured and detected.
+    """
+    try:
+        sc_interfaces = settings_obj._data.get(SettingsConstants.SETTING__SMARTCARD_INTERFACES, [])
+        if "pn532" not in sc_interfaces:
+            return
+
+        if not shutil.which("ifdnfc-activate"):
+            logger.debug("Skipping PN532 startup activation: ifdnfc-activate not found")
+            return
+
+        # PN532 I2C default address in libnfc/ifdnfc setups.
+        if not _is_i2c_device_detected("0x24"):
+            logger.debug("Skipping PN532 startup activation: PN532 not detected on I2C")
+            return
+
+        subprocess.run(["ifdnfc-activate", "yes"], check=False, timeout=5)
+        logger.info("Activated PN532 IFD-NFC on startup")
+    except Exception as e:
+        logger.warning("PN532 startup activation failed: %s", e)
 
 
 def _get_system_type_and_variant(runtime_profile: str, hardware_config: str | None) -> tuple[str, str]:
@@ -244,6 +309,10 @@ class Settings(Singleton):
 
             # Load default/persistent locale setting
             settings.load_locale()
+
+            # Ensure PN532 is activated when configured and physically present.
+            if "PYTEST_CURRENT_TEST" not in os.environ and "pytest" not in sys.modules:
+                _maybe_activate_pn532_on_startup(settings)
 
             detected_hardware = Settings.get_platform_default_hardware_config()
 
