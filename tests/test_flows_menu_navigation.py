@@ -102,6 +102,11 @@ class MockSatodimeConnector:
     def satodime_set_unlock_secret(self, *args, **kwargs): pass
     def satodime_set_unlock_counter(self, *args, **kwargs): pass
 
+    def satodime_initiate_ownership_transfer(self):
+        # The applet flips setupDone off; the next card_setup (claim) mints a fresh key.
+        self.setup_done = False
+        return (b"", 0x90, 0x00)
+
     def card_setup(self, *args, **kwargs):
         self.setup_done = True
         return (b"", 0x90, 0x00)
@@ -724,7 +729,7 @@ class TestMenuNavigationFlows(FlowTest):
         ])
 
     def test_smartcard_satodime_claim_ownership_from_menu(self, monkeypatch):
-        """Tools → Smartcard → Satodime → Claim Ownership → already claimed warning."""
+        """Tools → Smartcard → Satodime → Claim Ownership on an owned card -> back out of the confirm."""
         from seedsigner.views.smartcard_views import (
             ToolsSmartcardMenuView, ToolsSatodimeView, ToolsSatodimeClaimView,
         )
@@ -736,8 +741,105 @@ class TestMenuNavigationFlows(FlowTest):
             FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.SMARTCARD),
             FlowStep(ToolsSmartcardMenuView, button_data_selection=ToolsSmartcardMenuView.SATODIME),
             FlowStep(ToolsSatodimeView, button_data_selection=ToolsSatodimeView.CLAIM_OWNERSHIP),
-            FlowStep(ToolsSatodimeClaimView, screen_return_value=RET_CODE__BACK_BUTTON),  # "Already Claimed"
+            FlowStep(ToolsSatodimeClaimView, screen_return_value=RET_CODE__BACK_BUTTON),  # back out of "Already Claimed"
             FlowStep(ToolsSatodimeView),
+        ])
+
+    def test_smartcard_satodime_claim_transfers_then_claims_an_owned_card(self, monkeypatch):
+        """Tools → Smartcard → Satodime → Claim Ownership on an owned card.
+
+        Confirming takes ownership (transfer) and immediately re-claims the card; the
+        freshly minted key then goes through the backup flow like any fresh claim.
+        """
+        from seedsigner.views.smartcard_views import (
+            ToolsSmartcardMenuView, ToolsSatodimeView, ToolsSatodimeClaimView,
+            ToolsSatodimeBackupUnlockView,
+        )
+
+        connector = _patch_satodime_connector(monkeypatch)  # setup_done=True: owned card
+        assert connector.setup_done is True
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.SMARTCARD),
+            FlowStep(ToolsSmartcardMenuView, button_data_selection=ToolsSmartcardMenuView.SATODIME),
+            FlowStep(ToolsSatodimeView, button_data_selection=ToolsSatodimeView.CLAIM_OWNERSHIP),
+            FlowStep(ToolsSatodimeClaimView, screen_return_value=0),  # "Take Ownership" -> transfer + claim
+            FlowStep(ToolsSatodimeBackupUnlockView, screen_return_value=3),  # exit the backup flow
+            FlowStep(ToolsSatodimeView),
+        ])
+
+        assert connector.setup_done is True  # claimed again after the transfer
+
+    def test_smartcard_satodime_claim_finalises_with_matching_microsd_backup(self, monkeypatch):
+        """Claim -> backup flow with a matching key already on the MicroSD.
+
+        The exit button becomes "Finalise Claim" (no dire skip warning) and selecting it
+        completes the claim workflow straight back to the Satodime menu. Label content is
+        asserted in the simulated suite; this pins routing through the match path.
+        """
+        import tempfile
+
+        from real_screen_fixtures import use_microsd
+        from seedsigner.helpers import seedkeeper_utils
+        from seedsigner.views.smartcard_views import (
+            ToolsSmartcardMenuView, ToolsSatodimeView, ToolsSatodimeClaimView,
+            ToolsSatodimeBackupUnlockView,
+        )
+
+        connector = _patch_satodime_connector(monkeypatch)
+        connector.setup_done = False  # unclaimed card -> plain claim flow
+        microsd_dir = use_microsd(monkeypatch, Path(tempfile.mkdtemp(prefix="satodime_backup_test_")))
+
+        # The mock's card_setup mints unlock_secret=list(range(20)) for this UID.
+        card_id = seedkeeper_utils.satodime_card_id(connector)
+        payload = seedkeeper_utils.format_satodime_unlock_payload(card_id, list(range(20)))
+        (microsd_dir / seedkeeper_utils.satodime_unlock_backup_filename(card_id)).write_text(payload, encoding="utf-8")
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.SMARTCARD),
+            FlowStep(ToolsSmartcardMenuView, button_data_selection=ToolsSmartcardMenuView.SATODIME),
+            FlowStep(ToolsSatodimeView, button_data_selection=ToolsSatodimeView.CLAIM_OWNERSHIP),
+            FlowStep(ToolsSatodimeClaimView, screen_return_value=0),  # "Claim Card"
+            FlowStep(ToolsSatodimeBackupUnlockView, screen_return_value=3),  # "Finalise Claim"
+            FlowStep(ToolsSatodimeView),
+        ])
+
+    def test_smartcard_satodime_reshow_done_with_matching_microsd_backup(self, monkeypatch):
+        """Card Settings -> Back Up Ownership Key with a matching key on the MicroSD.
+
+        No claim is in progress here, so the exit button reads "Done" rather than
+        "Finalise Claim"; selecting it returns to Card Settings without the dire skip
+        warning (label content asserted in the simulated suite).
+        """
+        import tempfile
+
+        from real_screen_fixtures import use_microsd
+        from seedsigner.helpers import seedkeeper_utils
+        from seedsigner.views.smartcard_views import (
+            ToolsSmartcardMenuView, ToolsSatodimeView, ToolsSatodimeCardSettingsView,
+            ToolsSatodimeReshowUnlockView, ToolsSatodimeBackupUnlockView,
+        )
+
+        connector = _patch_satodime_connector(monkeypatch)
+        card_id = seedkeeper_utils.satodime_card_id(connector)
+        microsd_dir = use_microsd(monkeypatch, Path(tempfile.mkdtemp(prefix="satodime_backup_test_")))
+        payload = seedkeeper_utils.format_satodime_unlock_payload(card_id, list(range(20)))
+        (microsd_dir / seedkeeper_utils.satodime_unlock_backup_filename(card_id)).write_text(payload, encoding="utf-8")
+
+        def cache_secret(view):
+            seedkeeper_utils.cache_satodime_unlock_secret(self.controller, card_id, list(range(20)))
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.SMARTCARD),
+            FlowStep(ToolsSmartcardMenuView, button_data_selection=ToolsSmartcardMenuView.SATODIME),
+            FlowStep(ToolsSatodimeView, button_data_selection=ToolsSatodimeView.CARD_SETTINGS),
+            FlowStep(ToolsSatodimeCardSettingsView, button_data_selection=ToolsSatodimeCardSettingsView.BACKUP_UNLOCK, before_run=cache_secret),
+            FlowStep(ToolsSatodimeReshowUnlockView, is_redirect=True),
+            FlowStep(ToolsSatodimeBackupUnlockView, screen_return_value=3),  # "Done"
+            FlowStep(ToolsSatodimeCardSettingsView),
         ])
 
     def test_smartcard_satodime_backup_unlock_skip_returns_to_card_settings(self, monkeypatch):

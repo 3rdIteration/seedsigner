@@ -4900,6 +4900,10 @@ class ToolsSatodimeClaimView(View):
     unseal, reset, even handing the card on -- and it cannot be re-read, so losing it
     strands the card. Over a contact reader the applet ignores it entirely, so there is
     nothing worth backing up and this view claims and returns.
+
+    A card that already has an owner is first released (ownership transfer) and then
+    claimed: over a contact reader the applet skips the unlock check on the transfer;
+    over NFC it needs the current owner's key, which we hold when we are that owner.
     """
 
     def run(self):
@@ -4910,27 +4914,69 @@ class ToolsSatodimeClaimView(View):
             return Destination(BackStackView)
 
         if _satodime_is_claimed(Satochip_Connector):
-            self.run_screen(
-                WarningScreen,
+            # Taking ownership erases the current owner's key (their sealed slots and
+            # funds survive -- only the NFC gate changes), so confirm before doing it.
+            selected = self.run_screen(
+                DireWarningScreen,
                 title="Already Claimed",
                 status_headline=None,
-                text="This card already has\nan owner.",
+                text="This card has an owner.\nTaking ownership erases their key.",
                 show_back_button=True,
+                button_data=[ButtonOption("Take Ownership")],
             )
-            return Destination(BackStackView)
+            if selected != 0:
+                return Destination(BackStackView)
 
-        # Claiming mints a fresh secret, so doing it to a card that is mid-transfer
-        # takes the card away from whoever it was being handed to.
-        selected = self.run_screen(
-            WarningScreen,
-            title="Card Unclaimed",
-            status_headline=None,
-            text="This Satodime has no owner.\nClaim it for this device?",
-            show_back_button=False,
-            button_data=[ButtonOption("Claim Card"), ButtonOption("Cancel")],
-        )
-        if selected != 0:
-            return Destination(BackStackView)
+            redirect = _satodime_prepare(self, Satochip_Connector, needs_unlock=True)
+            if redirect:
+                return redirect
+
+            self.loading_screen = LoadingScreenThread(text="Transferring Ownership")
+            self.loading_screen.start()
+            try:
+                (_response, sw1, sw2) = Satochip_Connector.satodime_initiate_ownership_transfer()
+            except Exception as e:
+                logger.exception("Satodime ownership transfer failed")
+                sw1 = sw2 = None
+                transfer_error = str(e)[:100]
+            else:
+                transfer_error = None if (sw1 == 0x90 and sw2 == 0x00) else format_sw_error(sw1, sw2)
+            finally:
+                self.loading_screen.stop()
+
+            if transfer_error is not None:
+                # Over NFC without the current owner's key the applet answers 0x9C50/0x9C51;
+                # offer to restore that key rather than showing a raw status word. Backing
+                # out of this view and re-entering it retries with the restored key cached.
+                redirect = _satodime_handle_unlock_error(self, sw1 or 0, sw2 or 0)
+                if redirect:
+                    return redirect
+                self.run_screen(
+                    WarningScreen,
+                    title="Transfer Failed",
+                    status_headline=None,
+                    text=transfer_error,
+                    show_back_button=True,
+                )
+                return Destination(BackStackView)
+
+            # The card is now unclaimed (setupDone=False); the claim below mints a fresh
+            # counter+secret that supersedes the old owner's key. Skip the "Card Unclaimed"
+            # confirm -- the user already confirmed taking ownership above.
+            Satochip_Connector.setup_done = False
+        else:
+            # Claiming mints a fresh secret, so doing it to a card that is mid-transfer
+            # takes the card away from whoever it was being handed to.
+            selected = self.run_screen(
+                WarningScreen,
+                title="Card Unclaimed",
+                status_headline=None,
+                text="This Satodime has no owner.\nClaim it for this device?",
+                show_back_button=False,
+                button_data=[ButtonOption("Claim Card"), ButtonOption("Cancel")],
+            )
+            if selected != 0:
+                return Destination(BackStackView)
 
         self.loading_screen = LoadingScreenThread(text="Claiming Card")
         self.loading_screen.start()
@@ -4967,7 +5013,11 @@ class ToolsSatodimeClaimView(View):
         # ClaimView is a transient redirect; skip_current_view omits it from history so
         # BackStackView from the backup flow pops straight back to the view that needed
         # the claim (the slot-action view / card settings) instead of re-running this view.
-        return Destination(ToolsSatodimeBackupUnlockView, view_args=dict(card_id=card_id), skip_current_view=True)
+        return Destination(
+            ToolsSatodimeBackupUnlockView,
+            view_args=dict(card_id=card_id, from_claim=True),
+            skip_current_view=True,
+        )
 
 
 class ToolsSatodimeBackupUnlockView(View):
@@ -4976,11 +5026,17 @@ class ToolsSatodimeBackupUnlockView(View):
     The read-back is the point: a QR the user never scanned is a backup they cannot be
     sure they have. They photograph the key, then hold the photo up to the camera.
     MicroSD is offered as a second copy, not as a substitute.
+
+    Reached two ways: right after a claim (``from_claim=True``, where finishing the
+    backup finalises the claim) and from Card Settings re-showing a cached key. When a
+    matching backup already sits on the MicroSD the exit button says so instead of
+    warning about skipping an unverified backup.
     """
 
-    def __init__(self, card_id: str = None):
+    def __init__(self, card_id: str = None, from_claim: bool = False):
         super().__init__()
         self.card_id = card_id
+        self.from_claim = from_claim
 
     def run(self):
         from seedsigner.gui.screens.screen import QRDisplayScreen
@@ -5027,27 +5083,39 @@ class ToolsSatodimeBackupUnlockView(View):
         while True:
             self.run_screen(QRDisplayScreen, qr_encoder=GenericStaticQrEncoder(data=payload))
 
+            # A matching backup on the MicroSD means there is nothing left to verify, so
+            # exiting becomes a positive completion rather than a scary skip. Re-checked
+            # every pass so saving one mid-flow flips the button without re-entering this
+            # view (save -> back here -> "Finalise Claim").
+            if self._microsd_backup_matches(card_id, secret):
+                exit_label = "Finalise Claim" if self.from_claim else "Done"
+            else:
+                exit_label = "Skip Verification"
+
             selected = self.run_screen(
                 ButtonListScreen,
                 title="Verify Backup",
                 is_button_text_centered=False,
                 button_data=[
+                    ButtonOption("Save to MicroSD"),
                     ButtonOption("Scan It Back"),
                     ButtonOption("Show QR Again"),
-                    ButtonOption("Save to MicroSD"),
-                    ButtonOption("Skip Verification"),
+                    ButtonOption(exit_label),
                 ],
                 show_back_button=False,
             )
 
-            if selected == 1:
-                continue
-
-            if selected == 2:
+            if selected == 0:
                 self._save_to_microsd(card_id, payload)
                 continue
 
+            if selected == 2:
+                continue
+
             if selected == 3:
+                if exit_label != "Skip Verification":
+                    # A verified copy already exists on the MicroSD; nothing to warn about.
+                    return Destination(BackStackView)
                 confirm = self.run_screen(
                     DireWarningScreen,
                     title="Skip Backup?",
@@ -5082,6 +5150,29 @@ class ToolsSatodimeBackupUnlockView(View):
     def _scan_matches(self, payload: str) -> bool:
         scanned = _satodime_scan_text(self)
         return scanned is not None and scanned.strip() == payload
+
+    def _microsd_backup_matches(self, card_id: str, secret) -> bool:
+        """Whether this card's backup file on the MicroSD already holds this exact key.
+
+        Silent by design -- it drives a button label, so no screens here. Any failure to
+        read or parse (no card, no file, junk content, even a non-path test stand-in)
+        simply means "no matching backup".
+        """
+        import os
+        from seedsigner.hardware.microsd import MicroSD
+
+        if not MicroSD.get_instance().is_inserted:
+            return False
+        try:
+            filepath = os.path.join(
+                MicroSD.get_microsd_dir(),
+                seedkeeper_utils.satodime_unlock_backup_filename(card_id),
+            )
+            with open(filepath, "r", encoding="utf-8") as f:
+                parsed = seedkeeper_utils.parse_satodime_unlock_payload(f.read())
+        except (OSError, TypeError, ValueError):
+            return False
+        return parsed == (card_id, list(secret))
 
     def _save_to_microsd(self, card_id: str, payload: str):
         import os
@@ -5127,8 +5218,8 @@ class ToolsSatodimeBackupUnlockView(View):
 class ToolsSatodimeRestoreUnlockView(View):
     """Load a previously backed-up ownership key back into this session."""
 
-    SCAN = ButtonOption("Scan Backup QR")
-    MICROSD = ButtonOption("Load from MicroSD")
+    LOAD_MICROSD = ButtonOption("Load Ownership Key from MicroSD")
+    SCAN = ButtonOption("Scan Ownership Key")
 
     def run(self):
         Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satodime"], require_pin=False)
@@ -5137,20 +5228,24 @@ class ToolsSatodimeRestoreUnlockView(View):
 
         card_id = seedkeeper_utils.satodime_card_id(Satochip_Connector)
 
-        selected = self.run_screen(
-            ButtonListScreen,
-            title="Ownership Key",
-            is_button_text_centered=False,
-            button_data=[self.SCAN, self.MICROSD],
-            show_back_button=True,
-        )
-        if selected == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
-
-        if selected == 0:
-            payload = _satodime_scan_text(self)
+        # A backup for this card on the MicroSD is the fastest restore path, so offer it
+        # first when one exists; with nothing on the card there is no menu -- scanning is
+        # the only option and starts immediately.
+        if self._microsd_has_backup(card_id):
+            selected = self.run_screen(
+                ButtonListScreen,
+                title="Ownership Key",
+                is_button_text_centered=False,
+                button_data=[self.LOAD_MICROSD, self.SCAN],
+                show_back_button=True,
+            )
+            if selected == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            use_microsd = (selected == 0)
         else:
-            payload = self._read_microsd(card_id)
+            use_microsd = False
+
+        payload = self._read_microsd(card_id) if use_microsd else _satodime_scan_text(self)
 
         if payload is None:
             return Destination(BackStackView)
@@ -5186,6 +5281,29 @@ class ToolsSatodimeRestoreUnlockView(View):
             show_back_button=False,
         )
         return Destination(BackStackView)
+
+    def _microsd_has_backup(self, card_id: str) -> bool:
+        """Whether this card's backup file exists on the MicroSD and parses as its key.
+
+        Silent by design -- it decides which restore path to offer first, so no screens
+        here. A missing, unreadable, or other-card file means "no backup here". (It cannot
+        tell whether the key is still current: only using it reveals that.)
+        """
+        import os
+        from seedsigner.hardware.microsd import MicroSD
+
+        if not MicroSD.get_instance().is_inserted:
+            return False
+        try:
+            filepath = os.path.join(
+                MicroSD.get_microsd_dir(),
+                seedkeeper_utils.satodime_unlock_backup_filename(card_id),
+            )
+            with open(filepath, "r", encoding="utf-8") as f:
+                parsed = seedkeeper_utils.parse_satodime_unlock_payload(f.read())
+        except (OSError, TypeError, ValueError):
+            return False
+        return parsed is not None and parsed[0] == card_id
 
     def _read_microsd(self, card_id: str):
         import os
