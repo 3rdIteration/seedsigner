@@ -164,11 +164,16 @@ class SimulatedCard:
     """
 
     def __init__(self, applet, classes_dir: Path, port: int | None = None, timeout: float = 30.0,
-                 extra_classpath=()):
+                 extra_classpath=(), protocol: str | None = None):
         self.applet = applet
         self.classes_dir = Path(classes_dir)
         # Anything else the applet needs to load, e.g. Keycard's keycard-math.jar.
         self.extra_classpath = [Path(p) for p in extra_classpath]
+        # The protocol media the applet sees via APDU.getProtocol(). None means contact
+        # (jcardsim's default); pass e.g. "T=CL,TYPE_A,T0" to simulate an ISO 14443
+        # Type A contactless card -- Satodime keys its unlock-code enforcement off the
+        # medium and only exercises it over contactless.
+        self.protocol = protocol
         self.port = port or _free_port()
         self.timeout = timeout
         self._proc: subprocess.Popen | None = None
@@ -195,8 +200,10 @@ class SimulatedCard:
             "--classes", os.pathsep.join(
                 str(p) for p in [self.classes_dir, *self.extra_classpath]
             ),
-            "--applet", spec,
         ]
+        if self.protocol:
+            cmd += ["--protocol", self.protocol]
+        cmd += ["--applet", spec]
         self._proc = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1
         )

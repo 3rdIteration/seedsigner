@@ -82,6 +82,7 @@ public class SimLauncher {
     public static void main(String[] args) throws Exception {
         int port = 0;
         String classesDir = null;
+        String protocol = null;
         List<AppletSpec> applets = new ArrayList<>();
 
         for (int i = 0; i < args.length; i++) {
@@ -89,6 +90,11 @@ public class SimLauncher {
                 case "--port":    port = Integer.parseInt(args[++i]); break;
                 case "--classes": classesDir = args[++i]; break;
                 case "--applet":  applets.add(new AppletSpec(args[++i])); break;
+                // The protocol media the applet sees via APDU.getProtocol(). Defaults to
+                // contact (T=0); pass e.g. "T=CL,TYPE_A,T0" for an ISO 14443 Type A
+                // contactless card -- some applets (Satodime) key security behaviour off
+                // the medium and only exercise it that way.
+                case "--protocol": protocol = args[++i]; break;
                 default: throw new IllegalArgumentException("unknown argument: " + args[i]);
             }
         }
@@ -132,6 +138,13 @@ public class SimLauncher {
             }
         }
         simulator.selectApplet(firstAid);
+
+        if (protocol != null) {
+            // Make the applet see this as a contactless card, so code paths keyed off
+            // APDU.getProtocol() & PROTOCOL_MEDIA_MASK are exercised. Must happen before
+            // any command is served; jcardsim applies it to every subsequent APDU.
+            simulator.changeProtocol(protocol);
+        }
 
         try (ServerSocket server = new ServerSocket(port)) {
             // Announce readiness on stdout so the Python side can wait for a line rather

@@ -164,7 +164,7 @@ def simulated_satodime(monkeypatch):
 
 
 @contextmanager
-def simulated_satodime_raw(applet="satodime"):
+def simulated_satodime_raw(applet="satodime", protocol=None):
     """
     Put a real Satodime applet behind PC/SC and leave ``init_satochip`` alone.
 
@@ -174,6 +174,11 @@ def simulated_satodime_raw(applet="satodime"):
     fresh Satodime reports ``setup_done`` False, and the shared setup branch used to
     prompt for a PIN the applet does not have). Patching only PC/SC means the views
     run the same client code they run on a real card.
+
+    ``protocol`` is the medium the applet sees via ``APDU.getProtocol()``: None keeps
+    jcardsim's contact default; pass e.g. ``"T=CL,TYPE_A,T0"`` to simulate an ISO 14443
+    Type A contactless card, which is the only medium on which Satodime enforces its
+    ownership-key check (counter + HMAC) on state-changing APDUs.
 
     Yields the ``SimulatedCard`` so a test can reason about the applet directly.
     """
@@ -187,7 +192,7 @@ def simulated_satodime_raw(applet="satodime"):
     from jcardsim import open_card
     from jcardsim.pcsc_shim import patched_pcsc
 
-    with open_card(applet) as card:
+    with open_card(applet, protocol=protocol) as card:
         card.select()
         with patched_pcsc(card):
             yield card
