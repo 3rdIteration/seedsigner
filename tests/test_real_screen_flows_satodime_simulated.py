@@ -936,13 +936,13 @@ class TestBackupAndRestoreViews(SatodimeSimulatedFlowTest):
         monkeypatch.setattr(smartcard_views, "_satodime_scan_text", lambda view: payload)
 
         view = smartcard_views.ToolsSatodimeBackupUnlockView(card_id=self.CARD_ID)
-        # dire warning, theft caveat, QR, menu -> "Scan It Back" (index 1), success
-        recorder = ScreenRecorder(0, 0, None, 1, 0)
+        # dire warning, theft caveat, lose-it warning, QR, menu -> "Scan It Back" (index 1), success
+        recorder = ScreenRecorder(0, 0, 0, None, 1, 0)
         view.run_screen = recorder
         view.run()
 
         assert recorder.titles == [
-            "Ownership Key", "Not Theft Proof", None, "Verify Backup", "Backup Verified",
+            "Ownership Key", "Not Theft Proof", "If You Lose It", None, "Verify Backup", "Backup Verified",
         ]
 
     def test_a_wrong_scan_does_not_count_as_verified(self, monkeypatch):
@@ -956,7 +956,7 @@ class TestBackupAndRestoreViews(SatodimeSimulatedFlowTest):
 
         view = smartcard_views.ToolsSatodimeBackupUnlockView(card_id=self.CARD_ID)
         # ... menu -> "Scan It Back" (index 1), "No Match", QR again, menu -> "Skip", confirm skip
-        recorder = ScreenRecorder(0, 0, None, 1, 0, None, 3, 0)
+        recorder = ScreenRecorder(0, 0, 0, None, 1, 0, None, 3, 0)
         view.run_screen = recorder
         view.run()
 
@@ -970,7 +970,7 @@ class TestBackupAndRestoreViews(SatodimeSimulatedFlowTest):
         use_microsd(monkeypatch, Path(tempfile.mkdtemp(prefix="satodime_test_")))  # empty: no matching backup on the card
         self._seed_cache()
         view = smartcard_views.ToolsSatodimeBackupUnlockView(card_id=self.CARD_ID)
-        recorder = ScreenRecorder(0, 0, None, 3, 0)  # straight to Skip
+        recorder = ScreenRecorder(0, 0, 0, None, 3, 0)  # straight to Skip
         view.run_screen = recorder
         view.run()
 
@@ -991,13 +991,13 @@ class TestBackupAndRestoreViews(SatodimeSimulatedFlowTest):
         )
 
         view = smartcard_views.ToolsSatodimeBackupUnlockView(card_id=self.CARD_ID, from_claim=True)
-        # dire warning, theft caveat, QR, menu -> "Finalise Claim"; no further screens
-        recorder = ScreenRecorder(0, 0, None, 3)
+        # dire warning, theft caveat, lose-it warning, QR, menu -> "Finalise Claim"; no further screens
+        recorder = ScreenRecorder(0, 0, 0, None, 3)
         view.run_screen = recorder
         dest = view.run()
 
-        assert recorder.titles == ["Ownership Key", "Not Theft Proof", None, "Verify Backup"]
-        menu_buttons = [opt.button_label for opt in recorder.calls[3][1]["button_data"]]
+        assert recorder.titles == ["Ownership Key", "Not Theft Proof", "If You Lose It", None, "Verify Backup"]
+        menu_buttons = [opt.button_label for opt in recorder.calls[4][1]["button_data"]]
         assert menu_buttons == [
             "Save to MicroSD", "Scan It Back", "Show QR Again", "Finalise Claim",
         ]
@@ -1016,11 +1016,11 @@ class TestBackupAndRestoreViews(SatodimeSimulatedFlowTest):
         )
 
         view = smartcard_views.ToolsSatodimeBackupUnlockView(card_id=self.CARD_ID)  # from_claim=False
-        recorder = ScreenRecorder(0, 0, None, 3)
+        recorder = ScreenRecorder(0, 0, 0, None, 3)
         view.run_screen = recorder
         dest = view.run()
 
-        menu_buttons = [opt.button_label for opt in recorder.calls[3][1]["button_data"]]
+        menu_buttons = [opt.button_label for opt in recorder.calls[4][1]["button_data"]]
         assert menu_buttons[-1] == "Done"
         assert dest.View_cls is smartcard_views.BackStackView
 
@@ -1033,14 +1033,14 @@ class TestBackupAndRestoreViews(SatodimeSimulatedFlowTest):
         self._seed_cache()
 
         view = smartcard_views.ToolsSatodimeBackupUnlockView(card_id=self.CARD_ID, from_claim=True)
-        # dire warning, theft caveat, QR, menu -> "Save to MicroSD" (index 0),
+        # dire warning, theft caveat, lose-it warning, QR, menu -> "Save to MicroSD" (index 0),
         # "Saved" ack, QR again, menu -> "Finalise Claim" (index 3)
-        recorder = ScreenRecorder(0, 0, None, 0, 0, None, 3)
+        recorder = ScreenRecorder(0, 0, 0, None, 0, 0, None, 3)
         view.run_screen = recorder
         dest = view.run()
 
-        first_menu = [opt.button_label for opt in recorder.calls[3][1]["button_data"]]
-        second_menu = [opt.button_label for opt in recorder.calls[6][1]["button_data"]]
+        first_menu = [opt.button_label for opt in recorder.calls[4][1]["button_data"]]
+        second_menu = [opt.button_label for opt in recorder.calls[7][1]["button_data"]]
         assert first_menu[-1] == "Skip Verification"
         assert second_menu[-1] == "Finalise Claim"
         # The backup file now holds the current key.

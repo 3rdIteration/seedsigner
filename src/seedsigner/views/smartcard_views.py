@@ -5080,6 +5080,17 @@ class ToolsSatodimeBackupUnlockView(View):
             button_data=[ButtonOption("I Understand")],
         )
 
+        # The consequence of skipping the backup, shown up front as well: users who bail
+        # out before reading it at skip time have already lost the key.
+        self.run_screen(
+            DireWarningScreen,
+            title="If You Lose It",
+            status_headline=None,
+            text="Without this key, a contact reader is needed to reclaim ownership. NFC-only cards are locked.",
+            show_back_button=False,
+            button_data=[ButtonOption("I Understand")],
+        )
+
         while True:
             self.run_screen(QRDisplayScreen, qr_encoder=GenericStaticQrEncoder(data=payload))
 
