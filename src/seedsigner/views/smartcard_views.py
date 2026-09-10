@@ -5021,16 +5021,18 @@ class ToolsSatodimeClaimView(View):
 
 
 class ToolsSatodimeBackupUnlockView(View):
-    """Show the ownership key as a QR and make the user prove they captured it.
+    """Back up the ownership key: choose how to save it, then prove you captured it.
 
-    The read-back is the point: a QR the user never scanned is a backup they cannot be
-    sure they have. They photograph the key, then hold the photo up to the camera.
-    MicroSD is offered as a second copy, not as a substitute.
+    Opens with a chooser -- photograph the QR (the read-back is the point: a QR the user
+    never scanned is a backup they cannot be sure they have) or write a copy straight to
+    the MicroSD. The two are complements, not substitutes: the exit button only turns
+    into a positive completion once a matching backup sits on the MicroSD or the read-back
+    has verified one.
 
     Reached two ways: right after a claim (``from_claim=True``, where finishing the
     backup finalises the claim) and from Card Settings re-showing a cached key. When a
-    matching backup already sits on the MicroSD the exit button says so instead of
-    warning about skipping an unverified backup.
+    matching backup already exists, the exit button says so instead of warning about
+    skipping an unverified backup.
     """
 
     def __init__(self, card_id: str = None, from_claim: bool = False):
@@ -5092,8 +5094,6 @@ class ToolsSatodimeBackupUnlockView(View):
         )
 
         while True:
-            self.run_screen(QRDisplayScreen, qr_encoder=GenericStaticQrEncoder(data=payload))
-
             # A matching backup on the MicroSD means there is nothing left to verify, so
             # exiting becomes a positive completion rather than a scary skip. Re-checked
             # every pass so saving one mid-flow flips the button without re-entering this
@@ -5105,25 +5105,21 @@ class ToolsSatodimeBackupUnlockView(View):
 
             selected = self.run_screen(
                 ButtonListScreen,
-                title="Verify Backup",
+                title="Back Up Ownership Key",
                 is_button_text_centered=False,
                 button_data=[
+                    ButtonOption("Show QR Code"),
                     ButtonOption("Save to MicroSD"),
-                    ButtonOption("Scan It Back"),
-                    ButtonOption("Show QR Again"),
                     ButtonOption(exit_label),
                 ],
                 show_back_button=False,
             )
 
-            if selected == 0:
+            if selected == 1:
                 self._save_to_microsd(card_id, payload)
                 continue
 
             if selected == 2:
-                continue
-
-            if selected == 3:
                 if exit_label != "Skip Verification":
                     # A verified copy already exists on the MicroSD; nothing to warn about.
                     return Destination(BackStackView)
@@ -5139,24 +5135,39 @@ class ToolsSatodimeBackupUnlockView(View):
                     continue
                 return Destination(BackStackView)
 
-            if self._scan_matches(payload):
-                self.run_screen(
-                    LargeIconStatusScreen,
-                    title="Backup Verified",
-                    status_headline=None,
-                    text="Keep it safe and private.",
-                    show_back_button=False,
-                )
-                return Destination(BackStackView)
+            # Show QR Code: photograph it, then prove the capture by scanning it back.
+            while True:
+                self.run_screen(QRDisplayScreen, qr_encoder=GenericStaticQrEncoder(data=payload))
 
-            self.run_screen(
-                WarningScreen,
-                title="No Match",
-                status_headline=None,
-                text="That is not this card's\nownership key.",
-                show_back_button=False,
-                button_data=[ButtonOption("Try Again")],
-            )
+                scan_selected = self.run_screen(
+                    ButtonListScreen,
+                    title="Verify Backup",
+                    is_button_text_centered=False,
+                    button_data=[ButtonOption("Scan It Back"), ButtonOption("Show QR Again")],
+                    show_back_button=True,  # back returns to the save-method chooser
+                )
+
+                if scan_selected == RET_CODE__BACK_BUTTON:
+                    break
+
+                if self._scan_matches(payload):
+                    self.run_screen(
+                        LargeIconStatusScreen,
+                        title="Backup Verified",
+                        status_headline=None,
+                        text="Keep it safe and private.",
+                        show_back_button=False,
+                    )
+                    return Destination(BackStackView)
+
+                self.run_screen(
+                    WarningScreen,
+                    title="No Match",
+                    status_headline=None,
+                    text="That is not this card's\nownership key.",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Try Again")],
+                )
 
     def _scan_matches(self, payload: str) -> bool:
         scanned = _satodime_scan_text(self)

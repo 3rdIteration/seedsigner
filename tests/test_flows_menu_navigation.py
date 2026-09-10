@@ -765,7 +765,7 @@ class TestMenuNavigationFlows(FlowTest):
             FlowStep(ToolsSmartcardMenuView, button_data_selection=ToolsSmartcardMenuView.SATODIME),
             FlowStep(ToolsSatodimeView, button_data_selection=ToolsSatodimeView.CLAIM_OWNERSHIP),
             FlowStep(ToolsSatodimeClaimView, screen_return_value=0),  # "Take Ownership" -> transfer + claim
-            FlowStep(ToolsSatodimeBackupUnlockView, screen_return_value=3),  # exit the backup flow
+            FlowStep(ToolsSatodimeBackupUnlockView, screen_return_value=2),  # chooser exit: skip/finalise the backup flow
             FlowStep(ToolsSatodimeView),
         ])
 
@@ -802,7 +802,7 @@ class TestMenuNavigationFlows(FlowTest):
             FlowStep(ToolsSmartcardMenuView, button_data_selection=ToolsSmartcardMenuView.SATODIME),
             FlowStep(ToolsSatodimeView, button_data_selection=ToolsSatodimeView.CLAIM_OWNERSHIP),
             FlowStep(ToolsSatodimeClaimView, screen_return_value=0),  # "Claim Card"
-            FlowStep(ToolsSatodimeBackupUnlockView, screen_return_value=3),  # "Finalise Claim"
+            FlowStep(ToolsSatodimeBackupUnlockView, screen_return_value=2),  # chooser exit: "Finalise Claim"
             FlowStep(ToolsSatodimeView),
         ])
 
@@ -838,7 +838,7 @@ class TestMenuNavigationFlows(FlowTest):
             FlowStep(ToolsSatodimeView, button_data_selection=ToolsSatodimeView.CARD_SETTINGS),
             FlowStep(ToolsSatodimeCardSettingsView, button_data_selection=ToolsSatodimeCardSettingsView.BACKUP_UNLOCK, before_run=cache_secret),
             FlowStep(ToolsSatodimeReshowUnlockView, is_redirect=True),
-            FlowStep(ToolsSatodimeBackupUnlockView, screen_return_value=3),  # "Done"
+            FlowStep(ToolsSatodimeBackupUnlockView, screen_return_value=2),  # chooser exit: "Done"
             FlowStep(ToolsSatodimeCardSettingsView),
         ])
 
@@ -873,7 +873,7 @@ class TestMenuNavigationFlows(FlowTest):
             FlowStep(ToolsSatodimeView, button_data_selection=ToolsSatodimeView.CARD_SETTINGS),
             FlowStep(ToolsSatodimeCardSettingsView, button_data_selection=ToolsSatodimeCardSettingsView.BACKUP_UNLOCK, before_run=cache_secret),
             FlowStep(ToolsSatodimeReshowUnlockView, is_redirect=True),
-            FlowStep(ToolsSatodimeBackupUnlockView, screen_return_value=3),  # Skip Verification
+            FlowStep(ToolsSatodimeBackupUnlockView, screen_return_value=2),  # chooser exit: Skip Verification
             FlowStep(ToolsSatodimeCardSettingsView),  # back where we started, no loop
         ])
 
@@ -906,7 +906,7 @@ class TestMenuNavigationFlows(FlowTest):
             FlowStep(ToolsSatodimeSlotMenuView, screen_return_value=0),  # pick "Seal Slot"
             FlowStep(ToolsSatodimeSealSlotView, is_redirect=True),  # unclaimed -> ClaimView
             FlowStep(ToolsSatodimeClaimView, screen_return_value=0),  # "Claim Card"
-            FlowStep(ToolsSatodimeBackupUnlockView, screen_return_value=3),  # Skip Verification
+            FlowStep(ToolsSatodimeBackupUnlockView, screen_return_value=2),  # chooser exit: Skip Verification
             FlowStep(ToolsSatodimeSealSlotView),  # back on the slot action, no loop
         ])
 
