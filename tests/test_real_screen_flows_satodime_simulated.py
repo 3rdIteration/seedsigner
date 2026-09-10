@@ -780,6 +780,71 @@ class TestSatodimeThroughRealInitSatochip(SatodimeSimulatedFlowTest):
             assert recorder.titles == ["Seal As", "No Backup", "Key Required"]
             assert dest.View_cls is smartcard_views.ToolsSatodimeRestoreUnlockView
 
+    def test_nfc_claim_restore_seal_end_to_end(self, monkeypatch):
+        """
+        The full NFC workflow against the real applet: jcardsim reports contactless
+        Type A media (T=CL,TYPE_A,T0), so every state-changing APDU is gated by
+        counter+HMAC exactly like a real NFC reader.
+
+        Claim -> lose the key in a new session -> seal refused with 'Key Required'
+        -> restore from backup -> seal succeeds. This pins the regression where
+        _satodime_prepare zeroed the unlock counter instead of syncing it: without the
+        satodime_get_status() sync, the first gated APDU answers 0x9C50 and the workflow
+        dead-ends even after a correct restore -- the reported on-hardware failure.
+        """
+        # The try wraps the `with` too: on a dev machine free RAM can drop below the
+        # jcardsim guard between collection and this test's JVM start, in which case
+        # the failure surfaces at __enter__ rather than construction.
+        try:
+            with simulated_satodime_raw(protocol="T=CL,TYPE_A,T0"):
+                # 1. Claim over NFC: INS_SETUP mints counter+secret; the view caches it.
+                claim_view = smartcard_views.ToolsSatodimeClaimView()
+                claim_view.run_screen = ScreenRecorder(0)  # confirm claim
+                dest = claim_view.run()
+                assert dest.View_cls is smartcard_views.ToolsSatodimeBackupUnlockView
+
+                (secret,) = list((self.controller.Satodime_unlock_secrets or {}).values())
+                card_id = seedkeeper_utils.satodime_card_id(_fresh_connector())
+                payload = seedkeeper_utils.format_satodime_unlock_payload(card_id, secret)
+
+                # 2. New session: the in-RAM cache is gone (the controller wipes it at Home).
+                self.controller.Satodime_unlock_secrets = None
+                _populate_cache([(smartcard_views.SATODIME_SLOT_UNINITIALIZED, None, None)])
+
+                # 3. Seal without the key: over contactless media the applet rejects with
+                #    0x9C51 (zeroed placeholder secret) and the view must offer a restore.
+                view = smartcard_views.ToolsSatodimeSealSlotView(0)
+                recorder = ScreenRecorder(0, 0, 0)  # coin, no-backup warning, "Restore Key"
+                view.run_screen = recorder
+                dest = view.run()
+
+                assert recorder.titles == ["Seal As", "No Backup", "Key Required"]
+                assert dest.View_cls is smartcard_views.ToolsSatodimeRestoreUnlockView
+
+                # 4. Restore the key from the backup payload (scan).
+                monkeypatch.setattr(smartcard_views, "_satodime_scan_text", lambda view: payload)
+                restore_view = smartcard_views.ToolsSatodimeRestoreUnlockView()
+                recorder = ScreenRecorder(0, 0)  # choose "Scan Backup QR", ack success
+                restore_view.run_screen = recorder
+                dest = restore_view.run()
+
+                assert recorder.titles == ["Ownership Key", "Ownership Key Set"]
+
+                # 5. Back on the seal action (BackStackView re-runs it): with the key cached,
+                #    counter+HMAC check out and the slot seals for real over NFC. Without the
+                #    counter sync this dead-ends at "Key Required" again -- the bug.
+                view = smartcard_views.ToolsSatodimeSealSlotView(0)
+                recorder = ScreenRecorder(0, 0, 0)  # coin, no-backup warning, success
+                view.run_screen = recorder
+                dest = view.run()
+
+                assert recorder.titles == ["Seal As", "No Backup", "Success"]
+                headline, address = recorder.body_for("Success").split("\n")
+                assert headline == "Slot 0 sealed BTC"
+                assert BECH32_ADDRESS.match(address), address
+        except JCardSimUnavailable as exc:
+            pytest.skip(str(exc))
+
 
 class TestUnlockSecretPayload:
     """The backup payload is what a user's phone photo has to survive."""

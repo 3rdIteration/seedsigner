@@ -4853,7 +4853,16 @@ def _satodime_prepare(view, connector, needs_unlock: bool):
         return Destination(ToolsSatodimeClaimView)
 
     seedkeeper_utils.apply_satodime_unlock_secret(view.controller, connector)
-    connector.satodime_set_unlock_counter()
+    if needs_unlock:
+        # Sync the card's current unlock counter before any gated APDU. The applet
+        # checks it on every state-changing operation over NFC and answers 0x9C50 for
+        # a stale or zeroed value; satodime_get_status returns it without an unlock
+        # code, and pysatochip caches it on the connector (each successful gated APDU
+        # then advances both sides in lockstep). Never use the no-argument
+        # satodime_set_unlock_counter() here -- it resets the counter to zeros.
+        connector.satodime_get_status()
+    else:
+        connector.satodime_set_unlock_counter()
 
     return None
 
