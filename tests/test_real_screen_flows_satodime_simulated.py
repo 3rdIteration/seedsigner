@@ -892,6 +892,128 @@ class TestSatodimeThroughRealInitSatochip(SatodimeSimulatedFlowTest):
         except JCardSimUnavailable as exc:
             pytest.skip(str(exc))
 
+    def test_nfc_claim_qr_backup_microsd_restore_seal_end_to_end(self, monkeypatch):
+        """
+        The ownership-key lifecycle against the real applet over simulated NFC (T=CL,
+        TYPE_A,T0), with the backup produced by the QR ceremony itself rather than
+        hand-written:
+
+        claim -> back up (save to MicroSD, then photograph the rendered code and scan it
+        back through the real decode path) -> lose the key in a new session -> seal
+        refused with 'Key Required' -> restore from the MicroSD copy the ceremony wrote
+        -> seal succeeds.
+
+        test_nfc_claim_restore_seal_end_to_end writes the backup file directly, so only
+        this one catches a card_id/secret mismatch between what the claim caches and
+        what the QR encodes -- the 'key is for the wrong card' class of failure that
+        hand-written backups cannot reproduce. The scan-back runs the real decode path:
+        the code is rendered exactly as on device (the encoder's part_to_image) and read
+        back by the view's real ScanScreen + DecodeQR, so an encoder/decoder mismatch
+        fails here instead of on hardware.
+        """
+        from seedsigner.hardware.buttons import HardwareButtonsConstants as K
+        from seedsigner.models.decode_qr import DecodeQR
+        import seedsigner.models.decode_qr as decode_qr_module
+
+        if not DecodeQR.is_qr_scanner_available():
+            pytest.skip(DecodeQR.get_qr_scanner_error())
+        # conftest installs a MagicMock pyzbar when no native zbar library is present;
+        # that mock makes is_qr_scanner_available() report True while decoding nothing,
+        # so skip rather than run against it.
+        if isinstance(decode_qr_module.pyzbar, MagicMock):
+            pytest.skip("pyzbar is mocked in this environment (no native zbar library)")
+
+        from real_screen_fixtures import use_microsd
+
+        try:
+            with simulated_satodime_raw(protocol="T=CL,TYPE_A,T0"):
+                # 1. Claim over NFC: INS_SETUP mints counter+secret; the view caches it
+                #    and routes into the backup ceremony (from_claim=True).
+                claim_view = smartcard_views.ToolsSatodimeClaimView()
+                claim_view.run_screen = ScreenRecorder(0)  # confirm claim
+                dest = claim_view.run()
+                assert dest.View_cls is smartcard_views.ToolsSatodimeBackupUnlockView
+
+                (secret,) = list((self.controller.Satodime_unlock_secrets or {}).values())
+                card_id = seedkeeper_utils.satodime_card_id(_fresh_connector())
+                payload = seedkeeper_utils.format_satodime_unlock_payload(card_id, secret)
+
+                # 2. The ceremony itself writes the MicroSD copy -- nothing hand-written.
+                microsd_dir = use_microsd(monkeypatch, Path(tempfile.mkdtemp(prefix="satodime_test_")))
+
+                # Create the code the way the device renders QR screens, and prove it
+                # decodes back to the payload before trusting the ceremony with it.
+                from seedsigner.models.encode_qr import GenericStaticQrEncoder
+                encoder = GenericStaticQrEncoder(data=payload)
+                qr_frame = encoder.part_to_image(encoder.cur_part(), 240, 240, border=2, background_color="ffffff")
+                assert DecodeQR.extract_qr_data(qr_frame, is_binary=True) == payload.encode("utf-8")
+
+                # 3. Run the ceremony with real screens: intro warnings -> save to
+                #    MicroSD (ack "Saved") -> show QR -> scan it back (the camera stand-in
+                #    serves the rendered frame; the view's real ScanScreen + DecodeQR read
+                #    it) -> "Backup Verified" ends the flow.
+                script = (
+                    [K.KEY_PRESS, K.KEY_PRESS, K.KEY_PRESS]  # three intro warnings
+                    + select("Save to MicroSD")             # chooser
+                    + [K.KEY_PRESS]                         # ack "Saved"
+                    + select("Show QR Code")                # chooser again
+                    + [K.KEY_PRESS]                         # leave the QR screen
+                    + select("Scan It Back")                # verify menu
+                    + [K.KEY_PRESS]                         # OK on "Backup Verified"
+                )
+                session = UISession(
+                    script=script,
+                    camera_frames=[make_noise_frame(), qr_frame, make_noise_frame()],  # miss, code, trailing for the preview thread
+                    poll_responses=[False, False],                 # ScanScreen polls LEFT+RIGHT per non-decoding frame
+                )
+                with session:
+                    view = smartcard_views.ToolsSatodimeBackupUnlockView(card_id=card_id, from_claim=True)
+                    dest = view.run()
+
+                assert dest.View_cls is smartcard_views.BackStackView
+                assert not session.remaining_script
+                assert len(session.renderer.frames) > 0
+
+                # The ceremony's MicroSD copy must hold exactly this card's key.
+                backup_file = microsd_dir / seedkeeper_utils.satodime_unlock_backup_filename(card_id)
+                assert backup_file.read_text(encoding="utf-8") == payload
+
+                # 4. New session: the in-RAM cache is gone (the controller wipes it at Home).
+                self.controller.Satodime_unlock_secrets = None
+                _populate_cache([(smartcard_views.SATODIME_SLOT_UNINITIALIZED, None, None)])
+
+                # 5. Seal without the key: over contactless media the applet rejects with
+                #    0x9C51 (zeroed placeholder secret) and the view must offer a restore.
+                view = smartcard_views.ToolsSatodimeSealSlotView(0)
+                recorder = ScreenRecorder(0, 0, 0)  # coin, no-backup warning, "Restore Key"
+                view.run_screen = recorder
+                dest = view.run()
+
+                assert recorder.titles == ["Seal As", "No Backup", "Key Required"]
+                assert dest.View_cls is smartcard_views.ToolsSatodimeRestoreUnlockView
+
+                # 6. Restore from the MicroSD copy the ceremony wrote -- one tap, no camera.
+                restore_view = smartcard_views.ToolsSatodimeRestoreUnlockView()
+                recorder = ScreenRecorder(0, 0)  # "Load Ownership Key from MicroSD", ack success
+                restore_view.run_screen = recorder
+                dest = restore_view.run()
+
+                assert recorder.titles == ["Ownership Key", "Ownership Key Set"]
+
+                # 7. Back on the seal action: with the key cached, counter+HMAC check out
+                #    and the slot seals for real over NFC.
+                view = smartcard_views.ToolsSatodimeSealSlotView(0)
+                recorder = ScreenRecorder(0, 0, 0)  # coin, no-backup warning, success
+                view.run_screen = recorder
+                dest = view.run()
+
+                assert recorder.titles == ["Seal As", "No Backup", "Success"]
+                headline, address = recorder.body_for("Success").split("\n")
+                assert headline == "Slot 0 sealed BTC"
+                assert BECH32_ADDRESS.match(address), address
+        except JCardSimUnavailable as exc:
+            pytest.skip(str(exc))
+
 
 class TestUnlockSecretPayload:
     """The backup payload is what a user's phone photo has to survive."""
