@@ -29,6 +29,7 @@
 """
 
 import re
+import hashlib
 import sys
 import tempfile
 from pathlib import Path
@@ -1017,9 +1018,10 @@ class TestSatodimeThroughRealInitSatochip(SatodimeSimulatedFlowTest):
     def test_claim_refuses_to_mint_backup_when_the_card_cannot_be_identified(self, monkeypatch):
         """A connection can complete while CPLC/IIN/CIN come back blank (some readers
         serve them only intermittently), leaving UID_SHA1 unset or at the empty-hash
-        sentinel. Claiming must then retry with fresh connectors and, still unidentified,
-        abort BEFORE claiming: a backup keyed to an empty id can never be restored, and
-        claiming first would emit the one-time secret that could no longer be backed up."""
+        sentinel. init_satochip must then re-query with fresh connectors and, still
+        unidentified, ClaimView aborts BEFORE claiming: a backup keyed to an empty id can
+        never be restored, and claiming first would emit the one-time secret that could no
+        longer be backed up."""
         from real_screen_fixtures import use_microsd
 
         try:
@@ -1029,16 +1031,16 @@ class TestSatodimeThroughRealInitSatochip(SatodimeSimulatedFlowTest):
 
         with ctx:
             use_microsd(monkeypatch, Path(tempfile.mkdtemp(prefix="satodime_test_")))
-            monkeypatch.setattr(seedkeeper_utils, "satodime_card_id", lambda connector: "")
+            monkeypatch.setattr(seedkeeper_utils, "is_usable_uid", lambda uid: False)
 
-            init_calls = []
-            real_init = seedkeeper_utils.init_satochip
+            cc_calls = []
+            real_cc = seedkeeper_utils._init_card_connector
 
-            def counting_init(*args, **kwargs):
-                init_calls.append(1)
-                return real_init(*args, **kwargs)
+            def counting_cc(*args, **kwargs):
+                cc_calls.append(1)
+                return real_cc(*args, **kwargs)
 
-            monkeypatch.setattr(seedkeeper_utils, "init_satochip", counting_init)
+            monkeypatch.setattr(seedkeeper_utils, "_init_card_connector", counting_cc)
 
             view = smartcard_views.ToolsSatodimeClaimView()
             recorder = ScreenRecorder(0)  # ack "Cannot Identify Card" (no claim screens at all)
@@ -1046,30 +1048,77 @@ class TestSatodimeThroughRealInitSatochip(SatodimeSimulatedFlowTest):
             dest = view.run()
 
             assert recorder.titles == ["Cannot Identify Card"]
-            assert len(init_calls) == 3  # initial + two reconnect retries
+            # initial connect + two reconnect re-queries, all inside init_satochip
+            assert len(cc_calls) == seedkeeper_utils.MAX_UID_IDENTIFY_ATTEMPTS
             assert not (self.controller.Satodime_unlock_secrets or {})
             assert dest.View_cls is smartcard_views.BackStackView
 
-    def test_restore_refuses_when_the_card_cannot_be_identified(self, monkeypatch):
-        """Same unidentified-card condition at restore time: retry with fresh connectors,
-        then say 'cannot identify' instead of the misleading 'Wrong Card' (the backup's id
-        cannot be compared against one that was never derived)."""
+    def test_init_satochip_requeries_until_the_card_identifies_itself(self, monkeypatch):
+        """The reader serves CPLC/IIN/CIN only intermittently: the first connection
+        completes but derives no usable id, and a reconnect gets one. init_satochip must
+        re-query on its own (no view-level retry) and hand back the healed connector,
+        recording the real id -- not the sentinel -- as Satochip_Last_UID_SHA1."""
         try:
             ctx = simulated_satodime_raw()
         except JCardSimUnavailable as exc:
             pytest.skip(str(exc))
 
         with ctx:
-            monkeypatch.setattr(seedkeeper_utils, "satodime_card_id", lambda connector: "")
+            uid_checks = []
 
-            init_calls = []
-            real_init = seedkeeper_utils.init_satochip
+            def flaky_is_usable(uid):
+                # The first check (after the initial connect) sees an unidentified
+                # card; once init_satochip has reconnected, the reader serves
+                # CPLC/IIN/CIN and every later check passes.
+                uid_checks.append(uid)
+                return len(uid_checks) > 1
 
-            def counting_init(*args, **kwargs):
-                init_calls.append(1)
-                return real_init(*args, **kwargs)
+            monkeypatch.setattr(seedkeeper_utils, "is_usable_uid", flaky_is_usable)
 
-            monkeypatch.setattr(seedkeeper_utils, "init_satochip", counting_init)
+            cc_calls = []
+            real_cc = seedkeeper_utils._init_card_connector
+
+            def counting_cc(*args, **kwargs):
+                cc_calls.append(1)
+                return real_cc(*args, **kwargs)
+
+            monkeypatch.setattr(seedkeeper_utils, "_init_card_connector", counting_cc)
+
+            view = smartcard_views.ToolsSatodimeSlotsView()
+            recorder = ScreenRecorder(RET_CODE__BACK_BUTTON)
+            view.run_screen = recorder
+            view.run()
+
+            # one reconnect: initial connect + re-query, then the healed id is accepted
+            assert len(cc_calls) == 2
+            connector = self.controller.Satochip_Connector
+            assert connector is not None
+            real_uid = getattr(connector, "UID_SHA1", None)
+            assert str(real_uid)[:16] != hashlib.sha1(b"").hexdigest()[:16]
+            # the healed id -- not a sentinel -- is what gets recorded for swap detection
+            assert self.controller.Satochip_Last_UID_SHA1 == real_uid
+
+    def test_restore_refuses_when_the_card_cannot_be_identified(self, monkeypatch):
+        """Same unidentified-card condition at restore time: init_satochip re-queries with
+        fresh connectors, then the view says 'cannot identify' instead of the misleading
+        'Wrong Card' (the backup's id cannot be compared against one that was never
+        derived)."""
+        try:
+            ctx = simulated_satodime_raw()
+        except JCardSimUnavailable as exc:
+            pytest.skip(str(exc))
+
+        with ctx:
+            monkeypatch.setattr(seedkeeper_utils, "is_usable_uid", lambda uid: False)
+
+            cc_calls = []
+            real_cc = seedkeeper_utils._init_card_connector
+
+            def counting_cc(*args, **kwargs):
+                cc_calls.append(1)
+                return real_cc(*args, **kwargs)
+
+            monkeypatch.setattr(seedkeeper_utils, "_init_card_connector", counting_cc)
 
             view = smartcard_views.ToolsSatodimeRestoreUnlockView()
             recorder = ScreenRecorder(0)  # ack "Cannot Identify Card"
@@ -1077,9 +1126,45 @@ class TestSatodimeThroughRealInitSatochip(SatodimeSimulatedFlowTest):
             dest = view.run()
 
             assert recorder.titles == ["Cannot Identify Card"]
-            assert len(init_calls) == 3  # initial + two reconnect retries
+            # initial connect + two reconnect re-queries, all inside init_satochip
+            assert len(cc_calls) == seedkeeper_utils.MAX_UID_IDENTIFY_ATTEMPTS
             assert not (self.controller.Satodime_unlock_secrets or {})
             assert dest.View_cls is smartcard_views.BackStackView
+
+
+class TestIsUsableUid:
+    """is_usable_uid: the shared predicate for "did this card identify itself?"."""
+
+    def test_real_ids_are_usable(self):
+        uid = hashlib.sha1(b"\x03\x97\x42\x54").hexdigest()
+        assert seedkeeper_utils.is_usable_uid(uid)
+        # truncated ids (first 16 hex chars) are usable too
+        assert seedkeeper_utils.is_usable_uid(uid[:16])
+
+    def test_unset_and_empty_are_not(self):
+        assert not seedkeeper_utils.is_usable_uid(None)
+        assert not seedkeeper_utils.is_usable_uid("")
+
+    def test_empty_hash_sentinel_is_not(self):
+        sentinel = hashlib.sha1(b"").hexdigest()
+        # full digest and truncated form are both caught
+        assert not seedkeeper_utils.is_usable_uid(sentinel)
+        assert not seedkeeper_utils.is_usable_uid(sentinel[:16])
+
+    def test_satodime_card_id_uses_the_predicate(self):
+        class FakeConnector:
+            pass
+
+        sentinel = hashlib.sha1(b"").hexdigest()
+        good = FakeConnector()
+        good.UID_SHA1 = hashlib.sha1(b"\x03\x97\x42\x54").hexdigest()
+        blank = FakeConnector()
+        blank.UID_SHA1 = sentinel
+        unset = FakeConnector()
+
+        assert seedkeeper_utils.satodime_card_id(good) == hashlib.sha1(b"\x03\x97\x42\x54").hexdigest()[:16]
+        assert seedkeeper_utils.satodime_card_id(blank) == ""
+        assert seedkeeper_utils.satodime_card_id(unset) == ""
 
 
 class TestUnlockSecretPayload:

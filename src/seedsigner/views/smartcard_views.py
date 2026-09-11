@@ -763,7 +763,10 @@ class ToolsSmartcardInfoView(View):
         info_lines.append(f"Type: {card_type}")
 
         uid = getattr(Satochip_Connector, "UID_SHA1", None)
-        if not uid:
+        if not seedkeeper_utils.is_usable_uid(uid):
+            # Fall back to the raw UID when the derived id is missing or a sentinel;
+            # show nothing at all rather than a misleading "da39a3ee..." value.
+            uid = None
             uid_raw = getattr(Satochip_Connector, "UID", None)
             if uid_raw:
                 uid = bytes(uid_raw).hex()
@@ -822,6 +825,17 @@ class ToolsSmartcardGenuineCheckView(View):
 
         try:
             initial_uid = getattr(Satochip_Connector, "UID_SHA1", None)
+            if not seedkeeper_utils.is_usable_uid(initial_uid):
+                # init_satochip already re-queried the id; verifying against an empty or
+                # sentinel UID would fail with a spurious certificate mismatch.
+                self.run_screen(
+                    ErrorScreen,
+                    title="Genuine Check",
+                    status_headline=None,
+                    text="Cannot identify card.\nRe-present and try again.",
+                )
+                return Destination(BackStackView)
+
             is_genuine, _, _, _, txt_error = Satochip_Connector.card_verify_authenticity()
 
             # Workaround for occasional incorrect UID calculation in pysatochip
@@ -4915,21 +4929,11 @@ class ToolsSatodimeClaimView(View):
 
         # Identify the card before anything state-changing. The id (UID_SHA1) is derived
         # from CPLC/IIN/CIN reads that some readers serve only intermittently -- a
-        # connection can complete fine while the id comes back empty. Claiming an
-        # unidentified card would mint a backup keyed to an empty id that can never be
-        # restored, and if identification failed afterwards the freshly minted secret
-        # (emitted exactly once) would be lost forever.
+        # connection can complete fine while the id comes back empty, and init_satochip
+        # has already re-queried it. Claiming an unidentified card would mint a backup
+        # keyed to an empty id that can never be restored, and if identification failed
+        # afterwards the freshly minted secret (emitted exactly once) would be lost.
         card_id = seedkeeper_utils.satodime_card_id(Satochip_Connector)
-        if not card_id:
-            for _attempt in range(2):
-                Satochip_Connector = seedkeeper_utils.init_satochip(
-                    self, init_card_filter=["satodime"], require_pin=False
-                )
-                if not Satochip_Connector:
-                    break
-                card_id = seedkeeper_utils.satodime_card_id(Satochip_Connector)
-                if card_id:
-                    break
         if not card_id:
             self.run_screen(
                 WarningScreen,
@@ -5276,21 +5280,11 @@ class ToolsSatodimeRestoreUnlockView(View):
         if not Satochip_Connector:
             return Destination(BackStackView)
 
+        # The connection completed but the card may still have no usable id (CPLC/IIN/CIN
+        # come back blank on some readers); init_satochip has already re-queried it. If it
+        # is still unusable, comparing against the backup's id would fail with a
+        # misleading "Wrong Card".
         card_id = seedkeeper_utils.satodime_card_id(Satochip_Connector)
-        if not card_id:
-            # The connection completed but the card did not identify itself (CPLC/IIN/CIN
-            # came back blank -- some readers serve those only intermittently). Reconnect
-            # and retry before comparing against the backup's id, or every restore would
-            # fail with a misleading "Wrong Card".
-            for _attempt in range(2):
-                Satochip_Connector = seedkeeper_utils.init_satochip(
-                    self, init_card_filter=["satodime"], require_pin=False
-                )
-                if not Satochip_Connector:
-                    break
-                card_id = seedkeeper_utils.satodime_card_id(Satochip_Connector)
-                if card_id:
-                    break
         if not card_id:
             self.run_screen(
                 WarningScreen,
@@ -5672,6 +5666,18 @@ class ToolsSatodimeReshowUnlockView(View):
             return Destination(BackStackView)
 
         card_id = seedkeeper_utils.satodime_card_id(Satochip_Connector)
+        if not card_id:
+            # init_satochip already re-queried the id; without it a cache lookup would
+            # miss and show a misleading "No Ownership Key".
+            self.run_screen(
+                WarningScreen,
+                title="Cannot Identify Card",
+                status_headline=None,
+                text="Re-present the card\nand try again.",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
         cached_secret = seedkeeper_utils.get_cached_satodime_unlock_secret(self.controller, card_id)
         if not cached_secret:
             self.run_screen(
