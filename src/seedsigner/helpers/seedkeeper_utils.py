@@ -19,6 +19,7 @@ from seedsigner.helpers.iso7816 import format_sw_error
 from seedsigner.helpers.keycard_connector import KeycardSatochipConnector
 
 
+import hashlib
 import os
 import re
 import time
@@ -491,10 +492,29 @@ def claim_satodime_ownership(connector):
 SATODIME_UNLOCK_PREFIX = "satodime-unlock:"
 SIZE_SATODIME_UNLOCK_SECRET = 20
 
+# sha1(b"") -- the UID_SHA1 pysatochip computes when its insertion observer reads
+# CPLC/IIN/CIN and all three come back empty. Readers that do not serve those
+# GlobalPlatform data objects answer 6E00 with no data, and pysatochip hashes whatever
+# it got without checking the status words -- so an unidentified card silently derives
+# this constant instead of failing. Treat it as "not derived", never a real id.
+_EMPTY_UID_SHA1 = hashlib.sha1(b"").hexdigest()
+
+# What satodime_card_id() returns when the card could not be identified. Callers must
+# treat it as "card unidentified" and offer a re-present/retry path; it is never a key.
+SATODIME_CARD_ID_UNAVAILABLE = ""
+
 
 def satodime_card_id(connector) -> str:
-    """Short, stable id for a Satodime, used to key its unlock secret."""
+    """Short, stable id for a Satodime, used to key its unlock secret.
+
+    Returns SATODIME_CARD_ID_UNAVAILABLE ("") when the card could not be identified --
+    UID_SHA1 unset (the insertion observer never ran or failed) or equal to the
+    empty-hash sentinel (CPLC/IIN/CIN all came back blank). Callers must treat "" as
+    "card unidentified" and offer a re-present/retry path; it is never a valid key.
+    """
     uid = getattr(connector, "UID_SHA1", None) or ""
+    if not uid or str(uid) == _EMPTY_UID_SHA1:
+        return SATODIME_CARD_ID_UNAVAILABLE
     return str(uid)[:16]
 
 

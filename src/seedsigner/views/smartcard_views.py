@@ -4913,6 +4913,33 @@ class ToolsSatodimeClaimView(View):
         if not Satochip_Connector:
             return Destination(BackStackView)
 
+        # Identify the card before anything state-changing. The id (UID_SHA1) is derived
+        # from CPLC/IIN/CIN reads that some readers serve only intermittently -- a
+        # connection can complete fine while the id comes back empty. Claiming an
+        # unidentified card would mint a backup keyed to an empty id that can never be
+        # restored, and if identification failed afterwards the freshly minted secret
+        # (emitted exactly once) would be lost forever.
+        card_id = seedkeeper_utils.satodime_card_id(Satochip_Connector)
+        if not card_id:
+            for _attempt in range(2):
+                Satochip_Connector = seedkeeper_utils.init_satochip(
+                    self, init_card_filter=["satodime"], require_pin=False
+                )
+                if not Satochip_Connector:
+                    break
+                card_id = seedkeeper_utils.satodime_card_id(Satochip_Connector)
+                if card_id:
+                    break
+        if not card_id:
+            self.run_screen(
+                WarningScreen,
+                title="Cannot Identify Card",
+                status_headline=None,
+                text="Re-present the card\nand try again.",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
         if _satodime_is_claimed(Satochip_Connector):
             # Taking ownership erases the current owner's key (their sealed slots and
             # funds survive -- only the NFC gate changes), so confirm before doing it.
@@ -5000,8 +5027,9 @@ class ToolsSatodimeClaimView(View):
             )
             return Destination(BackStackView)
 
-        # card_setup() caches the freshly minted counter + secret on the connector.
-        card_id = seedkeeper_utils.satodime_card_id(Satochip_Connector)
+        # card_setup() caches the freshly minted counter + secret on this connector. The
+        # id was derived (and retried) before the claim above, so it is valid here:
+        # CPLC/IIN/CIN are OS-level data that claiming does not change.
         seedkeeper_utils.cache_satodime_unlock_secret(
             self.controller, card_id, list(Satochip_Connector.unlock_secret)
         )
@@ -5249,6 +5277,29 @@ class ToolsSatodimeRestoreUnlockView(View):
             return Destination(BackStackView)
 
         card_id = seedkeeper_utils.satodime_card_id(Satochip_Connector)
+        if not card_id:
+            # The connection completed but the card did not identify itself (CPLC/IIN/CIN
+            # came back blank -- some readers serve those only intermittently). Reconnect
+            # and retry before comparing against the backup's id, or every restore would
+            # fail with a misleading "Wrong Card".
+            for _attempt in range(2):
+                Satochip_Connector = seedkeeper_utils.init_satochip(
+                    self, init_card_filter=["satodime"], require_pin=False
+                )
+                if not Satochip_Connector:
+                    break
+                card_id = seedkeeper_utils.satodime_card_id(Satochip_Connector)
+                if card_id:
+                    break
+        if not card_id:
+            self.run_screen(
+                WarningScreen,
+                title="Cannot Identify Card",
+                status_headline=None,
+                text="Re-present the card\nand try again.",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
 
         # A backup for this card on the MicroSD is the fastest restore path, so offer it
         # first when one exists; with nothing on the card there is no menu -- scanning is
@@ -5285,14 +5336,20 @@ class ToolsSatodimeRestoreUnlockView(View):
 
         backup_card_id, secret = parsed
         if backup_card_id != card_id:
-            self.run_screen(
-                WarningScreen,
+            # A genuine mismatch between two successfully derived ids. Historically a
+            # dead end; since flaky readers can mis-derive an id, let the user force-load
+            # after a warning instead. A wrong key is self-correcting: it simply fails at
+            # the applet's gate with "Key Required" until re-restored from the right code.
+            selected = self.run_screen(
+                DireWarningScreen,
                 title="Wrong Card",
                 status_headline=None,
                 text="That code belongs to a\ndifferent Satodime.",
                 show_back_button=True,
+                button_data=[ButtonOption("Load Anyway")],
             )
-            return Destination(BackStackView)
+            if selected != 0:
+                return Destination(BackStackView)
 
         seedkeeper_utils.cache_satodime_unlock_secret(self.controller, card_id, secret)
         self.run_screen(

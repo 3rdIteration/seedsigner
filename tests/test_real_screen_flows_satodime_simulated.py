@@ -1014,6 +1014,73 @@ class TestSatodimeThroughRealInitSatochip(SatodimeSimulatedFlowTest):
         except JCardSimUnavailable as exc:
             pytest.skip(str(exc))
 
+    def test_claim_refuses_to_mint_backup_when_the_card_cannot_be_identified(self, monkeypatch):
+        """A connection can complete while CPLC/IIN/CIN come back blank (some readers
+        serve them only intermittently), leaving UID_SHA1 unset or at the empty-hash
+        sentinel. Claiming must then retry with fresh connectors and, still unidentified,
+        abort BEFORE claiming: a backup keyed to an empty id can never be restored, and
+        claiming first would emit the one-time secret that could no longer be backed up."""
+        from real_screen_fixtures import use_microsd
+
+        try:
+            ctx = simulated_satodime_raw()
+        except JCardSimUnavailable as exc:
+            pytest.skip(str(exc))
+
+        with ctx:
+            use_microsd(monkeypatch, Path(tempfile.mkdtemp(prefix="satodime_test_")))
+            monkeypatch.setattr(seedkeeper_utils, "satodime_card_id", lambda connector: "")
+
+            init_calls = []
+            real_init = seedkeeper_utils.init_satochip
+
+            def counting_init(*args, **kwargs):
+                init_calls.append(1)
+                return real_init(*args, **kwargs)
+
+            monkeypatch.setattr(seedkeeper_utils, "init_satochip", counting_init)
+
+            view = smartcard_views.ToolsSatodimeClaimView()
+            recorder = ScreenRecorder(0)  # ack "Cannot Identify Card" (no claim screens at all)
+            view.run_screen = recorder
+            dest = view.run()
+
+            assert recorder.titles == ["Cannot Identify Card"]
+            assert len(init_calls) == 3  # initial + two reconnect retries
+            assert not (self.controller.Satodime_unlock_secrets or {})
+            assert dest.View_cls is smartcard_views.BackStackView
+
+    def test_restore_refuses_when_the_card_cannot_be_identified(self, monkeypatch):
+        """Same unidentified-card condition at restore time: retry with fresh connectors,
+        then say 'cannot identify' instead of the misleading 'Wrong Card' (the backup's id
+        cannot be compared against one that was never derived)."""
+        try:
+            ctx = simulated_satodime_raw()
+        except JCardSimUnavailable as exc:
+            pytest.skip(str(exc))
+
+        with ctx:
+            monkeypatch.setattr(seedkeeper_utils, "satodime_card_id", lambda connector: "")
+
+            init_calls = []
+            real_init = seedkeeper_utils.init_satochip
+
+            def counting_init(*args, **kwargs):
+                init_calls.append(1)
+                return real_init(*args, **kwargs)
+
+            monkeypatch.setattr(seedkeeper_utils, "init_satochip", counting_init)
+
+            view = smartcard_views.ToolsSatodimeRestoreUnlockView()
+            recorder = ScreenRecorder(0)  # ack "Cannot Identify Card"
+            view.run_screen = recorder
+            dest = view.run()
+
+            assert recorder.titles == ["Cannot Identify Card"]
+            assert len(init_calls) == 3  # initial + two reconnect retries
+            assert not (self.controller.Satodime_unlock_secrets or {})
+            assert dest.View_cls is smartcard_views.BackStackView
+
 
 class TestUnlockSecretPayload:
     """The backup payload is what a user's phone photo has to survive."""
@@ -1250,12 +1317,37 @@ class TestBackupAndRestoreViews(SatodimeSimulatedFlowTest):
         with ctx:
             use_microsd(monkeypatch, Path(tempfile.mkdtemp(prefix="satodime_test_")))  # empty: no backup on the card -> straight to scan
             view = smartcard_views.ToolsSatodimeRestoreUnlockView()
-            recorder = ScreenRecorder(0)  # ack the "Wrong Card" warning (scan is scripted)
+            recorder = ScreenRecorder(RET_CODE__BACK_BUTTON)  # decline the "Wrong Card" warning (scan is scripted)
             view.run_screen = recorder
             view.run()
 
             assert recorder.titles == ["Wrong Card"]
             assert not (self.controller.Satodime_unlock_secrets or {})
+
+    def test_restore_warns_then_force_loads_another_card_s_backup(self, monkeypatch):
+        """A mismatched id is a warning with an explicit override, not a dead end: ids
+        can be mis-derived on flaky readers, and a wrong key is self-correcting (it fails
+        at the applet's gate until re-restored from the right code)."""
+        from real_screen_fixtures import use_microsd
+
+        try:
+            ctx = simulated_satodime_raw()
+        except JCardSimUnavailable as exc:
+            pytest.skip(str(exc))
+
+        with ctx:
+            card_id = seedkeeper_utils.satodime_card_id(_fresh_connector())
+            other = seedkeeper_utils.format_satodime_unlock_payload("ffffffffffffffff", self.SECRET)
+            monkeypatch.setattr(smartcard_views, "_satodime_scan_text", lambda view: other)
+
+            use_microsd(monkeypatch, Path(tempfile.mkdtemp(prefix="satodime_test_")))  # empty: no backup on the card -> straight to scan
+            view = smartcard_views.ToolsSatodimeRestoreUnlockView()
+            recorder = ScreenRecorder(0, 0)  # "Load Anyway", ack success (scan is scripted)
+            view.run_screen = recorder
+            view.run()
+
+            assert recorder.titles == ["Wrong Card", "Ownership Key Set"]
+            assert self.controller.Satodime_unlock_secrets[card_id] == self.SECRET
 
     def test_restore_loads_this_card_s_backup(self, monkeypatch):
         from real_screen_fixtures import use_microsd

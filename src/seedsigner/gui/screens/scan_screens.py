@@ -1,9 +1,12 @@
+import logging
 import math
 import time
 
 from dataclasses import dataclass
 from gettext import gettext as _
 from PIL import Image, ImageDraw
+
+logger = logging.getLogger(__name__)
 
 from seedsigner.gui import renderer
 
@@ -122,125 +125,143 @@ class ScanScreen(BaseScreen):
 
             num_frames = 0
             while self.keep_running:
-                frame = self.camera.read_video_stream(as_image=True, preview=True)
+                try:
+                    frame = self.camera.read_video_stream(as_image=True, preview=True)
+                except Exception:
+                    # The decode loop (or a button press) can stop the stream between our
+                    # check and this read. Letting that exception kill the thread silently
+                    # is how a scan ends with the display stuck in an undefined state; log
+                    # it and exit cleanly instead.
+                    logger.exception("LivePreviewThread: camera read failed; stopping preview")
+                    break
                 if frame is not None:
                     num_frames += 1
-                    
+
                     scan_text = None
                     progress_percentage = self.decoder.get_percent_complete()
                     if progress_percentage == 0:
                         # We've just started scanning, no results yet
                         scan_text = self.instructions_text
 
-                    with self.renderer.lock:
-                        # Use nearest neighbor resizing for max speed
-                        frame = resize_image_to_fit(frame, self.render_width, self.render_height, sampling_method=Image.Resampling.NEAREST)
-
-                        if scan_text:
-                            # Note: shadowed text (adding a 'stroke' outline) can
-                            # significantly slow down the rendering.
-                            # Temp solution: render a slight 1px shadow behind the text
-                            # TODO: Replace the instructions_text with a disappearing
-                            # toast/popup (see: QR Brightness UI)?
-                            draw = ImageDraw.Draw(frame)
-                            draw.text(xy=(
-                                        int(self.renderer.canvas_width/2 + 2),
-                                        self.renderer.canvas_height - GUIConstants.EDGE_PADDING + 2
-                                     ),
-                                     text=scan_text,
-                                     fill="black",
-                                     font=instructions_font,
-                                     anchor="ms")
-
-                            # Render the onscreen instructions
-                            draw.text(xy=(
-                                        int(self.renderer.canvas_width/2),
-                                        self.renderer.canvas_height - GUIConstants.EDGE_PADDING
-                                     ),
-                                     text=scan_text,
-                                     fill=GUIConstants.BODY_FONT_COLOR,
-                                     font=instructions_font,
-                                     anchor="ms")
-
-                        else:
-                            # Render the progress bar
-                            rectangle = Image.new('RGBA', (self.renderer.canvas_width - 2*GUIConstants.EDGE_PADDING, GUIConstants.BUTTON_HEIGHT), (0, 0, 0, 0))
-                            draw = ImageDraw.Draw(rectangle)
-
-                            # Start with a background rounded rectangle, same dims as the buttons
-                            overlay_color = (0, 0, 0, 191)  # opacity ranges from 0-255
-                            draw.rounded_rectangle(
-                                (
-                                    (0, 0),
-                                    (rectangle.width, rectangle.height)
-                                ),
-                                fill=overlay_color,
-                                radius=8,
-                                outline=overlay_color,
-                                width=2,
-                            )
-
-                            progress_bar_thickness = 4
-                            progress_bar_width = rectangle.width - 2*GUIConstants.EDGE_PADDING - progress_text_width - int(GUIConstants.EDGE_PADDING/2)
-                            progress_bar_xy = (
-                                    (GUIConstants.EDGE_PADDING, int((rectangle.height - progress_bar_thickness) / 2)),
-                                    (GUIConstants.EDGE_PADDING + progress_bar_width, int(rectangle.height + progress_bar_thickness) / 2)
-                                )
-                            draw.rounded_rectangle(
-                                progress_bar_xy,
-                                fill=GUIConstants.INACTIVE_COLOR,
-                                radius=8
-                            )
-
-                            progress_percentage = self.decoder.get_percent_complete(weight_mixed_frames=True)
-                            draw.rounded_rectangle(
-                                (
-                                    progress_bar_xy[0],
-                                    (GUIConstants.EDGE_PADDING + int(progress_percentage * progress_bar_width / 100.0), progress_bar_xy[1][1])
-                                ),
-                                fill=GUIConstants.GREEN_INDICATOR_COLOR,
-                                radius=8
-                            )
-
-                            # TRANSLATOR_NOTE: Inserts the percentage value of the animated QR scan progress
-                            text = _("{}%").format(progress_percentage)
-
-                            draw.text(
-                                xy=(rectangle.width - GUIConstants.EDGE_PADDING, int(rectangle.height / 2)),
-                                text=text,
-                                fill=GUIConstants.BODY_FONT_COLOR,
-                                font=instructions_font,
-                                anchor="rm",  # right-justified, middle
-                            )
-
-                            frame.paste(rectangle, (GUIConstants.EDGE_PADDING, self.renderer.canvas_height - GUIConstants.EDGE_PADDING - rectangle.height), rectangle)
-
-                            # Render the dot to indicate successful QR frame read
-                            indicator_size = 10
-                            status_color_map = {
-                                ScanScreen.FRAME__ADDED_PART: GUIConstants.SUCCESS_COLOR,
-                                ScanScreen.FRAME__REPEATED_PART: GUIConstants.INACTIVE_COLOR,
-                                ScanScreen.FRAME__MISS: None,
-                            }
-                            status_color = status_color_map.get(self.frame_decode_status.cur_count)
-                            if status_color:
-                                # Good! Most recent frame successfully decoded.
-                                # Draw the onscreen indicator dot
-                                draw = ImageDraw.Draw(frame)
-                                draw.ellipse(
-                                    (
-                                        (self.renderer.canvas_width - GUIConstants.EDGE_PADDING - indicator_size, self.renderer.canvas_height - GUIConstants.EDGE_PADDING - GUIConstants.BUTTON_HEIGHT - GUIConstants.COMPONENT_PADDING - indicator_size),
-                                        (self.renderer.canvas_width - GUIConstants.EDGE_PADDING, self.renderer.canvas_height - GUIConstants.EDGE_PADDING - GUIConstants.BUTTON_HEIGHT - GUIConstants.COMPONENT_PADDING)
-                                    ),
-                                    fill=status_color,
-                                    outline="black",
-                                    width=1,
-                                )
-
-                        self.renderer.show_image(frame, show_direct=True)
+                    try:
+                        self._render_preview_frame(
+                            frame, scan_text, instructions_font, progress_text_width
+                        )
+                    except Exception:
+                        # A single bad frame must not kill the preview thread; log it and
+                        # move on to the next one.
+                        logger.exception("LivePreviewThread: failed to render preview frame")
 
                 if self.camera._video_stream is None:
                     break
+
+        def _render_preview_frame(self, frame, scan_text, instructions_font, progress_text_width):
+            with self.renderer.lock:
+                # Use nearest neighbor resizing for max speed
+                frame = resize_image_to_fit(frame, self.render_width, self.render_height, sampling_method=Image.Resampling.NEAREST)
+
+                if scan_text:
+                    # Note: shadowed text (adding a 'stroke' outline) can
+                    # significantly slow down the rendering.
+                    # Temp solution: render a slight 1px shadow behind the text
+                    # TODO: Replace the instructions_text with a disappearing
+                    # toast/popup (see: QR Brightness UI)?
+                    draw = ImageDraw.Draw(frame)
+                    draw.text(xy=(
+                                int(self.renderer.canvas_width/2 + 2),
+                                self.renderer.canvas_height - GUIConstants.EDGE_PADDING + 2
+                             ),
+                             text=scan_text,
+                             fill="black",
+                             font=instructions_font,
+                             anchor="ms")
+
+                    # Render the onscreen instructions
+                    draw.text(xy=(
+                                int(self.renderer.canvas_width/2),
+                                self.renderer.canvas_height - GUIConstants.EDGE_PADDING
+                             ),
+                             text=scan_text,
+                             fill=GUIConstants.BODY_FONT_COLOR,
+                             font=instructions_font,
+                             anchor="ms")
+
+                else:
+                    # Render the progress bar
+                    rectangle = Image.new('RGBA', (self.renderer.canvas_width - 2*GUIConstants.EDGE_PADDING, GUIConstants.BUTTON_HEIGHT), (0, 0, 0, 0))
+                    draw = ImageDraw.Draw(rectangle)
+
+                    # Start with a background rounded rectangle, same dims as the buttons
+                    overlay_color = (0, 0, 0, 191)  # opacity ranges from 0-255
+                    draw.rounded_rectangle(
+                        (
+                            (0, 0),
+                            (rectangle.width, rectangle.height)
+                        ),
+                        fill=overlay_color,
+                        radius=8,
+                        outline=overlay_color,
+                        width=2,
+                    )
+
+                    progress_bar_thickness = 4
+                    progress_bar_width = rectangle.width - 2*GUIConstants.EDGE_PADDING - progress_text_width - int(GUIConstants.EDGE_PADDING/2)
+                    progress_bar_xy = (
+                            (GUIConstants.EDGE_PADDING, int((rectangle.height - progress_bar_thickness) / 2)),
+                            (GUIConstants.EDGE_PADDING + progress_bar_width, int((rectangle.height + progress_bar_thickness) / 2))
+                        )
+                    draw.rounded_rectangle(
+                        progress_bar_xy,
+                        fill=GUIConstants.INACTIVE_COLOR,
+                        radius=8
+                    )
+
+                    progress_percentage = self.decoder.get_percent_complete(weight_mixed_frames=True)
+                    draw.rounded_rectangle(
+                        (
+                            progress_bar_xy[0],
+                            (GUIConstants.EDGE_PADDING + int(progress_percentage * progress_bar_width / 100.0), progress_bar_xy[1][1])
+                        ),
+                        fill=GUIConstants.GREEN_INDICATOR_COLOR,
+                        radius=8
+                    )
+
+                    # TRANSLATOR_NOTE: Inserts the percentage value of the animated QR scan progress
+                    text = _("{}%").format(progress_percentage)
+
+                    draw.text(
+                        xy=(rectangle.width - GUIConstants.EDGE_PADDING, int(rectangle.height / 2)),
+                        text=text,
+                        fill=GUIConstants.BODY_FONT_COLOR,
+                        font=instructions_font,
+                        anchor="rm",  # right-justified, middle
+                    )
+
+                    frame.paste(rectangle, (GUIConstants.EDGE_PADDING, self.renderer.canvas_height - GUIConstants.EDGE_PADDING - rectangle.height), rectangle)
+
+                    # Render the dot to indicate successful QR frame read
+                    indicator_size = 10
+                    status_color_map = {
+                        ScanScreen.FRAME__ADDED_PART: GUIConstants.SUCCESS_COLOR,
+                        ScanScreen.FRAME__REPEATED_PART: GUIConstants.INACTIVE_COLOR,
+                        ScanScreen.FRAME__MISS: None,
+                    }
+                    status_color = status_color_map.get(self.frame_decode_status.cur_count)
+                    if status_color:
+                        # Good! Most recent frame successfully decoded.
+                        # Draw the onscreen indicator dot
+                        draw = ImageDraw.Draw(frame)
+                        draw.ellipse(
+                            (
+                                (self.renderer.canvas_width - GUIConstants.EDGE_PADDING - indicator_size, self.renderer.canvas_height - GUIConstants.EDGE_PADDING - GUIConstants.BUTTON_HEIGHT - GUIConstants.COMPONENT_PADDING - indicator_size),
+                                (self.renderer.canvas_width - GUIConstants.EDGE_PADDING, self.renderer.canvas_height - GUIConstants.EDGE_PADDING - GUIConstants.BUTTON_HEIGHT - GUIConstants.COMPONENT_PADDING)
+                            ),
+                            fill=status_color,
+                            outline="black",
+                            width=1,
+                        )
+
+                self.renderer.show_image(frame, show_direct=True)
 
 
     def _run(self):
