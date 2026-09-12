@@ -537,21 +537,27 @@ def satodime_card_id(connector) -> str:
     return str(uid)[:16]
 
 
-def format_satodime_unlock_payload(card_id: str, secret) -> str:
+def format_satodime_unlock_payload(card_id: str, secret, nickname: str | None = None) -> str:
     """Render an unlock secret as the text that goes in the backup QR / MicroSD file.
 
     Self-describing and ASCII, so it round-trips through ``QRType.TEXT`` and can be
     read back by a phone camera. The card id is carried alongside the secret so a
-    restore can tell the user when they have presented the wrong card's backup.
+    restore can tell the user when they have presented the wrong card's backup; an
+    optional human nickname (last field) names the key for exactly that purpose.
     """
-    return f"{SATODIME_UNLOCK_PREFIX}{card_id}:{bytes(secret).hex()}"
+    payload = f"{SATODIME_UNLOCK_PREFIX}{card_id}:{bytes(secret).hex()}"
+    if nickname and nickname.strip():
+        # ":" would break the field split on parse, so normalize it away.
+        payload += ":" + nickname.strip().replace(":", "-")
+    return payload
 
 
 def parse_satodime_unlock_payload(text: str):
     """Inverse of :func:`format_satodime_unlock_payload`.
 
-    Returns ``(card_id, secret_list)`` or ``None`` when the text is not a Satodime
-    unlock backup or is malformed.
+    Returns ``(card_id, secret_list, nickname)`` -- nickname None for backups written
+    before nicknames existed -- or ``None`` when the text is not a Satodime unlock
+    backup or is malformed.
     """
     if not text:
         return None
@@ -560,16 +566,17 @@ def parse_satodime_unlock_payload(text: str):
         return None
     body = text[len(SATODIME_UNLOCK_PREFIX):]
     parts = body.split(":")
-    if len(parts) != 2:
+    if len(parts) not in (2, 3):
         return None
     card_id, secret_hex = parts[0].strip(), parts[1].strip()
+    nickname = parts[2].strip() or None if len(parts) == 3 else None
     try:
         secret = bytes.fromhex(secret_hex)
     except ValueError:
         return None
     if len(secret) != SIZE_SATODIME_UNLOCK_SECRET:
         return None
-    return (card_id, list(secret))
+    return (card_id, list(secret), nickname)
 
 
 

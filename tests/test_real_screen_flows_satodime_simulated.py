@@ -1098,11 +1098,11 @@ class TestSatodimeThroughRealInitSatochip(SatodimeSimulatedFlowTest):
             # the healed id -- not a sentinel -- is what gets recorded for swap detection
             assert self.controller.Satochip_Last_UID_SHA1 == real_uid
 
-    def test_restore_refuses_when_the_card_cannot_be_identified(self, monkeypatch):
+    def test_restore_blank_uid_warns_instead_of_blocking(self, monkeypatch):
         """Same unidentified-card condition at restore time: init_satochip re-queries with
-        fresh connectors, then the view says 'cannot identify' instead of the misleading
-        'Wrong Card' (the backup's id cannot be compared against one that was never
-        derived)."""
+        fresh connectors, then the view proceeds -- a blank id is not a dead end. A backup
+        that cannot be matched automatically (no nickname to bridge it) warns that it can't
+        be matched and offers a force-load instead of refusing outright."""
         try:
             ctx = simulated_satodime_raw()
         except JCardSimUnavailable as exc:
@@ -1120,12 +1120,17 @@ class TestSatodimeThroughRealInitSatochip(SatodimeSimulatedFlowTest):
 
             monkeypatch.setattr(seedkeeper_utils, "_init_card_connector", counting_cc)
 
+            secret = list(range(20))
+            other = seedkeeper_utils.format_satodime_unlock_payload("ffffffffffffffff", secret)
+
+            monkeypatch.setattr(smartcard_views, "_satodime_scan_text", lambda view: other)
+
             view = smartcard_views.ToolsSatodimeRestoreUnlockView()
-            recorder = ScreenRecorder(0)  # ack "Cannot Identify Card"
+            recorder = ScreenRecorder(RET_CODE__BACK_BUTTON)  # decline the "Blank Card ID" warning
             view.run_screen = recorder
             dest = view.run()
 
-            assert recorder.titles == ["Cannot Identify Card"]
+            assert recorder.titles == ["Blank Card ID"]
             # initial connect + two reconnect re-queries, all inside init_satochip
             assert len(cc_calls) == seedkeeper_utils.MAX_UID_IDENTIFY_ATTEMPTS
             assert not (self.controller.Satodime_unlock_secrets or {})
@@ -1174,11 +1179,17 @@ class TestUnlockSecretPayload:
         secret = list(range(20))
         payload = seedkeeper_utils.format_satodime_unlock_payload("deadbeef", secret)
         assert payload.startswith("satodime-unlock:")
-        assert seedkeeper_utils.parse_satodime_unlock_payload(payload) == ("deadbeef", secret)
+        assert seedkeeper_utils.parse_satodime_unlock_payload(payload) == ("deadbeef", secret, None)
 
     def test_survives_surrounding_whitespace(self):
         payload = seedkeeper_utils.format_satodime_unlock_payload("abc", list(range(20)))
         assert seedkeeper_utils.parse_satodime_unlock_payload(f"  {payload}\n") is not None
+
+    def test_nickname_round_trips(self):
+        secret = list(range(20))
+        payload = seedkeeper_utils.format_satodime_unlock_payload("deadbeef", secret, "My Card")
+
+        assert seedkeeper_utils.parse_satodime_unlock_payload(payload) == ("deadbeef", secret, "My Card")
 
     @pytest.mark.parametrize("text", [
         "",
@@ -1187,9 +1198,14 @@ class TestUnlockSecretPayload:
         "satodime-unlock:abc:zz",                 # not hex
         "satodime-unlock:abc:" + "00" * 19,       # wrong length
         "satodime-unlock:abc:" + "00" * 21,
+        "satodime-unlock:abc:" + "00" * 20 + ":a:b:c",   # too many fields
     ])
     def test_rejects_junk(self, text):
         assert seedkeeper_utils.parse_satodime_unlock_payload(text) is None
+
+    def test_nickname_colons_are_sanitised(self):
+        payload = seedkeeper_utils.format_satodime_unlock_payload("deadbeef", list(range(20)), "a:b")
+        assert seedkeeper_utils.parse_satodime_unlock_payload(payload) == ("deadbeef", list(range(20)), "a-b")
 
 
 class TestBackupAndRestoreViews(SatodimeSimulatedFlowTest):
@@ -1331,7 +1347,7 @@ class TestBackupAndRestoreViews(SatodimeSimulatedFlowTest):
         assert recorder.titles == ["Ownership Key", "Not Theft Proof", "If You Lose It", "Back Up Ownership Key"]
         menu_buttons = [opt.button_label for opt in recorder.calls[3][1]["button_data"]]
         assert menu_buttons == [
-            "Show QR Code", "Save to MicroSD", "Finalise Claim",
+            "Show QR Code", "Save to MicroSD", "Finalise Claim", "Name This Key",
         ]
         assert dest.View_cls is smartcard_views.BackStackView
 
@@ -1353,7 +1369,7 @@ class TestBackupAndRestoreViews(SatodimeSimulatedFlowTest):
         dest = view.run()
 
         menu_buttons = [opt.button_label for opt in recorder.calls[3][1]["button_data"]]
-        assert menu_buttons == ["Show QR Code", "Save to MicroSD", "Done"]
+        assert menu_buttons == ["Show QR Code", "Save to MicroSD", "Done", "Name This Key"]
         assert dest.View_cls is smartcard_views.BackStackView
 
     def test_save_to_microsd_flips_the_exit_button_in_loop(self, monkeypatch):
@@ -1373,11 +1389,45 @@ class TestBackupAndRestoreViews(SatodimeSimulatedFlowTest):
 
         first_menu = [opt.button_label for opt in recorder.calls[3][1]["button_data"]]
         second_menu = [opt.button_label for opt in recorder.calls[5][1]["button_data"]]
-        assert first_menu[-1] == "Skip Verification"
-        assert second_menu[-1] == "Finalise Claim"
+        # the exit button is index 2; "Name This Key" now trails it at index 3
+        assert first_menu[2] == "Skip Verification"
+        assert second_menu[2] == "Finalise Claim"
         # The backup file now holds the current key.
         saved = (microsd_dir / seedkeeper_utils.satodime_unlock_backup_filename(self.CARD_ID)).read_text(encoding="utf-8")
-        assert seedkeeper_utils.parse_satodime_unlock_payload(saved) == (self.CARD_ID, self.SECRET)
+        assert seedkeeper_utils.parse_satodime_unlock_payload(saved) == (self.CARD_ID, self.SECRET, None)
+        assert dest.View_cls is smartcard_views.BackStackView
+
+    def test_naming_the_key_writes_the_card_label_and_payload(self, monkeypatch):
+        """"Name This Key" in the chooser: the nickname goes into the backup payload
+        and is persisted on the card itself as its label -- the channel a later restore
+        matches against when the UID reads blank."""
+        from real_screen_fixtures import MockSatochipConnector, use_microsd
+
+        microsd_dir = use_microsd(monkeypatch, Path(tempfile.mkdtemp(prefix="satodime_test_")))
+        self._seed_cache()
+
+        connector = MockSatochipConnector()
+        self.controller.Satochip_Connector = connector
+
+        view = smartcard_views.ToolsSatodimeBackupUnlockView(card_id=self.CARD_ID)
+        # dire warning, theft caveat, lose-it warning, chooser -> "Name This Key" (index 3),
+        # text entry returns the nickname, chooser -> "Save to MicroSD" (index 1), ack,
+        # chooser again -> exit (index 2)
+        recorder = ScreenRecorder(0, 0, 0, 3, {"textToEncode": "My Card"}, 1, 0, 2)
+        view.run_screen = recorder
+        dest = view.run()
+
+        # the label write reached the card (the mock records it before its non-tuple
+        # return is swallowed by the best-effort unpack)
+        assert connector.label_changes == ["My Card"]
+
+        saved = (microsd_dir / seedkeeper_utils.satodime_unlock_backup_filename(self.CARD_ID)).read_text(encoding="utf-8")
+
+        assert seedkeeper_utils.parse_satodime_unlock_payload(saved) == (self.CARD_ID, self.SECRET, "My Card")
+
+        # the chooser now shows the name instead of the prompt
+        second_menu = [opt.button_label for opt in recorder.calls[7][1]["button_data"]]
+        assert second_menu[-1] == "Key named 'My Card'"
         assert dest.View_cls is smartcard_views.BackStackView
 
     def test_backup_refuses_when_nothing_is_cached(self):
@@ -1509,6 +1559,78 @@ class TestBackupAndRestoreViews(SatodimeSimulatedFlowTest):
 
             assert recorder.titles == ["Ownership Key", "Ownership Key Set"]
             assert self.controller.Satodime_unlock_secrets[card_id] == self.SECRET
+
+    def test_restore_blank_uid_auto_loads_when_nickname_matches_the_card_label(self, monkeypatch):
+        """The nickname channel: the card's UID reads blank, but its on-card label
+        (written at backup time) matches the backup's nickname -- that identifies the
+        card just as well as a UID would, so the key loads without any warning."""
+        try:
+            ctx = simulated_satodime_raw()
+        except JCardSimUnavailable as exc:
+            pytest.skip(str(exc))
+
+        with ctx:
+            from real_screen_fixtures import use_microsd
+            use_microsd(monkeypatch, Path(tempfile.mkdtemp(prefix="satodime_test_")))  # empty: scan is the only path
+
+            monkeypatch.setattr(seedkeeper_utils, "is_usable_uid", lambda uid: False)  # blank UID
+
+            payload = seedkeeper_utils.format_satodime_unlock_payload("ffffffffffffffff", self.SECRET, "My Card")
+
+            monkeypatch.setattr(smartcard_views, "_satodime_scan_text", lambda view: payload)
+
+            def fake_label(self_view, connector):
+                return "My Card"
+
+            monkeypatch.setattr(
+                smartcard_views.ToolsSatodimeRestoreUnlockView, "_read_card_label", fake_label
+            )
+
+            view = smartcard_views.ToolsSatodimeRestoreUnlockView()
+            recorder = ScreenRecorder(0)  # only the success screen -- no warning was needed
+            view.run_screen = recorder
+            dest = view.run()
+
+            assert recorder.titles == ["Ownership Key Set"]
+            cached = self.controller.Satodime_unlock_secrets or {}
+            # cached under the blank id, so apply_satodime_unlock_secret finds it this session
+            assert list(cached.keys()) == [""], cached
+            assert cached[""] == self.SECRET
+            assert dest.View_cls is smartcard_views.BackStackView
+
+    def test_restore_blank_uid_with_mismatched_nickname_still_warns(self, monkeypatch):
+        """A nickname that does NOT match the card's label cannot bridge a blank UID:
+        same warning as an unmatched backup, and declining it caches nothing."""
+        try:
+            ctx = simulated_satodime_raw()
+        except JCardSimUnavailable as exc:
+            pytest.skip(str(exc))
+
+        with ctx:
+            from real_screen_fixtures import use_microsd
+            use_microsd(monkeypatch, Path(tempfile.mkdtemp(prefix="satodime_test_")))  # empty: scan is the only path
+
+            monkeypatch.setattr(seedkeeper_utils, "is_usable_uid", lambda uid: False)  # blank UID
+
+            payload = seedkeeper_utils.format_satodime_unlock_payload("ffffffffffffffff", self.SECRET, "Other Card")
+
+            monkeypatch.setattr(smartcard_views, "_satodime_scan_text", lambda view: payload)
+
+            def fake_label(self_view, connector):
+                return "My Card"
+
+            monkeypatch.setattr(
+                smartcard_views.ToolsSatodimeRestoreUnlockView, "_read_card_label", fake_label
+            )
+
+            view = smartcard_views.ToolsSatodimeRestoreUnlockView()
+            recorder = ScreenRecorder(RET_CODE__BACK_BUTTON)  # decline the warning
+            view.run_screen = recorder
+            dest = view.run()
+
+            assert recorder.titles == ["Blank Card ID"]
+            assert not (self.controller.Satodime_unlock_secrets or {})
+            assert dest.View_cls is smartcard_views.BackStackView
 
 
 class TestMatchesTheOfficialSatodimeApp:

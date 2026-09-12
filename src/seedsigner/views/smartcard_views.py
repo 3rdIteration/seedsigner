@@ -5092,6 +5092,10 @@ class ToolsSatodimeBackupUnlockView(View):
             )
             return Destination(BackStackView)
 
+        # Optional human name for this key: carried in the backup payload and written
+        # to the card's own label, so a restore can identify the card even when its
+        # UID reads blank. Set from the chooser below; None until then.
+        nickname = None
         payload = seedkeeper_utils.format_satodime_unlock_payload(card_id, secret)
 
         self.run_screen(
@@ -5135,6 +5139,8 @@ class ToolsSatodimeBackupUnlockView(View):
             else:
                 exit_label = "Skip Verification"
 
+            name_label = f"Key named '{nickname[:14]}'" if nickname else "Name This Key"
+
             selected = self.run_screen(
                 ButtonListScreen,
                 title="Back Up Ownership Key",
@@ -5143,12 +5149,27 @@ class ToolsSatodimeBackupUnlockView(View):
                     ButtonOption("Show QR Code"),
                     ButtonOption("Save to MicroSD"),
                     ButtonOption(exit_label),
+                    ButtonOption(name_label),
                 ],
                 show_back_button=False,
             )
 
             if selected == 1:
                 self._save_to_microsd(card_id, payload)
+                continue
+
+            if selected == 3:
+                ret = self.run_screen(ToolsTextQRTextEntryScreen, textToEncode=nickname or "", title="Key Nickname")
+                # Real screens return a dict; mocked run_screen returns an int -- treat
+                # anything but a dict as "cancelled" and keep the current nickname.
+                if isinstance(ret, dict):
+                    if "is_back_button" not in ret:
+                        entered = ret["textToEncode"].strip()
+                        nickname = entered or None
+                        payload = seedkeeper_utils.format_satodime_unlock_payload(card_id, secret, nickname)
+                        # Persist the name on the card itself (best effort): it is what a
+                        # later restore matches against when the UID reads blank.
+                        self._write_card_label(nickname or "")
                 continue
 
             if selected == 2:
@@ -5205,6 +5226,22 @@ class ToolsSatodimeBackupUnlockView(View):
         scanned = _satodime_scan_text(self)
         return scanned is not None and scanned.strip() == payload
 
+    def _write_card_label(self, nickname: str):
+        """Best-effort: persist the key's nickname on the card itself as its label.
+
+        The Satodime applet only accepts a label write once claimed (0x9C04 before
+        that), and some readers or applets may not support it at all -- either way this
+        is optional metadata, so every failure is swallowed silently. A matching label
+        later lets a restore identify the card when its UID reads blank.
+        """
+        connector = getattr(self.controller, "Satochip_Connector", None)
+        if connector is None:
+            return
+        try:
+            (_r, _sw1, _sw2) = connector.card_set_label(nickname[:64])
+        except Exception:
+            pass
+
     def _microsd_backup_matches(self, card_id: str, secret) -> bool:
         """Whether this card's backup file on the MicroSD already holds this exact key.
 
@@ -5226,7 +5263,8 @@ class ToolsSatodimeBackupUnlockView(View):
                 parsed = seedkeeper_utils.parse_satodime_unlock_payload(f.read())
         except (OSError, TypeError, ValueError):
             return False
-        return parsed == (card_id, list(secret))
+        # The nickname is display metadata only -- the key itself must match.
+        return parsed[0] == card_id and parsed[1] == list(secret)
 
     def _save_to_microsd(self, card_id: str, payload: str):
         import os
@@ -5281,24 +5319,17 @@ class ToolsSatodimeRestoreUnlockView(View):
             return Destination(BackStackView)
 
         # The connection completed but the card may still have no usable id (CPLC/IIN/CIN
-        # come back blank on some readers); init_satochip has already re-queried it. If it
-        # is still unusable, comparing against the backup's id would fail with a
-        # misleading "Wrong Card".
+        # come back blank on some readers); init_satochip has already re-queried it. A
+        # blank id is not a dead end: the key's nickname can still identify the card via
+        # its own label, and the user may load anyway.
         card_id = seedkeeper_utils.satodime_card_id(Satochip_Connector)
-        if not card_id:
-            self.run_screen(
-                WarningScreen,
-                title="Cannot Identify Card",
-                status_headline=None,
-                text="Re-present the card\nand try again.",
-                show_back_button=True,
-            )
-            return Destination(BackStackView)
+        card_label = self._read_card_label(Satochip_Connector)
 
         # A backup for this card on the MicroSD is the fastest restore path, so offer it
         # first when one exists; with nothing on the card there is no menu -- scanning is
-        # the only option and starts immediately.
-        if self._microsd_has_backup(card_id):
+        # the only option and starts immediately. The filename is keyed by the id, so a
+        # blank id can never be looked up: scan is the only path then.
+        if card_id and self._microsd_has_backup(card_id):
             selected = self.run_screen(
                 ButtonListScreen,
                 title="Ownership Key",
@@ -5328,23 +5359,44 @@ class ToolsSatodimeRestoreUnlockView(View):
             )
             return Destination(BackStackView)
 
-        backup_card_id, secret = parsed
-        if backup_card_id != card_id:
-            # A genuine mismatch between two successfully derived ids. Historically a
-            # dead end; since flaky readers can mis-derive an id, let the user force-load
-            # after a warning instead. A wrong key is self-correcting: it simply fails at
-            # the applet's gate with "Key Required" until re-restored from the right code.
+        backup_card_id, secret, nickname = parsed
+
+        # Match the presented card against the backup. The UID is the primary channel;
+        # when either side's id is blank, a matching nickname (backup field vs the
+        # label written on the card at backup time) identifies it just as well and the
+        # key loads without further confirmation. Anything else -- no nickname, or one
+        # that does not match while the UIDs also disagree -- warns and offers a
+        # force-load: a wrong key is self-correcting, it simply fails at the applet's
+        # gate with "Key Required" until re-restored from the right code.
+        uid_match = bool(card_id) and backup_card_id == card_id
+        nickname_match = bool(nickname) and nickname == (card_label or "")
+        if not (uid_match or ((not card_id or not backup_card_id) and nickname_match)):
+            # A blank card id is a different situation from a genuine mismatch: the
+            # key simply cannot be matched automatically, so say that instead of
+            # accusing the user of scanning the wrong backup.
+            if not card_id:
+                title = "Blank Card ID"
+                text = "This key can't be matched\nto the card automatically."
+            elif nickname:
+                title = "Wrong Card"
+                text = f"Key named '{nickname[:16]}' belongs\nto a different Satodime."
+            else:
+                title = "Wrong Card"
+                text = "That code belongs to a\ndifferent Satodime."
             selected = self.run_screen(
                 DireWarningScreen,
-                title="Wrong Card",
+                title=title,
                 status_headline=None,
-                text="That code belongs to a\ndifferent Satodime.",
+                text=text,
                 show_back_button=True,
                 button_data=[ButtonOption("Load Anyway")],
             )
             if selected != 0:
                 return Destination(BackStackView)
 
+        # Cache under the presented card's id -- "" for a blank one, which is exactly
+        # what apply_satodime_unlock_secret looks up while this unidentified card stays
+        # in session.
         seedkeeper_utils.cache_satodime_unlock_secret(self.controller, card_id, secret)
         self.run_screen(
             LargeIconStatusScreen,
@@ -5354,6 +5406,24 @@ class ToolsSatodimeRestoreUnlockView(View):
             show_back_button=False,
         )
         return Destination(BackStackView)
+
+    def _read_card_label(self, connector):
+        """The nickname persisted on the card itself at backup time, or None.
+
+        pysatochip answers '(none)' for unsupported and '(unknown)' for failed label
+        reads; both mean "no usable label". Best effort -- a missing label simply
+        means the nickname channel cannot confirm the card.
+        """
+        try:
+            (_r, _sw1, _sw2, label) = connector.card_get_label()
+        except Exception:
+            return None
+        if not isinstance(label, str):
+            return None
+        label = label.strip()
+        if not label or label in ("(none)", "(unknown)"):
+            return None
+        return label
 
     def _microsd_has_backup(self, card_id: str) -> bool:
         """Whether this card's backup file exists on the MicroSD and parses as its key.
