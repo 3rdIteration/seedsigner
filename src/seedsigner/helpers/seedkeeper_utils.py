@@ -585,16 +585,47 @@ def satodime_unlock_backup_filename(card_id: str) -> str:
     return f"satodime_unlock_{card_id}.txt"
 
 
-def cache_satodime_unlock_secret(controller, card_id: str, secret) -> None:
-    """Hold an unlock secret in RAM for the rest of this session."""
+def cache_satodime_unlock_secret(controller, card_id: str, secret, nickname: str | None = None) -> None:
+    """Hold an unlock secret in RAM for the rest of this session.
+
+    ``nickname`` (when given) is also recorded as a name -> (card_id, secret)
+    reverse lookup so the key can be found by name when its card's UID reads
+    blank -- see :func:`find_cached_satodime_unlock_by_nickname`.
+    """
     if controller.Satodime_unlock_secrets is None:
         controller.Satodime_unlock_secrets = {}
     controller.Satodime_unlock_secrets[card_id] = list(secret)
+    if nickname and nickname.strip():
+        if controller.Satodime_unlock_nicknames is None:
+            controller.Satodime_unlock_nicknames = {}
+        controller.Satodime_unlock_nicknames[nickname.strip()] = (card_id, list(secret))
 
 
 def get_cached_satodime_unlock_secret(controller, card_id: str):
     cached = controller.Satodime_unlock_secrets or {}
     return cached.get(card_id)
+
+
+def find_cached_satodime_unlock_by_nickname(controller, nickname: str):
+    """The ``(card_id, secret)`` cached under this name, or None.
+
+    The only way to re-export a key whose card's UID reads blank: the id channel
+    is dead, so the name written at backup time becomes the lookup key. A stale
+    entry (that id was re-cached without this name) resolves to None rather than
+    a wrong key.
+    """
+    if not nickname or not nickname.strip():
+        return None
+    entry = (controller.Satodime_unlock_nicknames or {}).get(nickname.strip())
+    if entry is None:
+        return None
+    card_id, secret = entry
+    # The name map and the secret cache are wiped together at Home, but a
+    # re-restore of the same id without this name leaves a stale binding -- only
+    # trust it while the secret itself is still cached under that id.
+    if get_cached_satodime_unlock_secret(controller, card_id) != list(secret):
+        return None
+    return (card_id, secret)
 
 
 def apply_satodime_unlock_secret(controller, connector) -> bool:
