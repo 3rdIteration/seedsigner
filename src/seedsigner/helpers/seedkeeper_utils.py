@@ -19,6 +19,7 @@ from seedsigner.helpers.iso7816 import format_sw_error
 from seedsigner.helpers.keycard_connector import KeycardSatochipConnector
 
 
+import hashlib
 import os
 import re
 import time
@@ -460,6 +461,241 @@ def disconnect_smartcard_connections(controller):
         pass
 
 
+def claim_satodime_ownership(connector):
+    """Run INS_SETUP on a Satodime, claiming it for this device.
+
+    Satodime has no PIN and no seed. A factory-fresh card -- or one whose ownership
+    has just been handed off with ``satodime_initiate_ownership_transfer()`` --
+    reports ``setup_done`` False and refuses every state-changing APDU (seal, unseal,
+    reset, transfer) with 0x9C04 until setup has run. Setup generates the card's
+    unlock counter/secret and returns them; pysatochip caches both on the connector.
+
+    ``card_setup()`` is the shared Satochip-family wire format, so it insists on
+    PIN/PUK arguments. The Satodime applet ignores the whole data field, so these are
+    random bytes -- never anything a user could mistake for a PIN they must remember.
+    """
+    def junk():
+        return list(urandom(16))
+
+    (response, sw1, sw2) = connector.card_setup(
+        0x05, 0x01, junk(), junk(),   # pin_tries0, ublk_tries0, pin0, ublk0
+        0x01, 0x01, junk(), junk(),   # pin_tries1, ublk_tries1, pin1, ublk1
+        32, 0x0000,                   # secmemsize, memsize
+        0x01, 0x01, 0x01,             # create_object/key/pin ACL
+        option_flags=0,
+        hmacsha160_key=None,
+        amount_limit=0,
+    )
+    return (response, sw1, sw2)
+
+
+SATODIME_UNLOCK_PREFIX = "satodime-unlock:"
+SIZE_SATODIME_UNLOCK_SECRET = 20
+
+# sha1(b"") -- the UID_SHA1 pysatochip computes when its insertion observer reads
+# CPLC/IIN/CIN and all three come back empty. Readers that do not serve those
+# GlobalPlatform data objects answer 6E00 with no data, and pysatochip hashes whatever
+# it got without checking the status words -- so an unidentified card silently derives
+# this constant instead of failing. Treat it as "not derived", never a real id.
+_EMPTY_UID_SHA1 = hashlib.sha1(b"").hexdigest()
+
+# What satodime_card_id() returns when the card could not be identified. Callers must
+# treat it as "card unidentified" and offer a re-present/retry path; it is never a key.
+SATODIME_CARD_ID_UNAVAILABLE = ""
+
+# Total connect attempts init_satochip makes before accepting an unidentified card
+# (initial + reconnects). Re-querying only helps readers that serve CPLC/IIN/CIN
+# intermittently, so this stays small: cards/reader combos that never identify must not
+# hang the flow -- they proceed unidentified and the callers' guards handle it.
+MAX_UID_IDENTIFY_ATTEMPTS = 3
+
+
+def is_usable_uid(uid) -> bool:
+    """True when ``uid`` looks like a real card id rather than an identification failure.
+
+    Catches unset/empty values (the insertion observer never ran or failed) and the
+    empty-hash sentinel (CPLC/IIN/CIN all came back blank). The comparison is on the
+    first 16 hex chars so truncated UIDs are caught too; a real id sharing that prefix
+    with sha1(b"") has ~2^-64 odds.
+    """
+    if not uid:
+        return False
+    return str(uid)[:16].lower() != _EMPTY_UID_SHA1[:16]
+
+
+def satodime_card_id(connector) -> str:
+    """Short, stable id for a Satodime, used to key its unlock secret.
+
+    Returns SATODIME_CARD_ID_UNAVAILABLE ("") when the card could not be identified --
+    UID_SHA1 unset (the insertion observer never ran or failed) or equal to the
+    empty-hash sentinel (CPLC/IIN/CIN all came back blank). Callers must treat "" as
+    "card unidentified" and offer a re-present/retry path; it is never a valid key.
+    """
+    uid = getattr(connector, "UID_SHA1", None) or ""
+    if not is_usable_uid(uid):
+        return SATODIME_CARD_ID_UNAVAILABLE
+    return str(uid)[:16]
+
+
+def format_satodime_unlock_payload(card_id: str, secret, nickname: str | None = None) -> str:
+    """Render an unlock secret as the text that goes in the backup QR / MicroSD file.
+
+    Self-describing and ASCII, so it round-trips through ``QRType.TEXT`` and can be
+    read back by a phone camera. The card id is carried alongside the secret so a
+    restore can tell the user when they have presented the wrong card's backup; an
+    optional human nickname (last field) names the key for exactly that purpose.
+    """
+    payload = f"{SATODIME_UNLOCK_PREFIX}{card_id}:{bytes(secret).hex()}"
+    if nickname and nickname.strip():
+        # ":" would break the field split on parse, so normalize it away.
+        payload += ":" + nickname.strip().replace(":", "-")
+    return payload
+
+
+def parse_satodime_unlock_payload(text: str):
+    """Inverse of :func:`format_satodime_unlock_payload`.
+
+    Returns ``(card_id, secret_list, nickname)`` -- nickname None for backups written
+    before nicknames existed -- or ``None`` when the text is not a Satodime unlock
+    backup or is malformed.
+    """
+    if not text:
+        return None
+    text = text.strip()
+    if not text.startswith(SATODIME_UNLOCK_PREFIX):
+        return None
+    body = text[len(SATODIME_UNLOCK_PREFIX):]
+    parts = body.split(":")
+    if len(parts) not in (2, 3):
+        return None
+    card_id, secret_hex = parts[0].strip(), parts[1].strip()
+    nickname = parts[2].strip() or None if len(parts) == 3 else None
+    try:
+        secret = bytes.fromhex(secret_hex)
+    except ValueError:
+        return None
+    if len(secret) != SIZE_SATODIME_UNLOCK_SECRET:
+        return None
+    return (card_id, list(secret), nickname)
+
+
+
+def satodime_unlock_backup_filename(card_id: str) -> str:
+    """Deterministic name, so a restore can find the file without the user typing it."""
+    return f"satodime_unlock_{card_id}.txt"
+
+
+def cache_satodime_unlock_secret(controller, card_id: str, secret, nickname: str | None = None) -> None:
+    """Hold an unlock secret in RAM for the rest of this session.
+
+    ``nickname`` (when given) is also recorded as a name -> (card_id, secret)
+    reverse lookup so the key can be found by name when its card's UID reads
+    blank -- see :func:`find_cached_satodime_unlock_by_nickname`.
+    """
+    if controller.Satodime_unlock_secrets is None:
+        controller.Satodime_unlock_secrets = {}
+    controller.Satodime_unlock_secrets[card_id] = list(secret)
+    if nickname and nickname.strip():
+        if controller.Satodime_unlock_nicknames is None:
+            controller.Satodime_unlock_nicknames = {}
+        controller.Satodime_unlock_nicknames[nickname.strip()] = (card_id, list(secret))
+
+
+def get_cached_satodime_unlock_secret(controller, card_id: str):
+    cached = controller.Satodime_unlock_secrets or {}
+    return cached.get(card_id)
+
+
+def find_cached_satodime_unlock_by_nickname(controller, nickname: str):
+    """The ``(card_id, secret)`` cached under this name, or None.
+
+    The only way to re-export a key whose card's UID reads blank: the id channel
+    is dead, so the name written at backup time becomes the lookup key. A stale
+    entry (that id was re-cached without this name) resolves to None rather than
+    a wrong key.
+    """
+    if not nickname or not nickname.strip():
+        return None
+    entry = (controller.Satodime_unlock_nicknames or {}).get(nickname.strip())
+    if entry is None:
+        return None
+    card_id, secret = entry
+    # The name map and the secret cache are wiped together at Home, but a
+    # re-restore of the same id without this name leaves a stale binding -- only
+    # trust it while the secret itself is still cached under that id.
+    if get_cached_satodime_unlock_secret(controller, card_id) != list(secret):
+        return None
+    return (card_id, secret)
+
+
+def apply_satodime_unlock_secret(controller, connector) -> bool:
+    """Load this card's cached unlock secret onto the connector.
+
+    Returns True when a real secret was applied. Otherwise the connector is left with
+    pysatochip's all-zero placeholder, which a *contact* reader accepts (the applet
+    skips the unlock-code check entirely there) and a contactless one rejects with
+    0x9C51.
+    """
+    secret = get_cached_satodime_unlock_secret(controller, satodime_card_id(connector))
+    if secret:
+        connector.satodime_set_unlock_secret(list(secret))
+        return True
+    connector.satodime_set_unlock_secret()
+    return False
+
+
+def _connect_card(parentObject, connector):
+    """Run the 5-second "spam connecting" loop against ``connector``.
+
+    Returns the card status dict on success, or None when no usable connection was
+    established within the window (the connector is left disconnected).
+    """
+    parentObject.loading_screen = LoadingScreenThread(text="Connecting to Card")
+    parentObject.loading_screen.start()
+
+    # Spam connecting for 5 seconds to give the user time to insert the card
+    status = None
+    time_end = time.time() + 5
+
+    while time.time() < time_end:
+        try:
+
+            time.sleep(0.5)  # give some time to initialize reader...
+            status = connector.card_get_status()
+            print("Found Card:", connector.UID_SHA1)
+            print(status[3])
+
+            if connector.needs_secure_channel:
+                print("Initiating Secure Channel")
+                connector.card_initiate_secure_channel()
+                print("Secure Channel Initialised")
+
+            if (
+                len(status[3]) > 0
+            ):  # Sometimes it's possible to end up with an invalid of zero length here...
+                break
+            else:
+                # Cleanup the connector and try again
+                try:
+                    connector.card_disconnect()
+                except Exception:
+                    pass
+
+        except Exception as e:
+            print("CardConnector Init Failed:" + str(e))
+            # Ensure the connector state is clean before trying again
+            try:
+                connector.card_disconnect()
+            except Exception:
+                pass
+            time.sleep(0.1)  # Sleep for 100ms
+
+        status = None  # Reset this every loop...
+
+    parentObject.loading_screen.stop()
+    return status
+
+
 def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend_preference: str | None = None, allow_unseeded: bool = False):
     from seedsigner.models.settings import (
         Settings,
@@ -523,7 +759,11 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend
 
     is_keycard_backend = getattr(Satochip_Connector, "is_keycard_backend", False)
 
-    if require_pin:
+    # Satodime has no PIN (the applet ignores it entirely), so shared views that pass
+    # require_pin=True must not prompt for one -- see the Satodime branch below.
+    is_satodime = getattr(Satochip_Connector, "card_type", None) == "Satodime"
+
+    if require_pin and not is_satodime:
         # Prompt for pin if one hasn't been set, otherwise a cached pin will be used
         if parentObject.controller.Satochip_PIN is None:
             print("No Cached pin, prompting for pin")
@@ -538,50 +778,47 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend
             card_pin = list(pin_str.encode("utf-8"))
         else:
             card_pin = parentObject.controller.Satochip_PIN
+    elif is_satodime:
+        # Satodime has no PIN; bind the variable so the cache step below stays safe.
+        card_pin = None
 
-    parentObject.loading_screen = LoadingScreenThread(text="Connecting to Card")
-    parentObject.loading_screen.start()
+    # Some readers only serve CPLC/IIN/CIN intermittently, so a connection can complete
+    # while UID_SHA1 is still unset or at the empty-hash sentinel (see is_usable_uid).
+    # Everything downstream keys off that id -- PIN swap detection, the Satodime unlock
+    # cache -- so reconnect and re-derive until we get a real one. Bounded: cards/reader
+    # combos that never identify must not hang the flow; they proceed unidentified and
+    # the callers' guards handle it (PIN re-prompt / "Cannot Identify Card").
+    status = _connect_card(parentObject, Satochip_Connector)
 
-    # Spam connecting for 5 seconds to give the user time to insert the card
-    status = None
-    time_end = time.time() + 5
-
-    while time.time() < time_end:
+    # A connection can complete while the card still has no usable id (see above). Only
+    # retry in that case -- a plain connect failure keeps its single 5-second window.
+    for attempt in range(1, MAX_UID_IDENTIFY_ATTEMPTS):
+        if not status or is_usable_uid(getattr(Satochip_Connector, "UID_SHA1", "")):
+            break
+        print(
+            f"Card did not identify itself (attempt {attempt + 1}/{MAX_UID_IDENTIFY_ATTEMPTS}), reconnecting..."
+        )
         try:
-
-            time.sleep(0.5)  # give some time to initialize reader...
-            status = Satochip_Connector.card_get_status()
-            print("Found Card:", Satochip_Connector.UID_SHA1)
-            print(status[3])
-
-            if Satochip_Connector.needs_secure_channel:
-                print("Initiating Secure Channel")
-                Satochip_Connector.card_initiate_secure_channel()
-                print("Secure Channel Initialised")
-
-            if (
-                len(status[3]) > 0
-            ):  # Sometimes it's possible to end up with an invalid of zero length here...
-                break
-            else:
-                # Cleanup the connector and try again
-                try:
-                    Satochip_Connector.card_disconnect()
-                except Exception:
-                    pass
-
+            Satochip_Connector.card_disconnect()
+        except Exception:
+            pass
+        parentObject.controller.Satochip_Connector = None
+        try:
+            Satochip_Connector = _init_card_connector(
+                init_card_filter, backend_preference=controller_backend_pref
+            )
         except Exception as e:
-            print("CardConnector Init Failed:" + str(e))
-            # Ensure the connector state is clean before trying again
-            try:
-                Satochip_Connector.card_disconnect()
-            except Exception:
-                pass
-            time.sleep(0.1)  # Sleep for 100ms
+            print("CardConnector Reconnect Failed:" + str(e))
+            parentObject.run_screen(
+                WarningScreen,
+                title="Failure",
+                status_headline=None,
+                text="No smartcard detected\n\nInsert a card and try again.",
+                show_back_button=True,
+            )
+            return None
 
-        status = None  # Reset this every loop...
-
-    parentObject.loading_screen.stop()
+        status = _connect_card(parentObject, Satochip_Connector)
 
     if not status:
         # If we never connected, ensure the connector is reset for future attempts
@@ -606,19 +843,36 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend
         return None
 
     # Check if the Seedkeeper needs the initial setup process
-    if status[3]["setup_done"]:
+    setup_done = status[3]["setup_done"]
+
+    if getattr(Satochip_Connector, "card_type", None) == "Satodime":
+        # Satodime is PIN-less, so it must never reach the shared PIN branches below:
+        # the setup one would ask the user to invent a PIN the applet ignores, and the
+        # verify one has nothing to verify against. An *unclaimed* Satodime still
+        # connects fine -- status, keyslot and pubkey reads all work before setup --
+        # so hand the connector back either way and let ToolsSatodimeClaimView run the
+        # claim when a view actually needs a state change.
+        apply_satodime_unlock_secret(parentObject.controller, Satochip_Connector)
+
+    elif setup_done:
 
         if require_pin:
             # Check for an existing Seedkeeper card that we may have been using with this PIN,
             # prompt to re-enter pin if the card has been swapped...
-            if (
-                parentObject.controller.Satochip_Last_UID_SHA1 is not None
-                and parentObject.controller.Satochip_Last_UID_SHA1
-                != Satochip_Connector.UID_SHA1
+            last_uid = parentObject.controller.Satochip_Last_UID_SHA1
+            current_uid = Satochip_Connector.UID_SHA1
+            # Trust "same card" only when both ids are usable AND equal: an unusable id on
+            # either side (empty / empty-hash sentinel) means we cannot confirm it is the
+            # same physical card, and a cached PIN applied to the wrong one would burn one
+            # of its limited tries.
+            if last_uid is not None and not (
+                is_usable_uid(last_uid)
+                and is_usable_uid(current_uid)
+                and last_uid == current_uid
             ):
-                print("Found Card:", Satochip_Connector.UID_SHA1)
-                print("Expecting Card:", parentObject.controller.Satochip_Last_UID_SHA1)
-                print("Card has changed, prompting for new PIN")
+                print("Found Card:", current_uid)
+                print("Expecting Card:", last_uid)
+                print("Card has changed or cannot be confirmed, prompting for new PIN")
                 pin_str = prompt_for_pin(
                     parentObject,
                     "Card PIN",
@@ -823,10 +1077,20 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend
 
     # Everything works, so save object and also note the PIN & UID of the card we last successfully connected to...
     parentObject.controller.Satochip_Connector = Satochip_Connector
-    parentObject.controller.Satochip_Last_UID_SHA1 = Satochip_Connector.UID_SHA1
+    if is_usable_uid(Satochip_Connector.UID_SHA1):
+        parentObject.controller.Satochip_Last_UID_SHA1 = Satochip_Connector.UID_SHA1
+    elif parentObject.controller.Satochip_Last_UID_SHA1 is None:
+        # Connected but could not identify the card. Record the sentinel (never a real id)
+        # so the next connection's swap check cannot assume continuity -- with Last left as
+        # None it would skip the comparison and apply the cached PIN unverified, which on a
+        # *different* unidentified card would burn one of its limited PIN tries. A usable
+        # record from an earlier connection is kept: comparing against it still works.
+        parentObject.controller.Satochip_Last_UID_SHA1 = _EMPTY_UID_SHA1
 
-    # Only cache pin if we are using it
-    if require_pin:
+    # Only cache pin if we are using it. Satodime never uses (or overwrites) the
+    # cached Satochip PIN: wiping it here would make a later reconnect to the same
+    # Satochip card call set_pin(0, None).
+    if require_pin and not is_satodime:
         parentObject.controller.Satochip_PIN = card_pin
 
     return parentObject.controller.Satochip_Connector

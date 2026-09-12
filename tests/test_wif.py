@@ -1,5 +1,8 @@
 import os
+
+import pytest
 from embit import ec, script, psbt
+from embit.finalizer import finalize_psbt
 from embit.transaction import Transaction, TransactionInput, TransactionOutput
 
 from seedsigner.models.wif import WIFKey
@@ -125,3 +128,160 @@ class TestWIF(BaseTest):
 
         assert psbt_views.PSBTSelectSeedView.SCAN_WIF not in buttons
         assert psbt_views.PSBTSelectSeedView.TYPE_WIF not in buttons
+
+
+# ======================================================================
+# Raw private key signing, against psbts shaped the way Electrum exports them
+# ======================================================================
+
+class TestElectrumStyleWifSigning:
+    """
+    A watch-only single-address wallet in Electrum is the reference producer here.
+
+    It holds an address and nothing else, so the psbt it exports carries a utxo and a
+    script and *no derivation fields at all* -- no bip32_derivations, no fingerprints.
+    That is the shape a Satodime key has to sign, and it is what broke: routing asked
+    ``has_matching_input_fingerprint``, which walks bip32_derivations, found none, and
+    quietly dropped the key on the seed-picker screen even though it signs perfectly.
+
+    The vectors below build that psbt for each script type such a wallet can hold, and
+    walk the whole path: route -> parse -> sign -> finalize.
+    """
+
+    # A fixed key, so a failure is reproducible rather than a one-in-a-run fluke.
+    PRIV = ec.PrivateKey(bytes.fromhex(
+        "1111111111111111111111111111111111111111111111111111111111111111"))
+    KINDS = ("p2pkh", "p2wpkh", "p2sh-p2wpkh", "p2tr")
+
+    def _spk_and_redeem(self, kind, pub):
+        if kind == "p2pkh":
+            return script.p2pkh(pub), None
+        if kind == "p2wpkh":
+            return script.p2wpkh(pub), None
+        if kind == "p2sh-p2wpkh":
+            redeem = script.p2wpkh(pub)
+            return script.p2sh(redeem), redeem
+        if kind == "p2tr":
+            return script.p2tr(pub), None
+        raise ValueError(kind)
+
+    def _build(self, kind, priv=None):
+        """A psbt spending one output of `kind` back out to an unrelated address."""
+        priv = priv or self.PRIV
+        pub = priv.get_public_key()
+        spk, redeem = self._spk_and_redeem(kind, pub)
+        dest = script.p2wpkh(ec.PrivateKey(bytes(31) + bytes([9])).get_public_key())
+
+        prev = Transaction(
+            version=2,
+            vin=[TransactionInput(b"\x22" * 32, 0)],
+            vout=[TransactionOutput(100_000, spk)],
+            locktime=0,
+        )
+        spend = Transaction(
+            version=2,
+            vin=[TransactionInput(bytes.fromhex(prev.txid().hex()), 0)],
+            vout=[TransactionOutput(90_000, dest)],
+            locktime=0,
+        )
+        p = psbt.PSBT(spend)
+        inp = p.inputs[0]
+        # Electrum must ship the whole previous transaction for a legacy input (it is
+        # the only proof of the amount) and sends a witness_utxo for segwit ones.
+        if kind == "p2pkh":
+            inp.non_witness_utxo = prev
+        else:
+            inp.witness_utxo = TransactionOutput(100_000, spk)
+        if redeem is not None:
+            inp.redeem_script = redeem
+        if kind == "p2tr":
+            inp.taproot_internal_key = pub
+        return p
+
+    def test_psbt_carries_no_derivation_fields(self):
+        """Guards the premise: if these ever gain derivations the vectors are wrong."""
+        for kind in self.KINDS:
+            inp = self._build(kind).inputs[0]
+            assert not inp.bip32_derivations, kind
+            assert not inp.taproot_bip32_derivations, kind
+
+    @pytest.mark.parametrize("kind", KINDS)
+    def test_routing_agrees_with_signing(self, kind):
+        """
+        The regression. Routing must not claim a key cannot sign what it can sign:
+        PSBTSelectSeedView drops the key and sends the user to the seed picker, where a
+        WIF is not on offer at all.
+        """
+        key = WIFKey(self.PRIV.wif())
+        p = self._build(kind)
+
+        # The check used for seeds walks bip32_derivations, of which this psbt has
+        # none -- so it answers False for a key that signs. That is the bug, and it is
+        # why PSBTSelectSeedView needs a separate branch for raw keys rather than a
+        # tweak to this one.
+        assert PSBTParser.has_matching_input_fingerprint(
+            psbt=p, seed=key, network=SettingsConstants.MAINNET
+        ) is False, f"{kind}: premise changed -- fingerprint routing now finds something"
+
+        routed = PSBTParser.wif_can_sign_any_input(psbt=p, wif_key=key)
+        signed = p.sign_with(key.privkey)
+
+        assert signed == 1, f"{kind}: key should sign its own input"
+        assert routed is True, f"{kind}: routing said the key cannot sign, but it did"
+
+    @pytest.mark.parametrize("kind", KINDS)
+    def test_parses_signs_and_finalizes(self, kind):
+        """The whole path a Satodime key takes, ending in a broadcastable transaction."""
+        key = WIFKey(self.PRIV.wif())
+        p = self._build(kind)
+
+        parser = PSBTParser(p, seed=key, network=SettingsConstants.MAINNET)
+        assert isinstance(parser.root, ec.PrivateKey)
+        assert parser.num_inputs == 1
+        assert parser.policy["type"] == kind
+
+        assert p.sign_with(parser.root) == 1
+        assert PSBTParser.sig_count(p) == 1
+
+        tx = finalize_psbt(p)
+        assert tx is not None, f"{kind}: finalize produced no transaction"
+        assert len(tx.serialize()) > 0
+
+    @pytest.mark.parametrize("kind", KINDS)
+    def test_a_key_that_owns_nothing_is_not_routed(self, kind):
+        """Routing is a hint, but it must not be a hint that points the wrong way."""
+        stranger = WIFKey(ec.PrivateKey(bytes(31) + bytes([7])).wif())
+        p = self._build(kind)
+
+        assert PSBTParser.wif_can_sign_any_input(psbt=p, wif_key=stranger) is False
+        assert p.sign_with(stranger.privkey) == 0
+
+    def test_legacy_input_resolves_its_amount_from_the_previous_transaction(self):
+        """
+        p2pkh carries no witness_utxo, so the input amount can only come from
+        non_witness_utxo. Worth pinning separately: it is the one script type whose
+        utxo lookup goes down a different path.
+        """
+        key = WIFKey(self.PRIV.wif())
+        p = self._build("p2pkh")
+        assert p.inputs[0].witness_utxo is None
+        assert p.inputs[0].non_witness_utxo is not None
+
+        parser = PSBTParser(p, seed=key, network=SettingsConstants.MAINNET)
+        assert parser.input_amount == 100_000
+        assert parser.spend_amount == 90_000
+
+    def test_signature_verifies_against_the_key(self):
+        """A signature that does not verify would still count towards sig_count."""
+        key = WIFKey(self.PRIV.wif())
+        p = self._build("p2wpkh")
+        p.sign_with(key.privkey)
+
+        pub = self.PRIV.get_public_key()
+        raw = p.inputs[0].partial_sigs[pub]
+        assert raw[-1] == 0x01, "SIGHASH_ALL"
+
+        from embit.psbt import SIGHASH
+
+        sighash = p.sighash(0, sighash=SIGHASH.ALL)
+        assert pub.verify(ec.Signature.parse(raw[:-1]), sighash)

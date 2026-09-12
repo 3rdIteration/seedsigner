@@ -69,7 +69,7 @@ class SimulatedCardFlowTest(FlowTest):
 
 
 class TestSatochipCardInfoAgainstRealApplet(SimulatedCardFlowTest):
-    """Common > Card Info, reading a card that really answers."""
+    """Satochip > Card Settings > Card Info, reading a card that really answers."""
 
     def test_card_info_reports_the_applet(self, monkeypatch):
         try:
@@ -81,8 +81,8 @@ class TestSatochipCardInfoAgainstRealApplet(SimulatedCardFlowTest):
             assert connector.card_type == "Satochip"
 
             session = UISession(script=(
-                select(smartcard_views.ToolsSmartcardMenuView.COMMON)
-                + select(smartcard_views.ToolsCommonView.INFO)
+                select(smartcard_views.ToolsSatochipView.CARD_SETTINGS)
+                + select(smartcard_views.ToolsSatochipCardSettingsView.INFO)
                 + select(0)
             ))
             self.run_sequence(
@@ -90,10 +90,12 @@ class TestSatochipCardInfoAgainstRealApplet(SimulatedCardFlowTest):
                     FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
                     FlowStep(tools_views.ToolsMenuView,
                              button_data_selection=tools_views.ToolsMenuView.SMARTCARD),
-                    FlowStep(smartcard_views.ToolsSmartcardMenuView, real_screens=True),
-                    FlowStep(smartcard_views.ToolsCommonView, real_screens=True),
+                    FlowStep(smartcard_views.ToolsSmartcardMenuView,
+                             button_data_selection=smartcard_views.ToolsSmartcardMenuView.SATOCHIP),
+                    FlowStep(smartcard_views.ToolsSatochipView, real_screens=True),
+                    FlowStep(smartcard_views.ToolsSatochipCardSettingsView, real_screens=True),
                     FlowStep(smartcard_views.ToolsSmartcardInfoView, real_screens=True),
-                    FlowStep(smartcard_views.ToolsCommonView),
+                    FlowStep(smartcard_views.ToolsSatochipCardSettingsView),
                 ],
                 ui_session=session,
             )

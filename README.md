@@ -37,6 +37,11 @@ Support and discussion relating to this fork can happen via this [Telegram Group
   - Factory Reset Card
   - Smartcard info screen with card UID
   - Genuineness check
+* Satodime Card features ([docs](./docs/satodime.md))
+  - View deposit addresses per key slot, in the same format the official Satodime apps derive
+  - Seal and unseal key slots, tagged with the slot's coin (BTC, LTC, BCH, ETH, POL, XCP)
+  - Sign a Bitcoin transaction with an unsealed key (signing is Bitcoin-only)
+  - Transfer card ownership, with unlock-code backup for contactless readers
 * Satochip Card features
   - Load any Seed from the SeedSigner on to the Satochip Card
   - Enable 2FA on the Satochip Card

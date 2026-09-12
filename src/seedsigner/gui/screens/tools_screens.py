@@ -5,30 +5,18 @@ import time
 from dataclasses import dataclass
 from gettext import gettext as _
 from pathlib import Path
-from typing import Any, List
+from typing import Any
 from PIL import Image, ImageDraw
 from seedsigner.helpers import mnemonic_generation
 from seedsigner.gui.renderer import Renderer
 from seedsigner.hardware.camera import Camera
 from seedsigner.helpers.qr import QR
-from seedsigner.gui.components import FontAwesomeIconConstants, Fonts, GUIConstants, IconTextLine, SeedSignerIconConstants, TextArea, Button, IconButton, CheckboxButton, load_image, resize_image_to_fit
+from seedsigner.gui.components import FontAwesomeIconConstants, Fonts, GUIConstants, IconTextLine, SeedSignerIconConstants, TextArea, Button, IconButton, load_image, resize_image_to_fit
 from seedsigner.gui.keyboard import Keyboard, TextEntryDisplay
 from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, BaseScreen, BaseTopNavScreen, ButtonListScreen, KeyboardScreen, PagedTextScreen, WarningEdgesMixin, ButtonOption, LoadingScreenThread
 from seedsigner.hardware.buttons import HardwareButtonsConstants
 from seedsigner.models.settings_definition import SettingsConstants, SettingsDefinition
 
-
-
-@dataclass
-class ToolsCommonFilterScreen(ButtonListScreen):
-    checked_buttons: List[int] = None
-
-    def __post_init__(self):
-        self.title = _("Device Filter")
-        self.is_bottom_list = True
-        self.is_button_text_centered = False
-        self.Button_cls = CheckboxButton
-        super().__post_init__()
 
 
 @dataclass
