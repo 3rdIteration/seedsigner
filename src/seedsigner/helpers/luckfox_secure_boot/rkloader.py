@@ -36,7 +36,13 @@ does, including on-device.
   sign    <img> --key <pem> [-o <f>]  sign locally (convenience; key on this host)
   verify  <img> --pubkey <pem>        full offline PSS verification
   setkey  <img> --pubkey <pem> [-o]   re-embed a different public key
+  setburn <img> --confirm <token>     ARM THE OTP BURN - irreversible once booted
   canonicalise <img> [-o <f>]         zero the signature + key, for rebuild diffs
+
+The signature covers only the 0x600 header; the SPL and its DTB are covered
+transitively by sha256 entries inside it (see "the component table" below).
+`verify` checks both, because a stale component hash is a perfectly signed image
+that the SPL rejects at boot.
 
 Exit codes: 0 ok, 1 usage/IO, 2 verification failed, 3 parse error.
 """
@@ -95,6 +101,60 @@ def read_sig(buf, lay):
 def read_modulus(buf, lay):
     off, ln = lay["mod"]
     return int.from_bytes(bytes(buf[off:off + ln]), "little")
+
+
+# --- the component table ----------------------------------------------------
+#
+# The signature covers only the 0x600 header. Everything else - the SPL, and the
+# SPL DTB that carries the public key - is covered TRANSITIVELY, by sha256
+# entries inside that header:
+#
+#     hdr+0x078 : <u16 start_sector> <u16 sector_count>   hdr+0x090 : sha256
+#     hdr+0x0d0 : <u16 start_sector> <u16 sector_count>   hdr+0x0e8 : sha256
+#
+# Sectors are 512 bytes and relative to the HEADER, so idblock.img (header at 0)
+# hashes [0x800:0x6800] and [0x6800:0x30000], while download.bin (header at
+# 0x1bc) hashes the same sector ranges offset by 0x1bc. Verified on both.
+#
+# This matters more than it looks: rewriting the embedded public key changes the
+# SPL DTB, which lives inside the second component. Re-signing the header alone
+# then yields an image whose signature verifies and whose components do not -
+# it would be rejected at boot. Every mutation outside the header must be
+# followed by rehash_components() BEFORE signing.
+COMPONENT_ENTRIES = ((0x078, 0x090), (0x0d0, 0x0e8))
+SECTOR = 512
+
+
+def component_table(buf, lay):
+    """[(start, end, hash_offset, stored, actual)] for each non-empty entry."""
+    hdr = lay["hdr"]
+    out = []
+    for eoff, hoff in COMPONENT_ENTRIES:
+        start_s, count_s = struct.unpack_from("<HH", bytes(buf), hdr + eoff)
+        if count_s == 0:
+            continue
+        a = hdr + start_s * SECTOR
+        b = hdr + (start_s + count_s) * SECTOR
+        if b > len(buf):
+            continue
+        out.append((a, b, hdr + hoff,
+                    bytes(buf[hdr + hoff:hdr + hoff + 32]),
+                    hashlib.sha256(bytes(buf[a:b])).digest()))
+    return out
+
+
+def rehash_components(buf, lay):
+    """Refresh the component hashes. Returns how many changed."""
+    changed = 0
+    for a, b, hoff, stored, actual in component_table(buf, lay):
+        if stored != actual:
+            buf[hoff:hoff + 32] = actual
+            changed += 1
+    return changed
+
+
+def components_ok(buf, lay):
+    return all(stored == actual for _a, _b, _h, stored, actual in component_table(buf, lay))
 
 
 # --- DER / PEM (stdlib only) ------------------------------------------------
@@ -273,6 +333,10 @@ def cmd_inspect(a):
         ok = rsa_verify_digest(msg_digest(buf, lay), read_sig(buf, lay), n)
         print("   self-check     : %s" % ("VALID (signed by the embedded key)" if ok
                                           else "no valid signature for the embedded key"))
+    table = component_table(buf, lay)
+    for a_, b_, _h, stored, actual in table:
+        print("   component      : [0x%x:0x%x] %s"
+              % (a_, b_, "OK" if stored == actual else "STALE HASH - would be rejected at boot"))
     else:
         print("   embedded key   : none (all-zero modulus)")
     return 0
@@ -324,11 +388,19 @@ def sign_buf(buf, lay, n, d):
     key on a SeedSigner, say) must never have to write it to disk.
     """
     prepare_for_signing(buf, lay)
+    # The component hashes live inside the header and are therefore covered by
+    # the signature, so they must be correct BEFORE it is computed. Anything
+    # that touched bytes outside the header (set_pubkey, arming the OTP burn)
+    # has invalidated them; signing is the point at which the whole file is
+    # being vouched for, so refresh them here rather than trusting the caller.
+    rehash_components(buf, lay)
     sig = rsa_sign_digest(msg_digest(buf, lay), n, d)
     off, _ = lay["sig"]
     buf[off:off + SIG_LEN] = sig
     if not rsa_verify_digest(msg_digest(buf, lay), int.from_bytes(sig, "little"), n):
         raise RkError("internal error: freshly made signature does not verify")
+    if not components_ok(buf, lay):
+        raise RkError("internal error: component hashes stale after signing")
     return sig
 
 
@@ -399,11 +471,23 @@ def cmd_verify(a):
     emb = read_modulus(buf, lay)
     if a.pubkey and emb and emb != n:
         print("!! WARNING: the image embeds a DIFFERENT key than %s" % a.pubkey)
-    if rsa_verify_digest(msg_digest(buf, lay), read_sig(buf, lay), n):
-        print("OK: %s carries a valid RSA-PSS signature over its 0x600-byte header" % a.image)
-        return 0
-    print("FAIL: %s does not verify" % a.image)
-    return 2
+    sig_ok = rsa_verify_digest(msg_digest(buf, lay), read_sig(buf, lay), n)
+    table = component_table(buf, lay)
+    bad = [(a_, b_) for a_, b_, _h, stored, actual in table if stored != actual]
+    if not sig_ok:
+        print("FAIL: %s does not verify" % a.image)
+        return 2
+    if bad:
+        # The signature covers the header, which contains these hashes - so a
+        # stale component hash is a perfectly signed image the SPL will reject.
+        print("FAIL: %s has a valid signature but %d of %d component hash(es) are "
+              "stale; the SPL would reject it" % (a.image, len(bad), len(table)))
+        for a_, b_ in bad:
+            print("   component [0x%x:0x%x] does not match its recorded sha256" % (a_, b_))
+        return 2
+    print("OK: %s verifies (RSA-PSS header signature + %d component hash(es))"
+          % (a.image, len(table)))
+    return 0
 
 
 def cmd_setkey(a):
@@ -417,6 +501,169 @@ def cmd_setkey(a):
     print("   new modulus sha256: %s" % hashlib.sha256(n.to_bytes(SIG_LEN, "big")).hexdigest())
     print("!! setkey rewrites fields that are NOT fully characterised. Verify on a")
     print("!! SACRIFICIAL, UNFUSED board before trusting it. Nothing here burns a fuse.")
+    return 0
+
+
+# --- arming the OTP burn ----------------------------------------------------
+#
+# A loader whose SPL DTB carries `burn-key-hash = <1>` in its key node writes the
+# public-key hash to OTP on first boot and turns on secure boot PERMANENTLY.
+# Normally this is a build-time option (SEEDSIGNER_FIT_BURN_KEY_HASH=1, which
+# makes fit-core.sh set the property before the loader is packed). Doing it
+# post-hoc means editing the DTB in place, which is possible because the DTB is
+# followed by padding inside its component: the property costs 30 bytes and
+# there are ~1120 spare, so the file length never changes.
+#
+# Validated against a real SEEDSIGNER_FIT_BURN_KEY_HASH=1 build: the DTB this
+# produces is BYTE-IDENTICAL to the one the SDK emits.
+
+BURN_PROP = "burn-key-hash"
+
+
+def _fitsign():
+    """Import the FDT reader from fitsign.py, lazily.
+
+    Lazily because fitsign imports THIS module at import time, so a top-level
+    import here would be circular. By path because this file is loaded both as a
+    script (its directory on sys.path) and as part of a package (not), and the
+    two modules always sit side by side.
+    """
+    import importlib
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    return importlib.import_module("fitsign")
+
+
+def find_spl_dtb(buf):
+    """(offset, size) of the embedded SPL control DTB, or None."""
+    fdt_props = _fitsign().fdt_props
+    data = bytes(buf)
+    at, best = 0, None
+    while True:
+        at = data.find(b"\xd0\x0d\xfe\xed", at)
+        if at < 0:
+            return best
+        try:
+            total, off_struct, off_strings = struct.unpack_from(">III", data, at + 4)
+            if (0x100 < total < 0x20000 and at + total <= len(data)
+                    and off_struct < total and off_strings < total):
+                fdt_props(bytearray(data[at:at + total]))     # must actually parse
+                best = (at, total)
+        except Exception:
+            pass
+        at += 4
+
+
+def _fdt_add_u32(dtb, node_path, name, value):
+    """Return `dtb` with `name = <value>` inserted as the node's first property."""
+    fsmod = _fitsign()
+    fdt_header, fdt_props = fsmod.fdt_header, fsmod.fdt_props
+    fdt_tokens, FDT_PROP = fsmod.fdt_tokens, fsmod.FDT_PROP
+    props = fdt_props(dtb)
+    if node_path not in props:
+        raise RkError("node %s not found in the SPL DTB" % node_path)
+    if name in props[node_path]:
+        raise RkError("%s already has %s" % (node_path, name))
+
+    h = fdt_header(dtb)
+    data = bytes(dtb)
+    struct_blk = bytearray(data[h["off_struct"]:h["off_struct"] + h["size_struct"]])
+    strings_blk = bytearray(data[h["off_strings"]:h["off_strings"] + h["size_strings"]])
+
+    name_off = len(strings_blk)
+    strings_blk += name.encode() + b"\x00"
+
+    insert_at = None
+    for kind, path, _pname, _s, e in fdt_tokens(dtb):
+        if kind == "begin" and path == node_path:
+            insert_at = e - h["off_struct"]
+            break
+    if insert_at is None:
+        raise RkError("could not locate %s" % node_path)
+    struct_blk[insert_at:insert_at] = (struct.pack(">III", FDT_PROP, 4, name_off)
+                                       + struct.pack(">I", value))
+
+    off_strings = h["off_struct"] + len(struct_blk)
+    out = bytearray(data[:h["off_struct"]]) + struct_blk + strings_blk
+    struct.pack_into(">I", out, 4, off_strings + len(strings_blk))   # totalsize
+    struct.pack_into(">I", out, 12, off_strings)
+    struct.pack_into(">I", out, 32, len(strings_blk))
+    struct.pack_into(">I", out, 36, len(struct_blk))
+    return out
+
+
+def arm_burn(buf, lay):
+    """Insert burn-key-hash = <1> into the SPL DTB. Returns bytes grown."""
+    loc = find_spl_dtb(buf)
+    if loc is None:
+        raise RkError("no SPL device tree found - only idblock.img carries one")
+    off, size = loc
+    fdt_props = _fitsign().fdt_props
+    dtb = bytearray(bytes(buf[off:off + size]))
+    keys = [n for n in fdt_props(dtb) if n.startswith("/signature/key-")]
+    if not keys:
+        raise RkError("the SPL DTB has no /signature/key-* node")
+
+    # headroom: the padding between the DTB and the end of its component
+    comp_end = None
+    for a_, b_, _h, _s, _act in component_table(buf, lay):
+        if a_ <= off < b_:
+            comp_end = b_
+    if comp_end is None:
+        raise RkError("the SPL DTB is not inside any hashed component")
+
+    new = _fdt_add_u32(dtb, keys[0], BURN_PROP, 1)
+    grew = len(new) - size
+    if off + size + grew > comp_end:
+        raise RkError("no room to grow the DTB (%d bytes needed, %d spare)"
+                      % (grew, comp_end - (off + size)))
+    buf[off:off + size] = new
+    del buf[off + len(new):off + len(new) + grew]      # keep the file length
+    rehash_components(buf, lay)
+    return grew
+
+
+def is_burn_armed(buf):
+    loc = find_spl_dtb(buf)
+    if loc is None:
+        return False
+    fdt_props = _fitsign().fdt_props
+    off, size = loc
+    props = fdt_props(bytearray(bytes(buf[off:off + size])))
+    return any(BURN_PROP in props[n] for n in props if n.startswith("/signature/key-"))
+
+
+CONFIRM_TOKEN = "I-UNDERSTAND-THIS-BURNS-A-FUSE"
+
+
+def cmd_setburn(a):
+    buf = read(a.image)
+    lay = layout(buf)
+    if is_burn_armed(buf):
+        print("%s is already armed" % a.image)
+        return 0
+    if a.confirm != CONFIRM_TOKEN:
+        print("REFUSING: arming the OTP burn is IRREVERSIBLE.", file=sys.stderr)
+        print("A board booted with the resulting loader writes the public-key hash to",
+              file=sys.stderr)
+        print("OTP and will thereafter ONLY boot firmware signed by that key. There is no",
+              file=sys.stderr)
+        print("undo, and losing the key orphans the device.", file=sys.stderr)
+        print("Re-run with --confirm %s" % CONFIRM_TOKEN, file=sys.stderr)
+        return 1
+    n = read_modulus(buf, lay)
+    grew = arm_burn(buf, lay)
+    dst = write_out(buf, a.image, a.out)
+    print("ARMED %s (DTB grew %d bytes into its padding; file length unchanged)"
+          % (dst, grew))
+    if n:
+        print("   the key whose hash would be burned: sha256 %s"
+              % hashlib.sha256(n.to_bytes(SIG_LEN, "big")).hexdigest())
+    print("   the signature is now cleared - sign it before flashing")
+    soff, _ = lay["sig"]
+    buf[soff:soff + SIG_LEN] = b"\x00" * SIG_LEN
+    write_out(buf, dst, None)
     return 0
 
 
@@ -490,6 +737,9 @@ def main(argv=None):
     sp.add_argument("--force", action="store_true", help="sign even if the embedded key differs")
     add("verify", cmd_verify, pub=True)
     add("setkey", cmd_setkey, pub=True, out=True)
+    sb = add("setburn", cmd_setburn, out=True)
+    sb.add_argument("--confirm", default="",
+                    help="must be %s - arming the OTP burn is IRREVERSIBLE" % CONFIRM_TOKEN)
     add("canonicalise", cmd_canonicalise, out=True)
 
     a = p.parse_args(argv)

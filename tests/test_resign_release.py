@@ -292,3 +292,35 @@ def test_resigns_a_real_build(tmp_path, new_key):
     assert report.ok
     for name, ok, detail in rr.verify_release(folder, int(new_key.n), ED_SEED):
         assert ok, "%s (%s) failed to verify" % (name, detail)
+
+
+def test_verify_release_catches_a_stale_component_hash(tmp_path, new_key):
+    """A perfectly signed image with a stale component hash must not pass.
+
+    The 0x600 header's signature covers the header, which contains the sha256 of
+    the SPL and its DTB. Re-signing after mutating those without refreshing the
+    hashes yields something that verifies cryptographically and is rejected at
+    boot; verify_release has to catch it.
+    """
+    src = _real_release()
+    if not src:
+        pytest.skip("no built release under seedsigner-os/opt/luckfox/build-output")
+    folder = str(tmp_path / "stale")
+    shutil.copytree(src, folder)
+    rr.resign_release(folder, new_key, ED_SEED)
+    assert all(ok for _n, ok, _d in rr.verify_release(folder, int(new_key.n), ED_SEED))
+
+    # corrupt a byte inside a hashed component, then re-sign the header ONLY
+    path = os.path.join(folder, "idblock.img")
+    buf = rk.read(path)
+    lay = rk.layout(buf)
+    start, _end, _h, _s, _a = rk.component_table(buf, lay)[1]
+    buf[start + 32] ^= 0xff
+    rk.prepare_for_signing(buf, lay)
+    sig = rk.rsa_sign_digest(rk.msg_digest(buf, lay), int(new_key.n), int(new_key.d))
+    off, _ = lay["sig"]
+    buf[off:off + rk.SIG_LEN] = sig
+    rk.write_out(buf, path, None)
+
+    checks = dict((n, ok) for n, ok, _d in rr.verify_release(folder, int(new_key.n), ED_SEED))
+    assert checks["idblock.img"] is False

@@ -318,9 +318,15 @@ def verify_release(folder, rsa_pubkey_n, ed25519_seed=None):
             continue
         buf = rk.read(path)
         lay = rk.layout(buf)
-        ok = rk.rsa_verify_digest(rk.msg_digest(buf, lay), rk.read_sig(buf, lay),
-                                  rsa_pubkey_n)
-        results.append((name, ok, "RSA-PSS header signature"))
+        sig_ok = rk.rsa_verify_digest(rk.msg_digest(buf, lay), rk.read_sig(buf, lay),
+                                      rsa_pubkey_n)
+        # The signature only covers the 0x600 header. The SPL and its DTB hang
+        # off sha256 entries inside that header, so a stale component hash is a
+        # perfectly signed image the SPL refuses to boot - check both.
+        comp_ok = rk.components_ok(buf, lay)
+        results.append((name, sig_ok and comp_ok,
+                        "RSA-PSS header signature + components"
+                        if comp_ok else "STALE COMPONENT HASH"))
     for name in (FIT_KEYED, FIT_PLAIN):
         path = os.path.join(folder, name)
         if not os.path.isfile(path):
