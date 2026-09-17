@@ -365,6 +365,7 @@ class ToolsMenuView(View):
     MICROSD = ButtonOption("MicroSD Tools")
     BATTERY_CALIBRATION = ButtonOption("Battery Calibration")
     GPG = ButtonOption("GPG Tools")
+    RESIGN_RELEASE = ButtonOption("Re-sign Release")
     CLEAR_DESCRIPTOR = ButtonOption("Clear Multisig Descriptor")
     NETWORK_INFO = ButtonOption("Network Info")
 
@@ -393,6 +394,7 @@ class ToolsMenuView(View):
             self.VERIFY_ADDRESS,
             self.TEXTQRCODE,
             self.MICROSD,
+            self.RESIGN_RELEASE if Path("/etc/seedsigner-os-release").is_file() else None,
             battery_calibration_button,
             self.NETWORK_INFO if Path("/usr/bin/network-info").is_file() else None,
             self.GPG,
@@ -436,6 +438,10 @@ class ToolsMenuView(View):
 
         elif button_data[selected_menu_num] == self.TEXTQRCODE:
             return Destination(ToolsTextQRView)
+
+        elif button_data[selected_menu_num] == self.RESIGN_RELEASE:
+            from seedsigner.views.resign_views import ToolsResignReleaseStartView
+            return Destination(ToolsResignReleaseStartView)
 
         elif button_data[selected_menu_num] == self.PASSWORD_GENERATOR:
             return Destination(ToolsPasswordGeneratorTypeView)
