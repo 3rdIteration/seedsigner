@@ -11,8 +11,8 @@
     `seedkeeper_utils.init_satochip` -- so the stand-in can later be swapped for a
     jcardsim-backed simulator running the real applets without touching these tests.
 
-    Two views here need no card at all and are covered directly: ToolsCommonFilterView
-    (it only mutates a controller attribute) and ToolsDIYMountStatusView (it reads a log
+    Views here that need no card at all are covered directly: the per-applet 'Card Settings'
+    submenus (they just build a ButtonListScreen) and ToolsDIYMountStatusView (it reads a log
     file).
 """
 
@@ -63,10 +63,10 @@ class TestSmartcardMenuNavigation(SmartcardFlowTest):
     @pytest.mark.parametrize(
         "menu_option, submenu_view",
         [
-            (smartcard_views.ToolsSmartcardMenuView.COMMON, smartcard_views.ToolsCommonView),
             (smartcard_views.ToolsSmartcardMenuView.SATOCHIP, smartcard_views.ToolsSatochipView),
             (smartcard_views.ToolsSmartcardMenuView.KEYCARD, smartcard_views.ToolsKeycardView),
             (smartcard_views.ToolsSmartcardMenuView.SEEDKEEPER, smartcard_views.ToolsSeedkeeperView),
+            (smartcard_views.ToolsSmartcardMenuView.SATODIME, smartcard_views.ToolsSatodimeView),
             (smartcard_views.ToolsSmartcardMenuView.SPECTER_DIY, smartcard_views.ToolsSpecterDIYView),
             (smartcard_views.ToolsSmartcardMenuView.Satochip_DIY, smartcard_views.ToolsSatochipDIYView),
         ],
@@ -117,32 +117,49 @@ class TestSmartcardMenuNavigation(SmartcardFlowTest):
 
 
 
-class TestCardFilterFlow(SmartcardFlowTest):
+class TestCardSettingsSubmenus(SmartcardFlowTest):
     """
-    Common Functions > Device Filter. This one needs no card -- it only narrows which
-    card types later flows will accept -- and it was never named in any test.
+    Each applet's 'Card Settings' submenu opens for real and backs out. These host the
+    functions that used to live under the removed Common Functions menu, so they must
+    still construct (a ButtonListScreen with the shared-view options) without a card.
     """
 
-    def test_choosing_a_filter_records_it(self):
+    @pytest.mark.parametrize(
+        "menu_option, parent_view, settings_view",
+        [
+            (
+                smartcard_views.ToolsSmartcardMenuView.SATOCHIP,
+                smartcard_views.ToolsSatochipView,
+                smartcard_views.ToolsSatochipCardSettingsView,
+            ),
+            (
+                smartcard_views.ToolsSmartcardMenuView.SEEDKEEPER,
+                smartcard_views.ToolsSeedkeeperView,
+                smartcard_views.ToolsSeedkeeperCardSettingsView,
+            ),
+            (
+                smartcard_views.ToolsSmartcardMenuView.SATODIME,
+                smartcard_views.ToolsSatodimeView,
+                smartcard_views.ToolsSatodimeCardSettingsView,
+            ),
+        ],
+    )
+    def test_card_settings_opens_and_backs_out(self, menu_option, parent_view, settings_view):
         session = UISession(script=(
-            select(smartcard_views.ToolsSmartcardMenuView.COMMON)
-            + select(smartcard_views.ToolsCommonView.FILTER)
-            + select("Satochip")  # untick it
-            + [Back()]            # the view loops until BACK, which commits the filter
+            select(menu_option)
+            + select(parent_view.CARD_SETTINGS)
+            + [Back()]
         ))
 
         self.run_sequence(
             self.smartcard_steps() + [
                 FlowStep(smartcard_views.ToolsSmartcardMenuView, real_screens=True),
-                FlowStep(smartcard_views.ToolsCommonView, real_screens=True),
-                FlowStep(smartcard_views.ToolsCommonFilterView, real_screens=True),
-                FlowStep(smartcard_views.ToolsCommonView),
+                FlowStep(parent_view, real_screens=True),
+                FlowStep(settings_view, real_screens=True),
+                FlowStep(parent_view),
             ],
             ui_session=session,
         )
-
-        # BACK commits whatever is still ticked; deselecting one leaves the other two.
-        assert self.controller.tools_common_card_filter == ["seedkeeper", "satodime"]
 
 
 

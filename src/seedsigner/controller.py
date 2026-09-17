@@ -268,8 +268,22 @@ class Controller(Singleton):
     Satochip_Connector = None
     Satochip_PIN = None
     Satochip_Last_UID_SHA1 = None
+    # Satodime unlock secrets for this session, keyed by card UID. The card emits its
+    # 20-byte unlock secret exactly once, from INS_SETUP, and it can never be re-read;
+    # without it, a contactless reader cannot seal, unseal, reset or even transfer the
+    # card. Held in RAM only -- the user is walked through backing it up at claim time.
+    Satodime_unlock_secrets: dict | None = None
+    # Reverse lookup of the names given to those keys at backup time:
+    # nickname -> (card_id, secret). Lets a key be found by name when its card's
+    # UID reads blank -- the id channel is dead and the name written on the card
+    # becomes the only handle. Wiped alongside Satodime_unlock_secrets above.
+    Satodime_unlock_nicknames: dict | None = None
+    # Cached slot data for the Satodime slot-centric menus: avoids re-reading the card
+    # when navigating the slot list, per-slot action menus, and view-address QR. Cleared
+    # on Home alongside the session secrets above. Keys: card_id (str), max_keys (int),
+    # slots (list of (state, coin, address) tuples), built once by ToolsSatodimeSlotsView.
+    satodime_slot_cache: dict | None = None
     GPG_Admin_PIN = None
-    tools_common_card_filter: list[str] = None
     javacard_keys: dict | None = None
 
     # Destination placeholder for when we need to jump out to a side flow but intend to
@@ -461,6 +475,7 @@ class Controller(Singleton):
             used. Only used by the test suite.
         """
         from seedsigner.views import MainMenuView, BackStackView, RemoveMicroSDWarningView
+        from seedsigner.views.smartcard_views import ToolsSmartcardMenuView
         from seedsigner.views.screensaver import OpeningSplashView
         from seedsigner.models.settings_definition import SettingsConstants
         from seedsigner.views.desktop_warning import DesktopWarningView
@@ -567,9 +582,20 @@ class Controller(Singleton):
                         self.Satochip_PIN = None
                         self.Satochip_Last_UID_SHA1 = None
                         self.Satochip_Connector = None
+                        self.Satodime_unlock_secrets = None
+                        self.Satodime_unlock_nicknames = None
 
                     # Always drop any cached OpenPGP admin PIN when returning home
                     self.GPG_Admin_PIN = None
+
+                    # Always drop the cached Satodime slot data (it's read-only display
+                    # state that could go stale across sessions).
+                    self.satodime_slot_cache = None
+
+                elif next_destination.View_cls == ToolsSmartcardMenuView:
+                    # Returning to the smartcard menu ends the applet session; drop any
+                    # cached Satodime slot data so re-entering Key Slots reads fresh state.
+                    self.satodime_slot_cache = None
                 
                 logger.info(f"\nback_stack: {self.back_stack}")
 
@@ -760,6 +786,9 @@ class Controller(Singleton):
         self.Satochip_PIN = None
         self.Satochip_Last_UID_SHA1 = None
         self.Satochip_Connector = None
+        self.Satodime_unlock_secrets = None
+        self.Satodime_unlock_nicknames = None
+        self.satodime_slot_cache = None
         self.GPG_Admin_PIN = None
         self.image_entropy_preview_frames = None
         self.image_entropy_final_image = None

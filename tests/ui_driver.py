@@ -416,7 +416,12 @@ def make_test_renderer(width=240, height=240) -> MagicMock:
     renderer.lock = threading.RLock()
     renderer.frames = []
 
-    def show_image(image=None, alpha_overlay=None, is_background_thread=False):
+    def show_image(image=None, alpha_overlay=None, is_background_thread=False, show_direct=False):
+        if show_direct and image is not None:
+            # Mirrors Renderer.show_image(show_direct=True): the incoming frame is what
+            # gets displayed (camera preview), bypassing the canvas.
+            renderer.frames.append(image.copy())
+            return
         if image is not None:
             renderer.canvas.paste(image)
         renderer.frames.append(renderer.canvas.copy())
@@ -498,9 +503,13 @@ class MockCameraFeed(MagicMock):
     """
     Camera stand-in playing back scripted frames. preview=True reads peek at the head
     of the feed (the display frame); other reads consume (entropy frames).
+
+    Undefined attributes (start_video_stream_mode, _video_stream, ...) fall through to
+    MagicMock's child-mock creation, which re-invokes this class with mock kwargs --
+    hence **kwargs.
     """
 
-    def __init__(self, frames=None):
+    def __init__(self, frames=None, **kwargs):
         super().__init__()
         self._frames = list(frames or [])
 
@@ -514,7 +523,10 @@ class MockCameraFeed(MagicMock):
                 "read_video_stream() called but the camera frame feed is exhausted"
             )
         if preview:
-            return self._frames[0]
+            # A copy, like a real camera's fresh buffer per read: the preview thread
+            # annotates its frame (instructions/progress) and must not deface what the
+            # decoder will later consume from the same feed slot.
+            return self._frames[0].copy()
         return self._frames.pop(0)
 
 

@@ -71,7 +71,16 @@ class PSBTSelectSeedView(View):
             raise Exception("No transaction currently loaded")
 
         if self.controller.psbt_seed:
-             if PSBTParser.has_matching_input_fingerprint(psbt=self.controller.psbt, seed=self.controller.psbt_seed, network=self.settings.get_value(SettingsConstants.SETTING__NETWORK)):
+             from seedsigner.models.wif import WIFKey
+
+             if isinstance(self.controller.psbt_seed, WIFKey):
+                 # A raw key has no BIP32 tree to fingerprint, and the psbt an Electrum
+                 # watch-only single-address wallet exports has no derivation fields at
+                 # all -- so the fingerprint check below always said "no" and quietly
+                 # dropped a key that signs the transaction fine.
+                 if PSBTParser.wif_can_sign_any_input(psbt=self.controller.psbt, wif_key=self.controller.psbt_seed):
+                     return Destination(PSBTOverviewView)
+             elif PSBTParser.has_matching_input_fingerprint(psbt=self.controller.psbt, seed=self.controller.psbt_seed, network=self.settings.get_value(SettingsConstants.SETTING__NETWORK)):
                  # skip the seed prompt if a seed was previously selected and has matching input fingerprint
                  return Destination(PSBTOverviewView)
 

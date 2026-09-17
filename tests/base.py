@@ -30,8 +30,14 @@ sys.modules['seedsigner.hardware.st7789_mpy'] = MagicMock()
 sys.modules['seedsigner.hardware.ili9341'] = MagicMock()
 sys.modules['RPi'] = MagicMock()
 sys.modules['RPi.GPIO'] = MagicMock()
-sys.modules['pyzbar'] = MagicMock()
-sys.modules['pyzbar.pyzbar'] = MagicMock()
+# Use the real pyzbar when it's importable (e.g. desktop/CI with libzbar0). A blanket
+# MagicMock makes DecodeQR.is_qr_scanner_available() report True while extract_qr_data()
+# silently decodes nothing, which breaks any test that exercises real QR decoding.
+try:
+    from pyzbar import pyzbar  # noqa: F401
+except Exception:
+    sys.modules['pyzbar'] = MagicMock()
+    sys.modules['pyzbar.pyzbar'] = MagicMock()
 sys.modules['pysatochip'] = MagicMock()
 sys.modules['pysatochip.JCconstants'] = MagicMock()
 sys.modules['pysatochip.util'] = MagicMock()
