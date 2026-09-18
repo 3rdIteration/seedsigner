@@ -1,17 +1,17 @@
 """Tests for the Luckfox release re-signing helper.
 
-Three layers:
+The signers themselves live in seedsigner-os and are installed onto the image by
+its build; this app imports them at runtime and does not vendor a copy. So every
+test here needs them resolvable, which `secure_boot_tools` does via
+$SEEDSIGNER_SECURE_BOOT_DIR, /usr/lib/seedsigner/secure-boot, or a sibling
+seedsigner-os checkout. Without any of those the whole module skips - the same
+condition under which the app hides the menu entry.
 
-  * Vendor sync  - the three signers under helpers/luckfox_secure_boot/ are
-    copies from seedsigner-os. If that repo is checked out as a sibling, assert
-    they still match, so drift is caught rather than discovered on a fused
-    board. Skipped when the sibling is absent.
+  * Synthetic  - a release folder built from scratch (a Rockchip-shaped
+    container, a FIT, a rootfs + .size), re-signed and verified.
 
-  * Synthetic    - a release folder built from scratch (a Rockchip-shaped
-    container, a FIT, a rootfs + .size), re-signed and verified. Runs anywhere.
-
-  * Artifact     - if a real signed build is present in the sibling
-    seedsigner-os checkout, re-sign a copy of it and verify. Skipped otherwise.
+  * Artifact   - if a real signed build is present in the sibling seedsigner-os
+    checkout, re-sign a copy of it and verify. Skipped otherwise.
 """
 import hashlib
 import os
@@ -23,28 +23,37 @@ import types
 import pytest
 
 from seedsigner.helpers import resign_release as rr
-from seedsigner.helpers.luckfox_secure_boot import rkloader as rk
-from seedsigner.helpers.luckfox_secure_boot import fitsign as fs
-from seedsigner.helpers.luckfox_secure_boot import minisign as ms
+from seedsigner.helpers import secure_boot_tools
 
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OS_REPO = os.path.join(os.path.dirname(REPO), "seedsigner-os")
-OS_SB = os.path.join(OS_REPO, "opt", "luckfox", "secure-boot")
-VENDORED = os.path.join(REPO, "src", "seedsigner", "helpers", "luckfox_secure_boot")
+
+if not secure_boot_tools.is_available():
+    pytest.skip("seedsigner-os signing tools not resolvable (set %s)"
+                % secure_boot_tools.ENV_VAR, allow_module_level=True)
+
+rk, fs, ms = secure_boot_tools.load()
 
 
-# --- vendor sync ------------------------------------------------------------
+def test_tools_resolve_to_a_real_directory():
+    """The resolver is the only route to the signers, so prove it works."""
+    directory = secure_boot_tools.find_dir()
+    assert directory is not None
+    for name in ("rkloader.py", "fitsign.py", "minisign.py"):
+        assert os.path.isfile(os.path.join(directory, name))
 
-@pytest.mark.parametrize("name", ["rkloader.py", "fitsign.py", "minisign.py"])
-def test_vendored_signer_matches_seedsigner_os(name):
-    src = os.path.join(OS_SB, name)
-    if not os.path.isfile(src):
-        pytest.skip("no seedsigner-os checkout beside this repo")
-    with open(src, "rb") as a, open(os.path.join(VENDORED, name), "rb") as b:
-        assert a.read() == b.read(), (
-            "%s has drifted from seedsigner-os. Edit it there and re-copy; do not "
-            "edit the vendored copy." % name)
+
+def test_unavailable_tools_raise_a_useful_error(monkeypatch, tmp_path):
+    """A missing install must explain itself, not surface as an ImportError."""
+    monkeypatch.setenv(secure_boot_tools.ENV_VAR, str(tmp_path))
+    monkeypatch.setattr(secure_boot_tools, "IMAGE_DIR", str(tmp_path))
+    monkeypatch.setattr(secure_boot_tools, "_sibling_checkout_dir",
+                        lambda: str(tmp_path))
+    assert secure_boot_tools.is_available() is False
+    with pytest.raises(secure_boot_tools.SecureBootToolsUnavailable) as e:
+        secure_boot_tools.load()
+    assert secure_boot_tools.ENV_VAR in str(e.value)
 
 
 # --- a synthetic release ----------------------------------------------------

@@ -35,9 +35,21 @@ import hashlib
 import io
 import os
 
-from seedsigner.helpers.luckfox_secure_boot import rkloader as rk
-from seedsigner.helpers.luckfox_secure_boot import fitsign as fs
-from seedsigner.helpers.luckfox_secure_boot import minisign as ms
+from seedsigner.helpers.secure_boot_tools import (SecureBootToolsUnavailable,  # noqa: F401
+                                                  is_available, load)
+
+# The signers are provided by SeedSigner OS, not vendored here -- one copy, so
+# nothing can drift, and they stay usable as CLIs on a build machine with or
+# without this app. Imported lazily, so merely importing this module does not
+# require them; callers check is_available() first (or catch the exception).
+_rk = _fs = _ms = None
+
+
+def _tools():
+    global _rk, _fs, _ms
+    if _rk is None:
+        _rk, _fs, _ms = load()
+    return _rk, _fs, _ms
 
 
 # Files this tool knows how to handle, in the order they must be processed.
@@ -123,6 +135,7 @@ def _ramdisk_pubkey(boot_img):
     key header in the decompressed archive is enough to read it back.
     """
     try:
+        rk, fs, _unused = _tools()
         buf = rk.read(boot_img)
         payloads = fs._image_payloads(buf)
     except Exception:
@@ -147,7 +160,7 @@ def _ramdisk_pubkey(boot_img):
             try:
                 import base64
                 body = base64.b64decode(raw[nl + 1:end], validate=True)
-                if len(body) == 42 and body[:2] == ms.ALG_PURE:
+                if len(body) == 42 and body[:2] == _tools()[2].ALG_PURE:
                     return block
             except Exception:
                 pass
@@ -172,6 +185,7 @@ def inspect_release(folder):
     idb = os.path.join(folder, "idblock.img")
     if os.path.isfile(idb):
         try:
+            rk = _tools()[0]
             buf = rk.read(idb)
             info["current_rsa_modulus"] = rk.read_modulus(buf, rk.layout(buf))
         except Exception:
@@ -204,6 +218,7 @@ def rsa_modulus_fingerprint(n):
 
 def ed25519_key_id(seed):
     """Same derivation minisign.py keygen uses, so the two always agree."""
+    ms = _tools()[2]
     return hashlib.blake2b(ms.ed25519_public(seed), digest_size=8).digest()
 
 
@@ -224,6 +239,7 @@ def resign_release(folder, rsa_key, ed25519_seed, progress=None):
     if not info["files"] and not info["rootfs"]:
         raise ResignError("no signable images found in %s" % folder)
 
+    rk, fs, ms = _tools()
     report = ResignReport()
     n, d = rsa_numbers(rsa_key)
 
@@ -311,6 +327,7 @@ def resign_release(folder, rsa_key, ed25519_seed, progress=None):
 
 def verify_release(folder, rsa_pubkey_n, ed25519_seed=None):
     """Re-check everything just written. Returns [(name, ok, detail)]."""
+    rk, fs, ms = _tools()
     results = []
     for name in LOADER_FILES:
         path = os.path.join(folder, name)

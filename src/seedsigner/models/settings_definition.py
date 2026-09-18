@@ -501,6 +501,7 @@ class SettingsConstants:
     SETTING__SATOCHIP_SUPPORT = "satochip_support"
     SETTING__KEYCARD_SUPPORT = "keycard_support"
     SETTING__SPECTER_DIY_SUPPORT = "specter_diy_support"
+    SETTING__LUCKFOX_BUILD_TOOLS = "luckfox_build_tools"
     SETTING__WIPE_TIMER = "wipe_timer"
 
     SETTING__DISPLAY_CONFIGURATION = "display_config"
@@ -1184,6 +1185,18 @@ class SettingsDefinition:
                   attr_name=SettingsConstants.SETTING__KEYCARD_SUPPORT,
                   abbreviated_name="keycard",
                   display_name=_mft("KeyCard support"),
+                  visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                  default_value=SettingsConstants.OPTION__DISABLED),
+
+        # Off by default: this turns the device into a signing machine for
+        # SeedSigner OS releases, which is a deliberate act, not something a
+        # wallet should offer by accident. The Tools entry also needs the
+        # signing tools SeedSigner OS installs, so a board whose defconfig omits
+        # them will not show it even with this enabled.
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                  attr_name=SettingsConstants.SETTING__LUCKFOX_BUILD_TOOLS,
+                  abbreviated_name="luckfox_build",
+                  display_name=_mft("Luckfox build tools"),
                   visibility=SettingsConstants.VISIBILITY__ADVANCED,
                   default_value=SettingsConstants.OPTION__DISABLED),
 
