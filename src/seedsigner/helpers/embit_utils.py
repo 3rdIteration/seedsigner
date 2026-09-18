@@ -235,9 +235,15 @@ def parse_derivation_path(derivation_path: str) -> dict:
 
     sections = derivation_path.split("/")
 
-    if sections[1] == "48h":
-        # So far this helper is only meant for single sig message signing
-        raise Exception("Not implemented")
+    # The path can come verbatim from an untrusted signmessage QR. A path too short
+    # to name a purpose and coin type, or a multisig (48h) one -- this helper is
+    # only meant for single sig -- is reported as an unclean match, which callers
+    # already turn into "not supported", rather than raised as a System Error.
+    if len(sections) < 3 or sections[1] == "48h":
+        return dict(
+            script_type=None, network=None, is_change=None, index=None,
+            wallet_derivation_path=None, clean_match=False,
+        )
 
     lookups = {
         "script_types": {

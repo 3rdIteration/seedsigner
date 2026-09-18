@@ -19,6 +19,14 @@ _renderer_module = MagicMock()
 _renderer_module.Renderer.get_instance.return_value.canvas_width = 240
 _renderer_module.Renderer.get_instance.return_value.canvas_height = 240
 sys.modules['seedsigner.gui.renderer'] = _renderer_module
+# Views resolve the renderer as `from seedsigner.gui import Renderer`, i.e. through
+# the package attribute, not sys.modules. If a test module collected before this
+# one already imported seedsigner.gui (tests/test_psbt_refusal_screens.py does),
+# that attribute is still the real, never-configured Renderer: every View -- and
+# the error View the Controller falls back to -- raises "Must call
+# Renderer.configure_instance() first", and the Controller loops on it forever.
+if 'seedsigner.gui' in sys.modules:
+    sys.modules['seedsigner.gui'].Renderer = _renderer_module.Renderer
 sys.modules['seedsigner.gui.screens.screensaver'] = MagicMock()
 sys.modules['seedsigner.gui.toast'] = MagicMock()
 sys.modules['seedsigner.hardware.buttons'] = MagicMock()

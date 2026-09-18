@@ -124,6 +124,18 @@ seed_24_w_passphrase = Seed(mnemonic=mnemonic_24, passphrase="some-PASS*phrase9"
 
 MULTISIG_WALLET_DESCRIPTOR = """wsh(sortedmulti(1,[22bde1a9/48h/1h/0h/2h]tpubDFfsBrmpj226ZYiRszYi2qK6iGvh2vkkghfGB2YiRUVY4rqqedHCFEgw12FwDkm7rUoVtq9wLTKc6BN2sxswvQeQgp7m8st4FP8WtP8go76/{0,1}/*,[73c5da0a/48h/1h/0h/2h]tpubDFH9dgzveyD8zTbPUFuLrGmCydNvxehyNdUXKJAQN8x4aZ4j6UZqGfnqFrD4NqyaTVGKbvEW54tsvPTK2UoSbCC1PJY8iCNiwTL3RWZEheQ/{0,1}/*))#3jhtf6yx"""
 
+# A coordinator that includes PSBT_GLOBAL_XPUB, which is what lets PSBTParser tie the
+# multisig change's cosigner keys to the inputs' wallet. Without them the change stays
+# a payment until a descriptor identifies it (see PSBTIdentifyChangeView).
+def add_global_xpubs(base64_psbt: str, descriptor_str: str) -> str:
+    from embit.psbt import DerivationPath
+    psbt = PSBT.from_base64(base64_psbt)
+    for key in embit.descriptor.Descriptor.from_string(descriptor_str).keys:
+        psbt.xpubs[key.key] = DerivationPath(key.origin.fingerprint, key.origin.derivation)
+    return psbt.to_string()
+
+BASE64_MULTISIG_PSBT_WITH_XPUBS = add_global_xpubs(BASE64_MULTISIG_PSBT, MULTISIG_WALLET_DESCRIPTOR)
+
 # Grab the most recent release version info for the "release build" splash screenshots.
 (latest_release_version_name, latest_release_version_timestamp) = VersionUtils._fetch_latest_seedsigner_release_tag()
 if not latest_release_version_name or not latest_release_version_timestamp:
@@ -291,7 +303,7 @@ def generate_screenshots(locale):
             decoder.add_data(base64_psbt)
             with patch.object(controller, 'psbt', decoder.get_psbt()):
                 with patch.object(controller, 'psbt_seed', seed):
-                    with patch.object(controller, 'psbt_parser', PSBTParser(p=controller.psbt, seed=seed)):
+                    with patch.object(controller, 'psbt_parser', PSBTParser(p=controller.psbt, seed=seed, multisig_descriptor=controller.multisig_wallet_descriptor)):
                         yield
 
 
@@ -303,6 +315,12 @@ def generate_screenshots(locale):
 
         @contextmanager
         def mock_multisig_psbt_loaded():
+            with mock_load_psbt(BASE64_MULTISIG_PSBT_WITH_XPUBS):
+                yield
+
+
+        @contextmanager
+        def mock_multisig_psbt_without_xpubs_loaded():
             with mock_load_psbt(BASE64_MULTISIG_PSBT):
                 yield
 
@@ -315,8 +333,16 @@ def generate_screenshots(locale):
 
         @contextmanager
         def mock_multisig_psbt_and_descriptor_loaded():
-            with mock_multisig_psbt_loaded():
-                with mock_multisig_wallet_descriptor_loaded():
+            # Descriptor first: the parser is built with whatever descriptor is loaded.
+            with mock_multisig_wallet_descriptor_loaded():
+                with mock_multisig_psbt_loaded():
+                    yield
+
+
+        @contextmanager
+        def mock_multisig_psbt_without_xpubs_and_descriptor_loaded():
+            with mock_multisig_wallet_descriptor_loaded():
+                with mock_multisig_psbt_without_xpubs_loaded():
                     yield
 
 
@@ -507,6 +533,8 @@ def generate_screenshots(locale):
                 ScreenshotConfig(psbt_views.PSBTUnsupportedScriptTypeWarningView),
                 ScreenshotConfig(psbt_views.PSBTNoChangeWarningView),
                 ScreenshotConfig(psbt_views.PSBTRiskWarningView, mock_context_manager=mock_psbt_with_risk_warnings_loaded),
+                ScreenshotConfig(psbt_views.PSBTIdentifyChangeView, screenshot_name="PSBTIdentifyChangeView_no_descriptor", mock_context_manager=mock_multisig_psbt_without_xpubs_loaded),
+                ScreenshotConfig(psbt_views.PSBTIdentifyChangeView, screenshot_name="PSBTIdentifyChangeView_descriptor_mismatch", mock_context_manager=mock_multisig_psbt_without_xpubs_and_descriptor_loaded),
                 ScreenshotConfig(psbt_views.PSBTMathView, mock_context_manager=mock_multisig_psbt_loaded),
                 ScreenshotConfig(psbt_views.PSBTAddressDetailsView, dict(address_num=0), mock_context_manager=mock_multisig_psbt_loaded),
 
