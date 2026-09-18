@@ -51,6 +51,8 @@ from seedsigner.models.settings import Settings
 from seedsigner.models.settings_definition import SettingsConstants, SettingsDefinition
 from seedsigner.views import (MainMenuView, PowerOptionsView, RestartView, RemoveMicroSDWarningView, NotYetImplementedView, UnhandledExceptionView, 
     psbt_views, seed_views, settings_views, tools_views, scan_views)
+from seedsigner.views import resign_views
+from seedsigner.helpers import secure_boot_tools
 from seedsigner.views.screensaver import OpeningSplashView
 from seedsigner.views.view import CameraConnectionErrorView, NetworkMismatchErrorView, OptionDisabledView, PowerOffView
 
@@ -408,6 +410,45 @@ def generate_screenshots(locale):
                     yield
 
 
+        # --- Luckfox Build Tools -------------------------------------------------
+        # A card holding a release folder. Only the file names matter to the picker
+        # and the confirmation screen, so empty placeholders are enough. Created once
+        # so its path can be baked into the ConfirmView's view_kwargs.
+        import tempfile
+        resign_card = pathlib.Path(tempfile.mkdtemp(prefix="ss-screenshot-card-"))
+        resign_release = resign_card / "seedsigner-luckfox-pico-max-nand-files"
+        resign_release.mkdir()
+        for name in ("idblock.img", "download.bin", "uboot.img", "boot.img",
+                     "rootfs.img", "rootfs.img.size"):
+            (resign_release / name).write_bytes(b"")
+
+        @contextmanager
+        def mock_microsd_with_release(inserted: bool = True):
+            microsd = Mock(is_inserted=inserted)
+            with patch.object(MicroSD, "get_instance", Mock(return_value=microsd)),                  patch.object(MicroSD, "get_microsd_dir", staticmethod(lambda: resign_card)):
+                yield
+
+        @contextmanager
+        def mock_microsd_absent():
+            with mock_microsd_with_release(inserted=False):
+                yield
+
+        @contextmanager
+        def mock_luckfox_build_tools_enabled():
+            # Both gates open: the setting (default off) and the OS-provided tools
+            # (absent on a desktop / CI). Restore the setting afterwards so no other
+            # screenshot sees the extra menu entry.
+            attr = SettingsConstants.SETTING__LUCKFOX_BUILD_TOOLS
+            previous = controller.settings.get_value(attr)
+            controller.settings.set_value(attr, SettingsConstants.OPTION__ENABLED)
+            try:
+                with patch.object(secure_boot_tools, "is_available", Mock(return_value=True)):
+                    yield
+            finally:
+                controller.settings.set_value(attr, previous)
+
+        resign_args = dict(seed_num=0, rsa_index=0, ed_index=0)
+
         screenshot_sections = {
             "Main Menu Views": [
                 ScreenshotConfig(OpeningSplashView, dict(force_partner_logos=True), mock_context_manager=mock_version_to_most_recent_release),
@@ -551,6 +592,18 @@ def generate_screenshots(locale):
                 ScreenshotConfig(tools_views.ToolsTextQRTextEntryView, dict(initial_keyboard=ToolsTextQRTextEntryScreen.KEYBOARD__DIGITS_BUTTON_TEXT),    screenshot_name="ToolsTextQRTextEntryView_digits"),
                 ScreenshotConfig(tools_views.ToolsTextQRTextEntryView, dict(initial_keyboard=ToolsTextQRTextEntryScreen.KEYBOARD__SYMBOLS_1_BUTTON_TEXT), screenshot_name="ToolsTextQRTextEntryView_symbols_1"),
                 ScreenshotConfig(tools_views.ToolsTextQRTextEntryView, dict(initial_keyboard=ToolsTextQRTextEntryScreen.KEYBOARD__SYMBOLS_2_BUTTON_TEXT), screenshot_name="ToolsTextQRTextEntryView_symbols_2"),
+            ],
+            "Luckfox Build Tools Views": [
+                ScreenshotConfig(tools_views.ToolsMenuView, screenshot_name="ToolsMenuView_luckfox_build_tools", mock_context_manager=mock_luckfox_build_tools_enabled),
+                ScreenshotConfig(resign_views.ToolsResignReleaseStartView, mock_context_manager=mock_microsd_with_release),
+                ScreenshotConfig(resign_views.ToolsResignReleaseStartView, screenshot_name="ToolsResignReleaseStartView_no_microsd", mock_context_manager=mock_microsd_absent),
+                ScreenshotConfig(resign_views.ToolsResignSelectSeedView),
+                ScreenshotConfig(resign_views.ToolsResignRsaIndexView, dict(seed_num=0)),
+                ScreenshotConfig(resign_views.ToolsResignEd25519IndexView, dict(seed_num=0, rsa_index=0)),
+                ScreenshotConfig(resign_views.ToolsResignSelectFolderView, resign_args, mock_context_manager=mock_microsd_with_release),
+                ScreenshotConfig(resign_views.ToolsResignConfirmView, dict(resign_args, folder=str(resign_release)), mock_context_manager=mock_microsd_with_release),
+                # ToolsResignRunView is not screenshotted: it derives an RSA-2048 key
+                # and signs before it renders anything but a loading screen.
             ],
             "Settings Views": settings_views_list + [
                 ScreenshotConfig(settings_views.IOTestView),

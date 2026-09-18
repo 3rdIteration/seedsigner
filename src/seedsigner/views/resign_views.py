@@ -84,8 +84,11 @@ class ToolsResignSelectSeedView(View):
         ]
         button_data.append(self.LOAD_SEED)
 
+        # SeedSelectSeedScreen, not ButtonListScreen: it is the one that takes the
+        # `text` prompt (it is what SeedSelectSeedView uses). ButtonListScreen has no
+        # such field and raised TypeError the moment this view ran on a device.
         selected = self.run_screen(
-            ButtonListScreen,
+            seed_screens.SeedSelectSeedScreen,
             title=_("Re-sign Release"),
             text=_("Select seed to sign with") if seeds else _("Load the seed to sign with"),
             is_button_text_centered=False,
