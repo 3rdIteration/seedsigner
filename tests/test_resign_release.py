@@ -33,14 +33,14 @@ if not secure_boot_tools.is_available():
     pytest.skip("seedsigner-os signing tools not resolvable (set %s)"
                 % secure_boot_tools.ENV_VAR, allow_module_level=True)
 
-rk, fs, ms = secure_boot_tools.load()
+rk, fs, ms, lr = secure_boot_tools.load()
 
 
 def test_tools_resolve_to_a_real_directory():
     """The resolver is the only route to the signers, so prove it works."""
     directory = secure_boot_tools.find_dir()
     assert directory is not None
-    for name in ("rkloader.py", "fitsign.py", "minisign.py"):
+    for name in ("rkloader.py", "fitsign.py", "minisign.py", "luckfox_release.py"):
         assert os.path.isfile(os.path.join(directory, name))
 
 
@@ -333,3 +333,201 @@ def test_verify_release_catches_a_stale_component_hash(tmp_path, new_key):
 
     checks = dict((n, ok) for n, ok, _d in rr.verify_release(folder, int(new_key.n), ED_SEED))
     assert checks["idblock.img"] is False
+
+
+# --- the build tools on a release with a rootfs verifier in boot.img -----------
+#
+# The synthetic release builder lives with the OS library's own tests; reusing it
+# keeps one definition of what a release looks like.
+
+def _os_release_builder():
+    tests_dir = os.path.normpath(os.path.join(secure_boot_tools.find_dir(), "..", "..", "..", "tests"))
+    if not os.path.isfile(os.path.join(tests_dir, "test_luckfox_release.py")):
+        pytest.skip("seedsigner-os tests/ not beside the tools (%s)" % tests_dir)
+    import sys
+    if tests_dir not in sys.path:
+        sys.path.insert(0, tests_dir)
+    import test_luckfox_release
+    return test_luckfox_release
+
+
+@pytest.fixture
+def dev_key():
+    """The published dev RSA key, as a PyCryptodome object."""
+    from Cryptodome.PublicKey import RSA
+    tlr = _os_release_builder()
+    return RSA.construct((tlr.N, 65537, tlr.D))
+
+
+def _full_release(root, **kw):
+    """A whole NAND-style release signed with the dev keys, plus a stale update.img."""
+    tlr = _os_release_builder()
+    folder = os.path.join(str(root), "release")
+    tlr.make_release(folder, **kw)
+    for name, off in (("idblock.img", 0x0), ("download.bin", 0x1bc)):
+        buf = _rk_container(tlr.N, off)
+        rk.sign_buf(buf, rk.layout(buf), tlr.N, tlr.D)
+        with open(os.path.join(folder, name), "wb") as f:
+            f.write(bytes(buf))
+    uboot = _fit(b"UBOOT" * 64, embed_modulus=tlr.N)
+    fs.sign_buf(uboot, tlr.N, tlr.D)
+    with open(os.path.join(folder, "uboot.img"), "wb") as f:
+        f.write(bytes(uboot))
+    with open(os.path.join(folder, "update.img"), "wb") as f:
+        f.write(b"RKFW-stale")
+    return folder
+
+
+def _snapshot(folder):
+    out = {}
+    for n in sorted(os.listdir(folder)):
+        with open(os.path.join(folder, n), "rb") as f:
+            out[n] = hashlib.sha256(f.read()).hexdigest()
+    return out
+
+
+def test_synthetic_release_starts_valid(tmp_path):
+    folder = _full_release(tmp_path)
+    rep = lr.check_release(folder)
+    assert rep.ok, lr.format_report(rep)
+    assert rep.boot_key["dev"]
+
+
+def test_resign_all_moves_the_rootfs_key_inside_boot_img(tmp_path, new_key):
+    folder = _full_release(tmp_path)
+    report = rr.resign_release(folder, new_key, ED_SEED)
+
+    checks = {n: ok for n, ok, _d in rr.verify_release(folder, int(new_key.n), ED_SEED)}
+    assert checks == {n: True for n in ("idblock.img", "download.bin", "uboot.img",
+                                        "boot.img", "rootfs.img")}
+    rep = lr.check_release(folder)
+    assert rep.ok, lr.format_report(rep)
+    assert rep.rootfs_key["key_id"] == rr.ed25519_key_id_text(ED_SEED)
+    assert not rep.boot_key["dev"] and not rep.rootfs_key["dev"]
+    members = lr.initramfs_members(rk.read(os.path.join(folder, "boot.img")))
+    assert lr.key_classes(members) == {"FIT": "prod", "ROOTFS": "prod"}
+    # the stale bundle is gone and the SD script now writes all of boot.img
+    assert report.deleted_update_img and not os.path.exists(os.path.join(folder, "update.img"))
+    assert not lr.sd_update_check(folder, "max")["fixable"]
+    assert "rootfs.img" in dict(report.signed)
+
+
+def test_resign_refusal_leaves_the_folder_untouched(tmp_path, new_key):
+    folder = _full_release(tmp_path, kind="squashfs")
+    with open(os.path.join(folder, "rootfs.img"), "r+b") as f:
+        f.seek(0x40)
+        f.write(b"EVIL")
+    before = _snapshot(folder)
+    with pytest.raises(rr.ResignError, match="refusing"):
+        rr.resign_release(folder, new_key, ED_SEED)
+    assert _snapshot(folder) == before
+
+
+def test_export_pubkeys(tmp_path, new_key):
+    from Cryptodome.PublicKey import RSA
+    out = rr.export_pubkeys(str(tmp_path), new_key, ED_SEED, 3, 5)
+    assert os.path.basename(out) == rr.KEYS_DIR
+    with open(os.path.join(out, "release-rsa.pub"), "rb") as f:
+        pem = f.read()
+    assert b"PRIVATE" not in pem
+    assert RSA.import_key(pem).n == new_key.n
+    assert ms.load_pubkey(os.path.join(out, "release-rootfs.pub"))["key_id"] == \
+        rr.ed25519_key_id(ED_SEED)
+    with open(os.path.join(out, "README.txt")) as f:
+        readme = f.read()
+    assert rr.rsa_modulus_fingerprint(int(new_key.n)) in readme
+    assert rr.ed25519_key_id_text(ED_SEED) in readme
+    assert "index 3" in readme and "index 5" in readme
+    # the keys folder is never offered as a release
+    assert rr.find_release_dirs(str(tmp_path)) == []
+
+
+def test_provision_copies_and_fixes(tmp_path):
+    card = tmp_path
+    folder = _full_release(card)
+    chk = rr.provision_check(folder, str(card))
+    assert chk["problems"] == []
+    assert chk["fixable"], "the synthetic script is deliberately short for boot.img"
+    assert any("dev keys" in w for w in chk["warnings"])
+    assert not chk["overwrite"]
+
+    placed = rr.provision_microsd(folder, str(card))
+    assert placed == ["sd_update.txt", "boot.img", "rootfs.img"]
+    for name in placed:
+        with open(os.path.join(card, name), "rb") as a, open(os.path.join(folder, name), "rb") as b:
+            assert a.read() == b.read()
+    assert not lr.sd_update_check(str(card), "max")["fixable"]
+    assert rr.provision_check(folder, str(card))["overwrite"]
+
+
+def test_provision_refuses_a_staging_overrun(tmp_path, monkeypatch):
+    folder = _full_release(tmp_path)
+    monkeypatch.setitem(lr.BOARDS["max"], "ceiling", 0x00200000)
+    chk = rr.provision_check(folder, str(tmp_path))
+    assert any("ceiling" in p for p in chk["problems"])
+
+
+def test_provision_refuses_without_a_script(tmp_path):
+    folder = _full_release(tmp_path)
+    os.remove(os.path.join(folder, "sd_update.txt"))
+    assert rr.provision_check(folder, str(tmp_path))["problems"]
+
+
+def test_force_rootfs_check_on_and_off(tmp_path, dev_key):
+    tlr = _os_release_builder()
+    folder = _full_release(tmp_path)
+    assert rr.force_rootfs_state(folder) is False
+    rr.set_force_rootfs(folder, dev_key, True)
+    assert rr.force_rootfs_state(folder) is True
+    assert fs.verify_buf(rk.read(os.path.join(folder, "boot.img")), tlr.N)
+    rr.set_force_rootfs(folder, dev_key, False)
+    assert rr.force_rootfs_state(folder) is False
+
+
+def test_force_rootfs_check_needs_the_release_key(tmp_path, new_key):
+    folder = _full_release(tmp_path)
+    before = _snapshot(folder)
+    with pytest.raises(rr.ResignError, match="not the one"):
+        rr.set_force_rootfs(folder, new_key, True)
+    assert _snapshot(folder) == before
+
+
+def test_force_rootfs_check_unsupported_on_an_old_verifier(tmp_path, dev_key):
+    folder = _full_release(tmp_path, force_aware=False)
+    assert rr.force_rootfs_state(folder) is None
+    with pytest.raises(rr.ResignError, match="does not support"):
+        rr.set_force_rootfs(folder, dev_key, True)
+
+
+def test_arm_refuses_the_dev_key(tmp_path, dev_key):
+    folder = _full_release(tmp_path)
+    reasons = rr.arm_burn_check(folder)
+    assert any("PUBLISHED dev key" in r for r in reasons)
+    before = _snapshot(folder)
+    with pytest.raises(rr.ResignError):
+        rr.arm_burn(folder, dev_key)
+    assert _snapshot(folder) == before
+
+
+def test_arm_refuses_a_key_the_release_is_not_signed_with(tmp_path, new_key, old_key):
+    folder = _full_release(tmp_path)
+    rr.resign_release(folder, new_key, ED_SEED)
+    assert rr.arm_burn_check(folder) == []
+    before = _snapshot(folder)
+    with pytest.raises(rr.ResignError, match="not the one"):
+        rr.arm_burn(folder, old_key)
+    assert _snapshot(folder) == before
+
+
+def test_arms_a_real_build(tmp_path, new_key):
+    src = _real_release()
+    if not src or not os.path.isfile(os.path.join(src, "idblock.img")):
+        pytest.skip("no built release under seedsigner-os/opt/luckfox/build-output")
+    folder = str(tmp_path / "real")
+    shutil.copytree(src, folder)
+    rr.resign_release(folder, new_key, ED_SEED)
+    rr.arm_burn(folder, new_key)
+    buf = rk.read(os.path.join(folder, "idblock.img"))
+    assert rk.is_burn_armed(buf)
+    for name, ok, detail in rr.verify_release(folder, int(new_key.n), ED_SEED):
+        assert ok, "%s (%s) failed to verify" % (name, detail)

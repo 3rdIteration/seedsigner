@@ -451,8 +451,8 @@ class ToolsMenuView(View):
             return Destination(ToolsTextQRView)
 
         elif button_data[selected_menu_num] == self.LUCKFOX_BUILD_TOOLS:
-            from seedsigner.views.resign_views import ToolsResignReleaseStartView
-            return Destination(ToolsResignReleaseStartView)
+            from seedsigner.views.resign_views import ToolsLuckfoxBuildToolsMenuView
+            return Destination(ToolsLuckfoxBuildToolsMenuView)
 
         elif button_data[selected_menu_num] == self.PASSWORD_GENERATOR:
             return Destination(ToolsPasswordGeneratorTypeView)

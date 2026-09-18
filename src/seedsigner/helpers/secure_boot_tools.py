@@ -1,6 +1,7 @@
 """Locate and import the Luckfox secure-boot signers provided by SeedSigner OS.
 
-The signers (`rkloader.py`, `fitsign.py`, `minisign.py`) live in the
+The signers (`rkloader.py`, `fitsign.py`, `minisign.py`) and `luckfox_release.py`,
+which knows how a whole release fits together, live in the
 **seedsigner-os** repo and are installed onto the image by its build. They are
 deliberately not vendored here: one copy means nothing can drift, and it keeps
 them usable as CLIs on a build machine with or without this app.
@@ -26,7 +27,7 @@ import importlib
 import os
 import sys
 
-MODULES = ("rkloader", "fitsign", "minisign")
+MODULES = ("rkloader", "fitsign", "minisign", "luckfox_release")
 
 ENV_VAR = "SEEDSIGNER_SECURE_BOOT_DIR"
 IMAGE_DIR = "/usr/lib/seedsigner/secure-boot"
@@ -56,7 +57,7 @@ def candidate_dirs():
 
 
 def find_dir():
-    """The first candidate that actually holds all three signers, or None."""
+    """The first candidate that actually holds all of MODULES, or None."""
     for d in candidate_dirs():
         if all(os.path.isfile(os.path.join(d, "%s.py" % m)) for m in MODULES):
             return d
@@ -69,7 +70,7 @@ def is_available():
 
 
 def load():
-    """Import the three signers. Returns (rkloader, fitsign, minisign).
+    """Import the tools. Returns (rkloader, fitsign, minisign, luckfox_release).
 
     The modules import each other by bare name (fitsign needs rkloader), so the
     directory goes on sys.path rather than being loaded file-by-file.

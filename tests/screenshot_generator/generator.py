@@ -447,7 +447,60 @@ def generate_screenshots(locale):
             finally:
                 controller.settings.set_value(attr, previous)
 
-        resign_args = dict(seed_num=0, rsa_index=0, ed_index=0)
+        from seedsigner.helpers import resign_release as rr_helper
+        resign_flow = dict(action=resign_views.ACTION__RESIGN, seed_num=0, rsa_index=0, ed_index=0)
+        release_dir = str(resign_release)
+
+        @contextmanager
+        def mock_release_helpers(force_state=False, provision=None):
+            """The few helper calls a screen needs, answered without the OS tools."""
+            inspect = dict(folder=release_dir, rootfs=os.path.join(release_dir, "rootfs.img"),
+                           files=["idblock.img", "download.bin", "uboot.img", "boot.img"],
+                           rootfs_in_boot=True, current_rsa_modulus=None, update_img=True)
+            chk = provision or dict(
+                problems=[], fixable=[], overwrite=False, in_place=False,
+                files=["sd_update.txt", "env.img", "idblock.img", "uboot.img", "boot.img",
+                       "oem.img", "userdata.img", "rootfs.img"],
+                bytes=112 << 20, identity=dict(model="Luckfox Pico Pro Max"), warnings=[])
+            with mock_microsd_with_release(), \
+                 patch.object(rr_helper, "inspect_release", Mock(return_value=inspect)), \
+                 patch.object(rr_helper, "force_rootfs_state", Mock(return_value=force_state)), \
+                 patch.object(rr_helper, "provision_check", Mock(return_value=chk)):
+                yield
+
+        @contextmanager
+        def mock_force_on():
+            with mock_release_helpers(force_state=True):
+                yield
+
+        @contextmanager
+        def mock_provision_warnings():
+            with mock_release_helpers(provision=dict(
+                    problems=[], fixable=["boot.img: the script writes 0x313200 of 0x374400 bytes"],
+                    overwrite=True, in_place=False, files=["sd_update.txt"], bytes=1 << 20,
+                    identity=dict(model="Luckfox Pico Pro Max"),
+                    warnings=["Signed with the PUBLISHED dev keys: anyone could "
+                              "have signed it."])):
+                yield
+
+        sample_check_text = "\n".join([
+            "VALID: every signature checks out.", "",
+            "Hardware", "Luckfox Pico Pro Max", "Medium: nand", "Rootfs: ubifs (writable)",
+            "Serial console: off", "DDR blob: 1.15", "",
+            "Signatures", "idblock.img: OK", "download.bin: OK", "uboot.img: OK",
+            "boot.img: OK", "uboot.img key: OK", "rootfs.img: OK", "",
+            "Keys", "Boot key:", "3f0a26d1c9e8b4f2", "",
+            "Rootfs key:", "FB935B80871B6C36", "PUBLISHED DEV KEY", "",
+            "Forced rootfs check: off", "", "eFuse burn armed: no"])
+        sample_resign_text = "\n".join([
+            "Done:",
+            "- idblock.img: key re-embedded, header re-signed",
+            "- download.bin: key re-embedded, header re-signed",
+            "- uboot.img: key re-embedded (1), re-signed",
+            "- rootfs.img: signed with key 2251599AA9CD5177 (the signature is stored in boot.img)",
+            "- boot.img: re-signed",
+            "- sd_update.txt: write lengths corrected for boot.img", "",
+            "Verified afterwards: idblock.img, download.bin, uboot.img, boot.img, rootfs.img"])
 
         screenshot_sections = {
             "Main Menu Views": [
@@ -595,15 +648,31 @@ def generate_screenshots(locale):
             ],
             "Luckfox Build Tools Views": [
                 ScreenshotConfig(tools_views.ToolsMenuView, screenshot_name="ToolsMenuView_luckfox_build_tools", mock_context_manager=mock_luckfox_build_tools_enabled),
-                ScreenshotConfig(resign_views.ToolsResignReleaseStartView, mock_context_manager=mock_microsd_with_release),
-                ScreenshotConfig(resign_views.ToolsResignReleaseStartView, screenshot_name="ToolsResignReleaseStartView_no_microsd", mock_context_manager=mock_microsd_absent),
-                ScreenshotConfig(resign_views.ToolsResignSelectSeedView),
-                ScreenshotConfig(resign_views.ToolsResignRsaIndexView, dict(seed_num=0)),
-                ScreenshotConfig(resign_views.ToolsResignEd25519IndexView, dict(seed_num=0, rsa_index=0)),
-                ScreenshotConfig(resign_views.ToolsResignSelectFolderView, resign_args, mock_context_manager=mock_microsd_with_release),
-                ScreenshotConfig(resign_views.ToolsResignConfirmView, dict(resign_args, folder=str(resign_release)), mock_context_manager=mock_microsd_with_release),
-                # ToolsResignRunView is not screenshotted: it derives an RSA-2048 key
-                # and signs before it renders anything but a loading screen.
+                ScreenshotConfig(resign_views.ToolsLuckfoxBuildToolsMenuView, mock_context_manager=mock_microsd_with_release),
+                ScreenshotConfig(resign_views.ToolsLuckfoxBuildToolsMenuView, screenshot_name="ToolsLuckfoxBuildToolsMenuView_no_microsd", mock_context_manager=mock_microsd_absent),
+                ScreenshotConfig(resign_views.ToolsLuckfoxSelectFolderView, dict(flow=dict(action=resign_views.ACTION__CHECK)), mock_context_manager=mock_microsd_with_release),
+                ScreenshotConfig(resign_views.ToolsLuckfoxResultView, dict(title="Check Release", text=sample_check_text, finish="back"), screenshot_name="ToolsLuckfoxResultView_check_release"),
+                ScreenshotConfig(resign_views.ToolsLuckfoxResultView, dict(title="Cannot continue", text="This release's rootfs verifier predates the forced check, so it cannot be turned on. Use a newer build.", finish="back"), screenshot_name="ToolsLuckfoxResultView_refused"),
+                ScreenshotConfig(resign_views.ToolsResignReleaseStartView),
+                ScreenshotConfig(resign_views.ToolsLuckfoxSelectSeedView, dict(flow=dict(action=resign_views.ACTION__RESIGN))),
+                ScreenshotConfig(resign_views.ToolsLuckfoxRsaIndexView, dict(flow=dict(action=resign_views.ACTION__RESIGN, seed_num=0))),
+                ScreenshotConfig(resign_views.ToolsLuckfoxEd25519IndexView, dict(flow=dict(action=resign_views.ACTION__RESIGN, seed_num=0, rsa_index=0))),
+                ScreenshotConfig(resign_views.ToolsResignConfirmView, dict(flow=dict(resign_flow, folder=release_dir)), mock_context_manager=mock_release_helpers),
+                ScreenshotConfig(resign_views.ToolsLuckfoxUpdateImgDeletedView, dict(title="Resign All", text=sample_resign_text)),
+                ScreenshotConfig(resign_views.ToolsLuckfoxResultView, dict(title="Resign All", text=sample_resign_text), screenshot_name="ToolsLuckfoxResultView_resign_all"),
+                ScreenshotConfig(resign_views.ToolsLuckfoxProvisionView, dict(flow=dict(action=resign_views.ACTION__PROVISION, folder=release_dir)), mock_context_manager=mock_release_helpers),
+                ScreenshotConfig(resign_views.ToolsLuckfoxProvisionView, dict(flow=dict(action=resign_views.ACTION__PROVISION, folder=release_dir)), screenshot_name="ToolsLuckfoxProvisionView_warnings", mock_context_manager=mock_provision_warnings),
+                ScreenshotConfig(resign_views.ToolsLuckfoxProvisionDoneView),
+                ScreenshotConfig(resign_views.ToolsLuckfoxForceInfoView, dict(page=1), screenshot_name="ToolsLuckfoxForceInfoView_1"),
+                ScreenshotConfig(resign_views.ToolsLuckfoxForceInfoView, dict(page=2), screenshot_name="ToolsLuckfoxForceInfoView_2"),
+                ScreenshotConfig(resign_views.ToolsLuckfoxForceStateView, dict(flow=dict(action=resign_views.ACTION__FORCE, folder=release_dir)), screenshot_name="ToolsLuckfoxForceStateView_off", mock_context_manager=mock_release_helpers),
+                ScreenshotConfig(resign_views.ToolsLuckfoxForceStateView, dict(flow=dict(action=resign_views.ACTION__FORCE, folder=release_dir)), screenshot_name="ToolsLuckfoxForceStateView_on", mock_context_manager=mock_force_on),
+                ScreenshotConfig(resign_views.ToolsLuckfoxDangerZoneView),
+                ScreenshotConfig(resign_views.ToolsLuckfoxArmWarningView),
+                # Not screenshotted: the views that derive an RSA-2048 key or run the
+                # OS tools before they show anything but a loading screen (Check
+                # Release, Export, Resign/Force/Arm run). Their result screens are
+                # covered above through ToolsLuckfoxResultView.
             ],
             "Settings Views": settings_views_list + [
                 ScreenshotConfig(settings_views.IOTestView),
