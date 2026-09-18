@@ -1681,10 +1681,16 @@ class PSBTParser():
 
             # Missing fingerprint fallback
             if derivation_path_obj.fingerprint == b"\x00\x00\x00\x00":
-                fallback_root = root
-                if fallback_root is None:
-                    fallback_root = bip32.HDKey.from_seed(seed.seed_bytes, version=NETWORKS[SettingsConstants.map_network_to_embit(network)]["xprv"])
                 try:
+                    if root is not None:
+                        fallback_root = root
+                    else:
+                        # Use get_root() so seed types without seed_bytes (e.g.
+                        # XprvSeed) work instead of crashing on from_seed(None).
+                        if hasattr(seed, "get_root"):
+                            fallback_root = seed.get_root(network)
+                        else:
+                            fallback_root = bip32.HDKey.from_seed(seed.seed_bytes, version=NETWORKS[SettingsConstants.map_network_to_embit(network)]["xprv"])
                     # fallback_root, not root: the caller may have passed no root at
                     # all, in which case the master key was just derived from the seed
                     # above.

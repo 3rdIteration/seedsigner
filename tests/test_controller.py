@@ -1,4 +1,5 @@
 import pytest
+from types import SimpleNamespace
 
 # Must import this before the Controller
 from base import BaseTest, FlowTest, FlowStep
@@ -219,3 +220,73 @@ class TestBackStack(FlowTest):
             BackStackEntryMenuView,
             BackStackWorkflowView,
         ]
+
+
+class TestSecretWiping(BaseTest):
+
+    def test_discard_seed_wipes_secret_material(self):
+        """discard_seed() must zero the Seed's secrets, not just drop the ref."""
+        controller = Controller.get_instance()
+
+        class FakeSeed:
+            wiped = False
+
+            def wipe(self):
+                self.wiped = True
+
+        seed = FakeSeed()
+        controller._storage = SimpleNamespace(seeds=[seed], clear_pending_seed=lambda: None)
+
+        controller.discard_seed(seed)
+
+        assert seed.wiped
+        assert controller._storage.seeds == []
+
+
+    def test_discard_seed_survives_wipe_errors(self):
+        """A wipe() failure must not block the discard flow."""
+        controller = Controller.get_instance()
+
+        class BoomSeed:
+            def wipe(self):
+                raise ValueError("boom")
+
+        seed = BoomSeed()
+        controller._storage = SimpleNamespace(seeds=[seed], clear_pending_seed=lambda: None)
+
+        controller.discard_seed(seed)
+        assert controller._storage.seeds == []
+
+
+    def test_handle_wipe_timeout_wipes_seeds_and_entropy_cache(self, monkeypatch):
+        """The inactivity wipe must zero stored seeds and drop the raw
+        password-generator entropy cache, not just drop references."""
+        controller = Controller.get_instance()
+
+        class FakeSeed:
+            def __init__(self):
+                self.wiped = False
+
+            def wipe(self):
+                self.wiped = True
+
+        seeds = [FakeSeed(), FakeSeed()]
+        controller._storage = SimpleNamespace(seeds=seeds, clear_pending_seed=lambda: None)
+        controller._storage2 = None
+        controller.password_generator_entropy_cache = {
+            "roll_data": "1234512345",
+            "entropy_bytes": b"\x00\x01\x02\x03",
+        }
+        toasts = []
+        import seedsigner.gui.toast as gui_toast
+        monkeypatch.setattr(controller, "activate_toast", lambda toast: toasts.append(toast))
+        monkeypatch.setattr(gui_toast, "InfoToast", lambda label_text=None: label_text)
+
+        controller.handle_wipe_timeout()
+
+        assert all(seed.wiped for seed in seeds)
+        assert controller.storage.seeds == []
+        assert controller.password_generator_entropy_cache is None
+        assert controller.psbt_seed is None
+        assert controller.auto_wiped is True
+        assert len(toasts) == 1

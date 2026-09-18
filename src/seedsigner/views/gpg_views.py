@@ -129,6 +129,46 @@ def _normalize_date_input(s: str) -> str:
         s = s.replace(ch, "-")
     return s
 
+
+def _list_sd_files(dir_path) -> list:
+    """List selectable regular files in a microSD directory.
+
+    Files whose names start with '-' are excluded: SD filenames are attacker-
+    controlled and are passed to gpg/sha256sum as positional operands (with the
+    directory as cwd), where a name like '--output=x' would be parsed as a
+    command option. Belt-and-suspenders: the gpg invocations also pass '--'
+    before filename operands.
+    """
+    return [
+        f
+        for f in os.listdir(dir_path)
+        if (
+            not f.startswith(('.', '-'))
+            and f != '__MACOSX'
+            and os.path.isfile(os.path.join(dir_path, f))
+        )
+    ]
+
+
+def _manifest_names_are_safe(manifest_path) -> bool:
+    """True if every filename listed in a sha256 manifest is a bare, non-option
+    name. An attacker-supplied manifest could otherwise name absolute or
+    relative paths ('../../etc/passwd') or option-like names, which sha256sum
+    (or the Python fallback) would resolve outside the microSD directory.
+    """
+    try:
+        with open(manifest_path, "r") as mf:
+            for line in mf:
+                parts = line.strip().split()
+                if len(parts) < 2:
+                    continue
+                name = parts[-1].lstrip("*")
+                if not name or name.startswith("-") or Path(name).name != name:
+                    return False
+        return True
+    except Exception:
+        return False
+
 # BIP85 GPG application numbers per updated spec.
 # RSA derivation path (v4, the default): m/83696968'/828365'/{key_bits}'/{key_index}'[/{sub_key}']
 # RSA derivation path (v2/v3 legacy):   m/83696968'/828365'/0'/{key_bits}'/{key_index}'[/{sub_key}']
@@ -3300,15 +3340,7 @@ class ToolsGPGDecryptMessageView(View):
                         return Destination(BackStackView)
 
                 file_list_path = resolve_microsd_images_dir()
-                file_list = [
-                    f
-                    for f in os.listdir(file_list_path)
-                    if (
-                        not f.startswith('.')
-                        and f != '__MACOSX'
-                        and os.path.isfile(os.path.join(file_list_path, f))
-                    )
-                ]
+                file_list = _list_sd_files(file_list_path)
                 buttons = [ButtonOption(file) for file in file_list]
                 if not buttons:
                     self.run_screen(
@@ -3934,15 +3966,7 @@ class ToolsGPGEncryptFileView(View):
                 return Destination(BackStackView)
 
         file_list_path = resolve_microsd_images_dir()
-        file_list = [
-            f
-            for f in os.listdir(file_list_path)
-            if (
-                not f.startswith('.')
-                and f != '__MACOSX'
-                and os.path.isfile(os.path.join(file_list_path, f))
-            )
-        ]
+        file_list = _list_sd_files(file_list_path)
         buttons = [ButtonOption(file) for file in file_list]
         if not buttons:
             self.run_screen(
@@ -4072,7 +4096,9 @@ class ToolsGPGEncryptFileView(View):
                 cmd.extend(["--pinentry-mode", "loopback", "--passphrase", passphrase])
             if sign_key is not None:
                 cmd.extend(["--local-user", sign_key["fpr"], "--sign"])
-            cmd.extend(["--recipient", rec_key["fpr"], "--encrypt", filename])
+            # "--" ends option parsing so SD-sourced filenames can never be
+            # parsed as gpg options (see _list_sd_files)
+            cmd.extend(["--recipient", rec_key["fpr"], "--encrypt", "--", filename])
             result = run(cmd, capture_output=True, text=True, cwd=file_list_path)
             self.loading_screen.stop()
             return result
@@ -4134,15 +4160,7 @@ class ToolsGPGDecryptFileView(View):
                 return Destination(BackStackView)
 
         file_list_path = resolve_microsd_images_dir()
-        file_list = [
-            f
-            for f in os.listdir(file_list_path)
-            if (
-                not f.startswith('.')
-                and f != '__MACOSX'
-                and os.path.isfile(os.path.join(file_list_path, f))
-            )
-        ]
+        file_list = _list_sd_files(file_list_path)
         buttons = [ButtonOption(file) for file in file_list]
         if not buttons:
             self.run_screen(
@@ -4198,7 +4216,9 @@ class ToolsGPGDecryptFileView(View):
             ]
             if passphrase is not None:
                 cmd.extend(["--pinentry-mode", "loopback", "--passphrase", passphrase])
-            cmd.append(filename)
+            # "--" ends option parsing so SD-sourced filenames can never be
+            # parsed as gpg options (see _list_sd_files)
+            cmd.extend(["--", filename])
             result = run(cmd, capture_output=True, text=True, cwd=file_list_path)
             self.loading_screen.stop()
             return result
@@ -4371,16 +4391,9 @@ class ToolsGPGVerifyFileView(View):
 
         file_list_path = resolve_microsd_images_dir()
 
-        # Get only the visible, valid files
-        visible_file_list = [
-            f
-            for f in os.listdir(file_list_path)
-            if (
-                    not f.startswith('.') and  # Ignore hidden files (like .DS_Store)
-                    f != '__MACOSX' and  # Ignore specific macOS metadata folder
-                    os.path.isfile(os.path.join(file_list_path, f))  # Only include actual files
-            )
-        ]
+        # Get only the visible, valid files (dash-leading names are excluded;
+        # they would be parsed as gpg options; see _list_sd_files)
+        visible_file_list = _list_sd_files(file_list_path)
 
         # Build button options
         verify_file_buttons = [ButtonOption(f) for f in visible_file_list]
@@ -4427,7 +4440,9 @@ class ToolsGPGVerifyFileView(View):
                     show_back_button=True,
                 )
                 return Destination(BackStackView)
-            cmd = ["gpg", "--status-fd=1", "--verify", verify_file_name, filechecked]
+            # "--" ends option parsing so SD-sourced filenames can never be
+            # parsed as gpg options (see _list_sd_files)
+            cmd = ["gpg", "--status-fd=1", "--verify", "--", verify_file_name, filechecked]
         else:
             filechecked = verify_file_name
             sig_candidate = None
@@ -4438,9 +4453,9 @@ class ToolsGPGVerifyFileView(View):
                     break
             cmd = ["gpg", "--status-fd=1", "--verify"]
             if sig_candidate:
-                cmd.extend([sig_candidate, verify_file_name])
+                cmd.extend(["--", sig_candidate, verify_file_name])
             else:
-                cmd.append(verify_file_name)
+                cmd.extend(["--", verify_file_name])
 
         self.loading_screen = LoadingScreenThread(
             text="Checking Signature\n\n\n\n\n\n(May take a while)"
@@ -4564,13 +4579,20 @@ class ToolsGPGVerifyFileView(View):
                 failed_files = []
                 missing_files = []
 
-                if shutil.which("sha256sum"):
+                # If the manifest lists any path-like or option-like name, fall
+                # back to the in-Python verifier: `sha256sum --check` resolves
+                # manifest paths itself, so its OK/FAILED output would be an
+                # arbitrary-file read oracle for a crafted manifest.
+                manifest_path = file_list_path / filechecked
+                if shutil.which("sha256sum") and _manifest_names_are_safe(manifest_path):
                     from seedsigner.models.settings import Settings
 
+                    # "--" ends option parsing so an attacker-supplied manifest
+                    # filename can never be parsed as a sha256sum option
                     if Settings.is_seedsigner_os():
-                        sha256_cmd = ["sha256sum", "-c", filechecked]
+                        sha256_cmd = ["sha256sum", "-c", "--", filechecked]
                     else:
-                        sha256_cmd = ["sha256sum", "--check", filechecked, "--ignore-missing"]
+                        sha256_cmd = ["sha256sum", "--check", "--ignore-missing", "--", filechecked]
 
                     self.loading_screen = LoadingScreenThread(
                         text="Checking SHA256\n\n\n\n\n\n(This takes a while)"
@@ -4610,6 +4632,12 @@ class ToolsGPGVerifyFileView(View):
                             if len(parts) < 2:
                                 continue
                             checksum, name = parts[0], parts[-1].lstrip("*")
+                            # Only hash bare filenames inside the SD dir: a
+                            # crafted manifest must not be able to name absolute
+                            # or relative paths (read oracle) or option-like
+                            # names.
+                            if not name or name.startswith("-") or Path(name).name != name:
+                                continue
                             file_path = file_list_path / name
                             if file_path.exists():
                                 h = hashlib.sha256()
@@ -4692,15 +4720,7 @@ class ToolsGPGSignFileView(View):
 
         file_list_path = resolve_microsd_images_dir()
 
-        file_list = [
-            f
-            for f in os.listdir(file_list_path)
-            if (
-                not f.startswith('.')
-                and f != '__MACOSX'
-                and os.path.isfile(os.path.join(file_list_path, f))
-            )
-        ]
+        file_list = _list_sd_files(file_list_path)
 
         buttons = [ButtonOption(file) for file in file_list]
 
@@ -4776,6 +4796,9 @@ class ToolsGPGSignFileView(View):
                 f"{filename}.sig",
                 "--armor",
                 "--detach-sign",
+                # "--" ends option parsing so SD-sourced filenames can never be
+                # parsed as gpg options (see _list_sd_files)
+                "--",
                 filename,
             ],
             cwd=file_list_path,
@@ -4831,14 +4854,8 @@ class ToolsGPGSignManifestView(View):
 
         file_list = [
             f
-            for f in os.listdir(file_list_path)
-            if (
-                not f.startswith('.')
-                and f != '__MACOSX'
-                and os.path.isfile(os.path.join(file_list_path, f))
-                and not f.endswith('.sig')
-                and f != manifest_name
-            )
+            for f in _list_sd_files(file_list_path)
+            if not f.endswith('.sig') and f != manifest_name
         ]
 
         file_list.sort()
@@ -4859,7 +4876,9 @@ class ToolsGPGSignManifestView(View):
 
         if shutil.which("sha256sum"):
             result = run(
-                ["sha256sum", *file_list],
+                # "--" ends option parsing so SD-sourced filenames can never be
+                # parsed as sha256sum options (see _list_sd_files)
+                ["sha256sum", "--", *file_list],
                 cwd=file_list_path,
                 capture_output=True,
                 text=True,
@@ -5102,15 +5121,7 @@ class ToolsGPGImportPubkeyFileView(View):
 
         file_list_path = resolve_microsd_images_dir()
 
-        verify_file_list = [
-            f
-            for f in os.listdir(file_list_path)
-            if (
-                not f.startswith('.')
-                and f != '__MACOSX'
-                and os.path.isfile(os.path.join(file_list_path, f))
-            )
-        ]
+        verify_file_list = _list_sd_files(file_list_path)
 
         verify_file_buttons = [ButtonOption(file) for file in verify_file_list]
 
@@ -5384,15 +5395,7 @@ class ToolsGPGLoadPrivkeyFileView(View):
 
         file_list_path = resolve_microsd_images_dir()
 
-        file_list = [
-            f
-            for f in os.listdir(file_list_path)
-            if (
-                not f.startswith('.')
-                and f != '__MACOSX'
-                and os.path.isfile(os.path.join(file_list_path, f))
-            )
-        ]
+        file_list = _list_sd_files(file_list_path)
 
         buttons = [ButtonOption(file) for file in file_list]
 

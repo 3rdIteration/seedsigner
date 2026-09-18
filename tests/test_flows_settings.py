@@ -219,7 +219,7 @@ class TestSettingsFlows(FlowTest):
             self.run_sequence([
                 FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
                 FlowStep(scan_views.ScanView, before_run=load_settingsqr_into_decoder),  # simulate read message QR; ret val is ignored
-                FlowStep(settings_views.SettingsIngestSettingsQRView),   # ret val is ignored
+                FlowStep(settings_views.SettingsIngestSettingsQRView, screen_return_value=0),  # 0 = Apply on the review screen
                 FlowStep(MainMenuView),
             ])
 
@@ -266,6 +266,31 @@ class TestSettingsFlows(FlowTest):
         )
 
 
+    def test_settingsqr_not_applied_until_confirmed(self):
+        """Parsing a SettingsQR must NOT change settings; only applying (after the
+        review screen) may mutate them."""
+        view = settings_views.SettingsIngestSettingsQRView(data="settings::v1 rgb_inv=E")
+
+        # Parsed, but nothing applied yet
+        assert view.settings_update_dict[SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED] == SettingsConstants.OPTION__ENABLED
+        assert self.settings.get_value(SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED) == SettingsConstants.OPTION__DISABLED
+
+        view._apply_settings()
+        assert self.settings.get_value(SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED) == SettingsConstants.OPTION__ENABLED
+
+
+    def test_settingsqr_cancel_does_not_apply(self):
+        """Cancelling the review screen (button_idx != 0) leaves settings untouched."""
+        view = settings_views.SettingsIngestSettingsQRView(data="settings::v1 rgb_inv=E")
+
+        view.run_screen = MagicMock(return_value=1)  # Cancel
+        destination = view.run()
+
+        assert destination.View_cls == MainMenuView
+        view.run_screen.assert_called_once()  # confirmation screen never shown
+        assert self.settings.get_value(SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED) == SettingsConstants.OPTION__DISABLED
+
+
     def test_settingsqr_color_inverted_applied_live(self):
         """A SettingsQR that changes only 'Invert colors' must apply the new state
         to the display immediately, without re-initializing the display driver."""
@@ -276,7 +301,8 @@ class TestSettingsFlows(FlowTest):
         with patch.object(gui_module, "Renderer") as mock_renderer_cls:
             mock_renderer_cls.get_instance.return_value = mock_renderer
 
-            settings_views.SettingsIngestSettingsQRView(data="settings::v1 rgb_inv=E")
+            view = settings_views.SettingsIngestSettingsQRView(data="settings::v1 rgb_inv=E")
+            view._apply_settings()
 
             assert self.settings.get_value(SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED) == SettingsConstants.OPTION__ENABLED
             mock_renderer.disp.set_color_inversion.assert_called_once_with(True)
@@ -287,7 +313,8 @@ class TestSettingsFlows(FlowTest):
         with patch.object(gui_module, "Renderer") as mock_renderer_cls:
             mock_renderer_cls.get_instance.return_value = mock_renderer
 
-            settings_views.SettingsIngestSettingsQRView(data="settings::v1 rgb_inv=D")
+            view = settings_views.SettingsIngestSettingsQRView(data="settings::v1 rgb_inv=D")
+            view._apply_settings()
 
             assert self.settings.get_value(SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED) == SettingsConstants.OPTION__DISABLED
             mock_renderer.disp.set_color_inversion.assert_called_once_with(False)
@@ -298,7 +325,8 @@ class TestSettingsFlows(FlowTest):
         with patch.object(gui_module, "Renderer") as mock_renderer_cls:
             mock_renderer_cls.get_instance.return_value = mock_renderer
 
-            settings_views.SettingsIngestSettingsQRView(data="settings::v1 qr_density=M")
+            view = settings_views.SettingsIngestSettingsQRView(data="settings::v1 qr_density=M")
+            view._apply_settings()
 
             mock_renderer.disp.set_color_inversion.assert_not_called()
             mock_renderer.initialize_display.assert_not_called()

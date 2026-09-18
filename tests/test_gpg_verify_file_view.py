@@ -339,7 +339,37 @@ class TestSignaturePairing:
         )
 
         assert gpg_calls[0][-1] == "signatures.txt"
-        assert len(gpg_calls[0]) == 4  # gpg --status-fd=1 --verify signatures.txt
+        # gpg --status-fd=1 --verify -- signatures.txt
+        assert gpg_calls[0] == ["gpg", "--status-fd=1", "--verify", "--", "signatures.txt"]
+
+    def test_dash_prefixed_files_hidden_from_picker(self, monkeypatch, tmp_path):
+        """SD filenames starting with '-' would be parsed as gpg options; they
+        must never be selectable."""
+        captured, gpg_calls = _run_view(
+            monkeypatch, tmp_path,
+            ["--output=evil", "normal.zip", "normal.zip.sig"],
+            gpg_stdout=_validsig(QLRD_FPR),
+            select_label="normal.zip",
+        )
+        buttons = [
+            getattr(b, "button_label", b)
+            for c in captured if c["screen"] is ButtonListScreen
+            for b in (c["kwargs"].get("button_data") or [])
+        ]
+        assert "normal.zip" in buttons
+        assert "--output=evil" not in buttons
+
+    def test_verify_and_sha256_cmds_use_end_of_options(self, monkeypatch, tmp_path):
+        """gpg (and sha256sum when present) get '--' before file operands."""
+        _, gpg_calls = _run_view(
+            monkeypatch, tmp_path,
+            ["release.zip", "release.zip.sig"],
+            gpg_stdout=_validsig(QLRD_FPR),
+            select_label="release.zip",
+        )
+        cmd = gpg_calls[0]
+        assert cmd[:4] == ["gpg", "--status-fd=1", "--verify", "--"]
+        assert cmd[4:] == ["release.zip.sig", "release.zip"]
 
 
 class TestParser:
@@ -363,3 +393,39 @@ class TestParser:
             f"[GNUPG:] VALIDSIG {QLRD_FPR.lower()} 2026-01-01\n", ""
         )
         assert result["valid_fprs"] == [QLRD_FPR]
+
+
+class TestSdFileHardening:
+    def test_list_sd_files_excludes_dash_prefixed(self, tmp_path):
+        (tmp_path / "normal.bin").write_bytes(b"x")
+        (tmp_path / "--output=evil").write_bytes(b"x")
+        (tmp_path / "-x").write_bytes(b"x")
+        (tmp_path / ".hidden").write_bytes(b"x")
+        (tmp_path / "subdir").mkdir()
+        (tmp_path / "-dashed-dir").mkdir()
+
+        assert gpg_views._list_sd_files(tmp_path) == ["normal.bin"]
+
+    def test_manifest_names_are_safe_accepts_bare_names(self, tmp_path):
+        manifest = tmp_path / "SHA256SUMS"
+        manifest.write_text(
+            "aaaa  bitcoin-28.0.tar.gz\n"
+            "bbbb *bitcoin-28.0.zip\n"
+            "\n"
+            "cccc\n"
+        )
+        assert gpg_views._manifest_names_are_safe(manifest)
+
+    def test_manifest_names_are_safe_rejects_paths_and_options(self, tmp_path):
+        for bad_line in (
+            "aaaa  ../../etc/passwd\n",
+            "aaaa  /etc/passwd\n",
+            "aaaa  --output=/root/.gnupg/evil\n",
+            "aaaa  sub/dir/file.bin\n",
+        ):
+            manifest = tmp_path / "SHA256SUMS"
+            manifest.write_text("aaaa  good.bin\n" + bad_line)
+            assert not gpg_views._manifest_names_are_safe(manifest), bad_line
+
+    def test_manifest_names_are_safe_missing_file(self, tmp_path):
+        assert not gpg_views._manifest_names_are_safe(tmp_path / "nope.txt")

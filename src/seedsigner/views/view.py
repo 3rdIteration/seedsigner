@@ -145,6 +145,13 @@ class Destination:
         "secret_list",
         "private_key",
         "pin",
+        # Raw entropy sources; these are the full entropy behind a generated
+        # password or mnemonic and must never reach the logs.
+        "roll_data",
+        "entropy",
+        "entropy_bytes",
+        "entropy_bytes_override",
+        "coin_flips",
     }
 
     @classmethod

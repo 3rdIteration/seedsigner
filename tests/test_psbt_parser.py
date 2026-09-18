@@ -296,6 +296,38 @@ class TestPSBTParser:
         assert parser.verified_input_derivation_paths == [bip32.parse_path(odd_parity_derivation_path)]
 
 
+    def test_missing_fingerprint_with_xprv_seed(self):
+        """
+        The zero-fingerprint fallback must route through seed.get_root() instead of
+        bip32.HDKey.from_seed(seed.seed_bytes). XprvSeed has seed_bytes == None, so
+        the direct from_seed() path crashed seed selection with a TypeError.
+        """
+        from seedsigner.models.seed import XprvSeed
+        from psbt_testing_util import root_for_seed
+
+        xprv_seed = XprvSeed(root_for_seed(PSBTTestData.seed).to_base58())
+        assert xprv_seed.seed_bytes is None
+        wrong_xprv_seed = XprvSeed(root_for_seed(PSBTTestData.recipient_seed).to_base58())
+
+        psbt = PSBT.parse(a2b_base64(PSBTTestData.ALL_INPUTS[0]))
+        from embit.psbt import DerivationPath
+        for inp in psbt.inputs:
+            for pub, derivation in inp.bip32_derivations.items():
+                inp.bip32_derivations[pub] = DerivationPath(
+                    fingerprint=b"\x00\x00\x00\x00",
+                    derivation=derivation.derivation
+                )
+            for pub, (leaf_hashes, derivation) in inp.taproot_bip32_derivations.items():
+                inp.taproot_bip32_derivations[pub] = (leaf_hashes, DerivationPath(
+                    fingerprint=b"\x00\x00\x00\x00",
+                    derivation=derivation.derivation
+                ))
+
+        # Must not raise despite seed_bytes being None
+        assert PSBTParser.has_matching_input_fingerprint(psbt, xprv_seed, SettingsConstants.REGTEST)
+        assert not PSBTParser.has_matching_input_fingerprint(psbt, wrong_xprv_seed, SettingsConstants.REGTEST)
+
+
     def test_trim_and_sig_count(self):
         """
         PSBTParser should correctly trim a psbt of all unnecessary data and count the number of

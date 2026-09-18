@@ -152,8 +152,9 @@ class TestPBKDF2IterationsSetting(SettingsFlowTest):
 
     def test_type_a_new_iteration_count(self):
         attr = SettingsConstants.SETTING__ENCRYPTION_ITER
-        # The screen stores units of 10k and rejects anything outside 1..50, and it
-        # comes up pre-filled with the current value -- hence clear_first.
+        # The screen stores units of 10k and rejects anything outside the
+        # setting entry's min_value..max_value (10..1000), and it comes up
+        # pre-filled with the current value -- hence clear_first.
         new_value = "12"
 
         session = UISession(script=(
