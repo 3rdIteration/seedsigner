@@ -8,6 +8,16 @@ import time
 from .fountain_utils import choose_fragments, contains, is_strict_subset, set_difference
 from .utils import join_lists, join_bytes, crc32_int, xor_with, take_first
 
+# A part's seq_len comes straight off a scanned QR; the UR parser only rejects values
+# below 1 or above 2**64. validate_part() builds a set that size and choose_fragments()
+# runs a shuffle quadratic in it, so one frame could exhaust memory or hang a Pi Zero
+# for hours. The shuffle is part of the fountain code and can't be changed without
+# breaking interoperability, so the count is bounded instead. 10,000 fragments is far
+# beyond any real message (100 KB even at a 10-byte fragment). Same bound as upstream
+# SeedSigner #970.
+MAX_SEQ_LEN = 10000
+
+
 class InvalidPart(Exception):
     pass
 
@@ -268,6 +278,10 @@ class FountainDecoder:
             self.mixed_parts[p2.indexes] = p2
 
     def validate_part(self, p):
+        # Reject implausible part counts before allocating anything sized by them
+        if p.seq_len < 1 or p.seq_len > MAX_SEQ_LEN:
+            return False
+
         # If this is the first part we've seen
         if self.expected_part_indexes == None:
             # Record the things that all the other parts we see will have to match to be valid.

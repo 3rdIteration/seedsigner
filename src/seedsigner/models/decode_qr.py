@@ -717,7 +717,9 @@ class DecodeQR:
                 return QRType.WALLET__GENERIC
 
             # Seed
-            if re.search(r'\d{48,96}', s):
+            # The whole payload, not merely a digit run inside something else (a
+            # SettingsQR with a long number in it is not a seed).
+            if re.fullmatch(r'(?:\d{4}){12,24}', s.strip()):
                 return QRType.SEED__SEEDQR
 
             # Bitcoin Address
@@ -1218,7 +1220,13 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
                 if len(self.seed_phrase) > 0:
                     if not self.has_valid_word_count():
                         return DecodeQRStatus.INVALID
-                    self.seed_type = "bip39"
+                    # Hand-transcribed SeedQRs are exactly where a wrong digit is
+                    # expected, and the checksum is what catches it. Unchecked, the
+                    # bad mnemonic only failed later, as a System Error.
+                    seed_type = self._classify_mnemonic(self.seed_phrase)
+                    if seed_type is None:
+                        return DecodeQRStatus.INVALID
+                    self.seed_type = seed_type
                     self.complete = True
                     self.collected_segments = 1
                     return DecodeQRStatus.COMPLETE
@@ -1249,23 +1257,10 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
                 if not self.has_valid_word_count():
                     return DecodeQRStatus.INVALID
 
-                is_valid_bip39 = False
-                try:
-                    Seed(seed_phrase_list, passphrase="", wordlist_language_code=self.wordlist_language_code)
-                    is_valid_bip39 = True
-                except Exception:
-                    is_valid_bip39 = False
-
-                is_valid_aezeed = len(seed_phrase_list) == 24 and aezeed_has_valid_checksum(seed_phrase_list, self.word_to_index)
-
-                if is_valid_aezeed and is_valid_bip39:
-                    self.seed_type = "ambiguous"
-                elif is_valid_aezeed:
-                    self.seed_type = "aezeed"
-                elif is_valid_bip39:
-                    self.seed_type = "bip39"
-                else:
+                seed_type = self._classify_mnemonic(seed_phrase_list)
+                if seed_type is None:
                     return DecodeQRStatus.INVALID
+                self.seed_type = seed_type
 
                 self.seed_phrase = seed_phrase_list
                 self.complete = True
@@ -1311,6 +1306,29 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
         if self.complete:
             return self.seed_type
         return None
+
+    def _classify_mnemonic(self, words: list) -> str | None:
+        """
+        "bip39", "aezeed", or "ambiguous" (both checksums pass) for a mnemonic whose
+        checksum holds; None when neither does.
+        """
+        is_valid_bip39 = False
+        try:
+            Seed(words, passphrase="", wordlist_language_code=self.wordlist_language_code)
+            is_valid_bip39 = True
+        except Exception:
+            is_valid_bip39 = False
+
+        is_valid_aezeed = len(words) == 24 and aezeed_has_valid_checksum(words, self.word_to_index)
+
+        if is_valid_aezeed and is_valid_bip39:
+            return "ambiguous"
+        elif is_valid_aezeed:
+            return "aezeed"
+        elif is_valid_bip39:
+            return "bip39"
+        return None
+
 
     def has_valid_word_count(self):
         return len(self.seed_phrase) in (12, 15, 18, 21, 24)
@@ -1440,10 +1458,14 @@ class SignMessageQrDecoder(BaseSingleFrameQrDecoder):
 
             signmessage {derivation_path} ascii:{message}
         """
-        parts = segment.split()
+        # Split off the header only: the message itself may contain spaces or
+        # another "ascii:". A malformed payload is INVALID, never an IndexError --
+        # this decoder runs inside the camera loop, where an exception is a crash.
+        parts = segment.split(maxsplit=2)
+        if len(parts) < 3 or ":" not in parts[2]:
+            return DecodeQRStatus.INVALID
         self.derivation_path = parts[1].replace("h", "'")
-        fmt = parts[2].split(":")[0]
-        self.message = segment.split(f"{fmt}:")[1]
+        fmt, self.message = parts[2].split(":", 1)
 
         # TODO: support formats other than ascii?
         if fmt != "ascii":

@@ -539,6 +539,14 @@ REJECT_PRESENTATION = {
         button_label=_mft("Discard transaction"),
     ),
 
+    RejectCode.INCONSISTENT_FINGERPRINTS: RejectPresentation(
+        screen=WarningScreen,
+        title=_mft("Transaction Problem"),
+        # TRANSLATOR_NOTE: Two records in the psbt disagree about which wallet a key comes from
+        text=_mft("This transaction's records disagree about which wallet a key comes from."),
+        button_label=_mft("Discard transaction"),
+    ),
+
     RejectCode.FORGED_INPUT_OWNERSHIP: RejectPresentation(
         screen=WarningScreen,
         # TRANSLATOR_NOTE: Title of the screen shown when a psbt misstates who owns an input
@@ -695,6 +703,7 @@ class PSBTOverviewView(View):
                     network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
                     reference_time=getattr(self.controller, "psbt_source_time", None),
                     block_anchor=(_Controller.RELEASE_BLOCK_HEIGHT, _Controller.RELEASE_BLOCK_TIME),
+                    multisig_descriptor=self.controller.multisig_wallet_descriptor,
                 )
             except InvalidPSBTError as e:
                 # A deliberate refusal, not a crash: the psbt is parseable but unsafe to
@@ -751,19 +760,76 @@ class PSBTOverviewView(View):
             self.controller.psbt_seed = None
             return Destination(BackStackView)
 
-        if psbt_parser.risk_warnings - RiskWarning.INFORMATIONAL:
-            return Destination(PSBTRiskWarningView)
+        if psbt_parser.unidentified_change_outputs:
+            return Destination(PSBTIdentifyChangeView)
 
-        # expecting p2sh (legacy multisig) and p2pkh to have no policy set
-        # skip change warning and psbt math view
-        if psbt_parser.policy == None:
-            return Destination(PSBTUnsupportedScriptTypeWarningView)
-        
-        elif psbt_parser.change_amount == 0:
-            return Destination(PSBTNoChangeWarningView)
+        return post_overview_destination(psbt_parser)
 
+
+
+def post_overview_destination(psbt_parser: PSBTParser, skip_current_view: bool = False) -> Destination:
+    """Where review continues once the overview (and any interstitial after it) is done."""
+    if psbt_parser.risk_warnings - RiskWarning.INFORMATIONAL:
+        return Destination(PSBTRiskWarningView, skip_current_view=skip_current_view)
+
+    # expecting p2sh (legacy multisig) and p2pkh to have no policy set
+    # skip change warning and psbt math view
+    if psbt_parser.policy == None:
+        return Destination(PSBTUnsupportedScriptTypeWarningView, skip_current_view=skip_current_view)
+
+    elif psbt_parser.change_amount == 0:
+        return Destination(PSBTNoChangeWarningView, skip_current_view=skip_current_view)
+
+    else:
+        return Destination(PSBTMathView, skip_current_view=skip_current_view)
+
+
+
+class PSBTIdentifyChangeView(View):
+    """
+    Some output looks like this multisig wallet's change, but the psbt carries no global
+    xpubs to tie its other cosigner keys to the inputs' wallet. A different wallet that
+    shares our key would look the same, so PSBTParser shows it as a payment. Only the
+    wallet's descriptor can identify it as change.
+    """
+    LOAD_DESCRIPTOR = ButtonOption("Load descriptor")
+    # TRANSLATOR_NOTE: Review the unidentified output as a payment, without loading a descriptor
+    CONTINUE_AS_PAYMENT = ButtonOption("Continue as payment")
+    CONTINUE = ButtonOption("Continue")
+
+    def run(self):
+        psbt_parser: PSBTParser = self.controller.psbt_parser
+        if not psbt_parser:
+            # Should not be able to get here
+            return Destination(MainMenuView)
+
+        if self.controller.multisig_wallet_descriptor:
+            # TRANSLATOR_NOTE: A loaded multisig descriptor did not match an output that looked like change
+            text = _("The loaded descriptor doesn't identify it. Shown as a payment.")
+            button_data = [self.CONTINUE]
         else:
-            return Destination(PSBTMathView)
+            # TRANSLATOR_NOTE: Multisig change can't be told apart from a payment without the wallet descriptor
+            text = _("Load descriptor to identify change.")
+            button_data = [self.LOAD_DESCRIPTOR, self.CONTINUE_AS_PAYMENT]
+
+        selected_menu_num = self.run_screen(
+            WarningScreen,
+            # TRANSLATOR_NOTE: Headline when multisig change cannot be identified
+            status_headline=_("Change Not Identified"),
+            text=text,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if button_data[selected_menu_num] == self.LOAD_DESCRIPTOR:
+            from seedsigner.controller import Controller
+            from seedsigner.views.seed_views import LoadMultisigWalletDescriptorView
+            self.controller.resume_main_flow = Controller.FLOW__PSBT
+            return Destination(LoadMultisigWalletDescriptorView)
+
+        return post_overview_destination(psbt_parser, skip_current_view=True)
 
 
 

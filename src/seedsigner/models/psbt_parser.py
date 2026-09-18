@@ -169,6 +169,11 @@ class RejectCode:
     # this direction cannot be trusted about anything else.
     MISLABELED_OUTPUT_OWNERSHIP = "MISLABELED_OUTPUT_OWNERSHIP"
 
+    # A key's derivation entry and the global xpub that derives it name different
+    # master fingerprints. Both are the coordinator's claims about the same key, so
+    # one of them is wrong; nothing says which, so it is not graded as an attack.
+    INCONSISTENT_FINGERPRINTS = "INCONSISTENT_FINGERPRINTS"
+
     # The selected seed holds no key that could sign any input. Alone among these
     # codes this is a mismatch rather than a refusal of the psbt: the usual cause
     # is the user picking the wrong seed. It is raised so the flow can say so up
@@ -254,6 +259,7 @@ class PSBTParser():
         reference_time: int | None = None,
         max_fee_rate: float | None = None,
         block_anchor: tuple[int, int] | None = None,
+        multisig_descriptor: Descriptor | None = None,
     ):
         self.psbt: PSBT = p
         self.seed = seed
@@ -267,6 +273,16 @@ class PSBTParser():
         # far-future check simply does not run. See _check_far_future_locktime.
         self.reference_time = reference_time
         self.block_anchor = block_anchor
+
+        # A user-loaded, known-good multisig descriptor. Without one, multisig change
+        # can only be identified when the psbt's global xpubs tie every cosigner key
+        # back to the inputs' wallet; see _parse_outputs.
+        self.multisig_descriptor = multisig_descriptor
+
+        # Output indexes that look like multisig change (same script shape, our key
+        # among the cosigners) but that nothing could tie to the inputs' wallet. They
+        # are presented as payments until a descriptor identifies them.
+        self.unidentified_change_outputs: list[int] = []
 
         self.change_index_lookahead = (
             change_index_lookahead
@@ -469,6 +485,10 @@ class PSBTParser():
         rt = self._parse_outputs(child_key_derivation_cache)
         if rt == False:
             return False
+
+        # Last, so that a more serious finding about this seed's own keys is the
+        # one reported.
+        self._reject_inconsistent_fingerprints(child_key_derivation_cache)
 
         return True
 
@@ -862,6 +882,24 @@ class PSBTParser():
                 code=RejectCode.MISSING_UTXO,
             )
 
+        if non_witness_utxo is not None:
+            # non_witness_utxo is the whole previous transaction, so unlike
+            # witness_utxo it can be proven: it has to hash to the txid this input
+            # spends. A legacy signature commits to no amount at all, so an altered
+            # previous tx is enough to understate an input and hide the difference
+            # in the fee, in a single signing. (embit's InputScope.verify does the
+            # same hash, but raises bare exceptions and skips inputs without one.)
+            if non_witness_utxo.txid() != inp.txid:
+                raise InvalidPSBTError(
+                    f"Input {index} previous tx does not match the txid it spends.",
+                    code=RejectCode.UTXO_MISMATCH,
+                )
+            if inp.vout is None or not 0 <= inp.vout < len(non_witness_utxo.vout):
+                raise InvalidPSBTError(
+                    f"Input {index} spends an output its previous tx does not have.",
+                    code=RejectCode.UTXO_MISMATCH,
+                )
+
         if witness_utxo is not None and non_witness_utxo is not None:
             # Both forms supplied: they must describe the same prevout. This is
             # the BIP-143 amount-binding attack -- a lowered witness_utxo value
@@ -924,6 +962,14 @@ class PSBTParser():
                     code=RejectCode.SCRIPT_HASH_MISMATCH,
                 )
             effective_type = inp.redeem_script.script_type()
+            if non_witness_utxo is None and effective_type not in ("p2wpkh", "p2wsh"):
+                # A p2sh that wraps no witness program is legacy (e.g. bare p2sh
+                # multisig): its signature commits to no amount, so a witness_utxo
+                # alone is an unprovable claim about it.
+                raise InvalidPSBTError(
+                    f"Input {index} is legacy p2sh with no previous tx.",
+                    code=RejectCode.INVALID_WITNESS_UTXO,
+                )
 
         if effective_type == "p2wsh":
             if inp.witness_script is None:
@@ -1228,6 +1274,17 @@ class PSBTParser():
                 if sc.data == vout[i].script_pubkey.data:
                     is_change = True
 
+            if is_change and self.is_multisig and "cosigners" not in self.policy:
+                # The script is a well-formed m-of-n that contains our key, but with no
+                # global xpubs nothing ties its other keys to the inputs' wallet. A
+                # different wallet that shares our key -- the same m-of-n with one
+                # cosigner swapped for an attacker's -- looks identical. Labelling it
+                # change would hide it from review, so it stays a payment unless a
+                # known-good descriptor identifies it.
+                if self.multisig_descriptor is None or not self._descriptor_owns_output(self.multisig_descriptor, i):
+                    is_change = False
+                    self.unidentified_change_outputs.append(i)
+
             if is_change:
                 # The seed can derive this scriptPubKey, but the path is not one
                 # any wallet will scan for. There is no honest reason to build
@@ -1270,8 +1327,7 @@ class PSBTParser():
                             )
 
             if vout[i].script_pubkey.data[0] == OPCODES.OP_RETURN:
-                # The data is written as: OP_RETURN + OP_PUSHDATA1 + len(payload) + payload
-                self.op_return_data = vout[i].script_pubkey.data[3:]
+                self.op_return_data = PSBTParser._op_return_payload(vout[i].script_pubkey.data)
 
                 # Bitcoin Core v30 relaxed OP_RETURN standardness, so the amount
                 # cannot be assumed to be zero. An OP_RETURN is provably
@@ -1441,28 +1497,54 @@ class PSBTParser():
 
 
     @staticmethod
+    def _script_ops(data: bytes):
+        """
+        Yields (opcode, pushed_bytes) for each operation in a script; pushed_bytes is
+        None for anything that is not a push. A push that runs past the end of the
+        script yields what is there and stops.
+        """
+        pos = 0
+        while pos < len(data):
+            op = data[pos]
+            pos += 1
+            if 0x01 <= op <= 0x4b:
+                length = op
+            elif op == OPCODES.OP_PUSHDATA1:
+                length, pos = int.from_bytes(data[pos:pos + 1], "little"), pos + 1
+            elif op == OPCODES.OP_PUSHDATA2:
+                length, pos = int.from_bytes(data[pos:pos + 2], "little"), pos + 2
+            elif op == OPCODES.OP_PUSHDATA4:
+                length, pos = int.from_bytes(data[pos:pos + 4], "little"), pos + 4
+            else:
+                yield op, None
+                continue
+            yield op, data[pos:pos + length]
+            pos += length
+
+
+    @staticmethod
     def _script_has_timelock(sc) -> bool:
         """
         Whether a script runs OP_CHECKLOCKTIMEVERIFY or OP_CHECKSEQUENCEVERIFY.
         Walks the opcodes rather than searching the bytes, so a push that happens
         to contain 0xb1 or 0xb2 is not mistaken for one.
         """
-        data = sc.data
-        pos = 0
-        while pos < len(data):
-            op = data[pos]
-            pos += 1
-            if op in (OPCODES.OP_CHECKLOCKTIMEVERIFY, OPCODES.OP_CHECKSEQUENCEVERIFY):
-                return True
-            if 0x01 <= op <= 0x4b:
-                pos += op
-            elif op == OPCODES.OP_PUSHDATA1:
-                pos += 1 + (data[pos] if pos < len(data) else 0)
-            elif op == OPCODES.OP_PUSHDATA2:
-                pos += 2 + int.from_bytes(data[pos:pos + 2], "little")
-            elif op == OPCODES.OP_PUSHDATA4:
-                pos += 4 + int.from_bytes(data[pos:pos + 4], "little")
-        return False
+        return any(
+            op in (OPCODES.OP_CHECKLOCKTIMEVERIFY, OPCODES.OP_CHECKSEQUENCEVERIFY)
+            for op, _pushed in PSBTParser._script_ops(sc.data)
+        )
+
+
+    @staticmethod
+    def _op_return_payload(data: bytes) -> bytes:
+        """
+        The data an OP_RETURN script carries: everything its pushes push, in order.
+
+        Payloads of 75 bytes or fewer are pushed directly (OP_RETURN <len> <data>),
+        which is how Bitcoin Core writes them; OP_PUSHDATA1 is only for longer ones.
+        Slicing at a fixed offset dropped the first byte of every short payload.
+        """
+        return b"".join(pushed for _op, pushed in PSBTParser._script_ops(data[1:]) if pushed is not None)
 
 
 
@@ -2104,6 +2186,38 @@ class PSBTParser():
                     )
 
 
+    def _reject_inconsistent_fingerprints(self, child_key_derivation_cache: dict):
+        """
+        Refuses a psbt where a key's derivation entry and the global xpub that derives
+        that key name different master fingerprints.
+
+        Keys are matched to xpubs by derivation, not by fingerprint, so a mislabel
+        changes nothing downstream -- but it is a self-contradictory psbt, which is
+        refused like the others. All-zero fingerprints are skipped on either side:
+        coordinators write 00000000 for a fingerprint they do not know.
+        """
+        zero = bytes(4)
+        for scope in list(self.psbt.inputs) + list(self.psbt.outputs):
+            for public_key, derivation_path_obj in scope.bip32_derivations.items():
+                if derivation_path_obj.fingerprint == zero:
+                    continue
+                path = derivation_path_obj.derivation
+                for xpub, origin in self.psbt.xpubs.items():
+                    if origin.fingerprint == zero or origin.fingerprint == derivation_path_obj.fingerprint:
+                        continue
+                    if len(path) < 2 or list(origin.derivation) != list(path[:-2]):
+                        continue
+                    try:
+                        derived = PSBTParser._derive_with_cache(xpub, path[-2:], child_key_derivation_cache)
+                    except Exception:
+                        continue
+                    if derived.key == public_key:
+                        raise InvalidPSBTError(
+                            "A key's fingerprint disagrees with the xpub that derives it.",
+                            code=RejectCode.INCONSISTENT_FINGERPRINTS,
+                        )
+
+
     def _reject_if_seed_cannot_sign(self):
         """
         Rejects the psbt when none of its inputs rely on a key derived by this seed.
@@ -2152,8 +2266,11 @@ class PSBTParser():
         every entry that names a descriptor key has to derive this output's script,
         and has to be one of the keys that script actually contains.
         """
-        change_data = self.get_change_data(change_num)
-        i = change_data["output_index"]
+        return self._descriptor_owns_output(descriptor, self.get_change_data(change_num)["output_index"])
+
+
+    def _descriptor_owns_output(self, descriptor: Descriptor, i: int) -> bool:
+        """See verify_multisig_output; takes an output index rather than a change number."""
         output = self.psbt.outputs[i]
         script_pubkey = self.psbt.tx.vout[i].script_pubkey
 

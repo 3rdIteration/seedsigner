@@ -299,3 +299,23 @@ class TestBlockAnchor:
         data = json.loads(path.read_text(encoding="utf-8"))
         assert data["height"] > 900_000
         assert data["timestamp"] > 1_700_000_000
+
+
+class TestIdentifyChangeScreenFits:
+    """PSBTIdentifyChangeView's text shares the warning box with a headline and two buttons."""
+
+    @pytest.mark.parametrize("text,buttons", [
+        ("Load descriptor to identify change.", ["Load descriptor", "Continue as payment"]),
+        ("The loaded descriptor doesn't identify it. Shown as a payment.", ["Continue"]),
+    ])
+    def test_text_fits(self, text, buttons):
+        screen = WarningScreen(
+            status_headline="Change Not Identified",
+            text=text,
+            button_data=[ButtonOption(b) for b in buttons],
+            show_back_button=True,
+        )
+        text_area = [c for c in screen.components if c.__class__.__name__ == "TextArea"][-1]
+        lines = len(text_area.text_lines)
+        height = text_area.text_height_above_baseline * lines + text_area.line_spacing * (lines - 1)
+        assert height <= text_area.height, f"{lines} lines, {height}px in a {text_area.height}px box"

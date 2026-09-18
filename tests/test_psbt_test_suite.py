@@ -948,8 +948,16 @@ class TestScriptTimelock:
         assert Advisory.SCRIPT_TIMELOCK in parse_vector(VECTORS_BY_NAME["TX-20.cltv_time"]).risk_warnings
 
     def test_uncommitted_script_is_ignored(self):
-        """TX-20.cltv_height's CLTV script does not hash to its p2wpkh output; it says nothing."""
-        assert Advisory.SCRIPT_TIMELOCK not in parse_vector(VECTORS_BY_NAME["TX-20.cltv_height"]).risk_warnings
+        """A CLTV script the output does not commit to says nothing about the output."""
+        from embit.psbt import PSBT
+        from embit.script import Script
+
+        psbt = load_psbt("NORMAL-1_p2wpkh")
+        external = next(i for i, out in enumerate(psbt.outputs) if not out.bip32_derivations)
+        # <1,005,000> OP_CHECKLOCKTIMEVERIFY OP_DROP, attached to a p2wpkh output
+        psbt.outputs[external].witness_script = Script(bytes.fromhex("03c8550fb175"))
+        parser = PSBTParser(p=PSBT.parse(psbt.serialize()), seed=suite_seed(), network=SUITE_NETWORK)
+        assert Advisory.SCRIPT_TIMELOCK not in parser.risk_warnings
 
     def test_push_data_is_not_mistaken_for_an_opcode(self):
         from embit.script import Script
@@ -963,3 +971,129 @@ class TestScriptTimelock:
         from seedsigner.views.psbt_views import PSBTRiskWarningView
         assert RiskWarning.SCRIPT_TIMELOCK not in RiskWarning.INFORMATIONAL
         assert RiskWarning.SCRIPT_TIMELOCK in PSBTRiskWarningView.RISK_TEXT
+
+
+class TestPreviousTxProof:
+    """
+    A non_witness_utxo is the whole previous transaction, so it can be proven: it
+    must hash to the txid the input spends. Legacy signatures commit to no amount,
+    so this hash is the only thing standing between a lying amount and the fee.
+    """
+
+    def test_altered_previous_tx_is_refused(self):
+        """XTRAS.PREV_TX_TXID_MISMATCH would otherwise show a 1,000-sat fee for an 800,000-sat one."""
+        with pytest.raises(InvalidPSBTError) as excinfo:
+            parse_vector(VECTORS_BY_NAME["XTRAS.PREV_TX_TXID_MISMATCH"])
+        assert excinfo.value.code == RejectCode.UTXO_MISMATCH
+
+    def test_editing_a_normal_legacy_prev_tx_is_caught(self):
+        psbt = load_psbt("NORMAL-3_legacy")
+        inp = psbt.inputs[0]
+        inp.non_witness_utxo.vout[inp.vout].value -= 1
+        with pytest.raises(InvalidPSBTError) as excinfo:
+            PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK)
+        assert excinfo.value.code == RejectCode.UTXO_MISMATCH
+
+    def test_spending_an_output_the_prev_tx_lacks_is_refused(self):
+        """A vout past the end of the previous tx used to escape as an IndexError."""
+        from embit.psbt import PSBT
+
+        psbt = load_psbt("NORMAL-3_legacy")
+        psbt.tx.vin[0].vout = 99
+        psbt = PSBT.parse(psbt.serialize())
+        psbt.inputs[0].vout = 99
+        with pytest.raises(InvalidPSBTError) as excinfo:
+            PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK)
+        assert excinfo.value.code == RejectCode.UTXO_MISMATCH
+
+    def test_honest_legacy_prev_tx_still_parses(self):
+        parser = parse_vector(VECTORS_BY_NAME["NORMAL-3_legacy"])
+        assert parser.input_amount == 100_000_000
+
+
+class TestOpReturnPayload:
+    """The payload is read from its push opcode, never sliced at a fixed offset."""
+
+    MSG = b"Chancellor on the brink of third bailout"
+
+    @pytest.mark.parametrize("name", ["XTRAS.OP_RETURN_DIRECT_PUSH", "XTRAS.OP_RETURN_DIRECT_PUSH_V2"])
+    def test_direct_push_is_shown_exactly(self, name):
+        assert parse_vector(VECTORS_BY_NAME[name]).op_return_data == self.MSG
+
+    @pytest.mark.parametrize("script,expected", [
+        (b"j(" + MSG, MSG),                            # direct push (<= 75 bytes)
+        (b"jLP" + b"x" * 80, b"x" * 80),             # OP_PUSHDATA1
+        (b"jM," + b"y" * 300, b"y" * 300),       # OP_PUSHDATA2
+        (b"j", b""),                                       # bare OP_RETURN
+        (b"jab", b"ab"),                                # truncated push: what is there
+    ])
+    def test_payload_parsing(self, script, expected):
+        assert PSBTParser._op_return_payload(script) == expected
+
+
+class TestFingerprintConsistency:
+    """A key's derivation entry and the global xpub deriving it must name the same master."""
+
+    def test_relabelled_global_xpub_is_refused(self):
+        with pytest.raises(InvalidPSBTError) as excinfo:
+            parse_vector(VECTORS_BY_NAME["TX-24.xpub_fingerprint_mismatch"])
+        assert excinfo.value.code == RejectCode.INCONSISTENT_FINGERPRINTS
+
+    def test_unknown_fingerprint_is_not_a_contradiction(self):
+        """Coordinators write 00000000 for a fingerprint they do not know."""
+        from embit.psbt import DerivationPath
+
+        psbt = load_psbt("TX-24.xpub_fingerprint_mismatch")
+        for xpub, origin in list(psbt.xpubs.items()):
+            if origin.fingerprint == bytes.fromhex("deadbeef"):
+                psbt.xpubs[xpub] = DerivationPath(bytes(4), origin.derivation)
+        # Refused only for a contradiction; an unknown fingerprint just leaves that
+        # cosigner unresolved, so the change waits on a descriptor to be identified.
+        parser = PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK)
+        assert parser.num_change_outputs + len(parser.unidentified_change_outputs) == 1
+
+
+class TestUnidentifiedMultisigChange:
+    """
+    Without global xpubs, nothing in a psbt ties a multisig change script's other keys
+    to the inputs' wallet, so our key being in it proves nothing. Such outputs are
+    payments until a known-good descriptor identifies them.
+    """
+
+    @staticmethod
+    def _descriptor():
+        from embit.descriptor import Descriptor
+        from psbt_suite_util import MULTISIG_DESCRIPTOR
+        return Descriptor.from_string(MULTISIG_DESCRIPTOR)
+
+    def _parse(self, name, **kw):
+        return PSBTParser(p=load_psbt(name), seed=suite_seed(), network=SUITE_NETWORK, **kw)
+
+    def test_honest_change_without_xpubs_is_unidentified(self):
+        parser = self._parse("TX-21.ms_honest_change_no_xpubs")
+        assert parser.num_change_outputs == 0
+        assert parser.unidentified_change_outputs == [0]
+        assert parser.spend_amount == 199_000
+
+    def test_the_descriptor_identifies_it(self):
+        parser = self._parse("TX-21.ms_honest_change_no_xpubs", multisig_descriptor=self._descriptor())
+        assert parser.num_change_outputs == 1
+        assert parser.unidentified_change_outputs == []
+
+    def test_a_foreign_quorum_is_never_identified(self):
+        """Loading the real wallet's descriptor must not turn the foreign 2-of-3 into change."""
+        parser = self._parse("TX-21.ms_foreign_quorum_no_xpubs", multisig_descriptor=self._descriptor())
+        assert parser.num_change_outputs == 0
+        assert parser.unidentified_change_outputs == [0]
+
+    def test_with_xpubs_the_foreign_quorum_is_a_plain_payment(self):
+        parser = self._parse("TX-21.ms_foreign_quorum")
+        assert parser.num_change_outputs == 0
+        assert parser.unidentified_change_outputs == []
+
+    def test_change_with_xpubs_needs_no_descriptor(self):
+        """Global xpubs resolve every cosigner, so identification doesn't wait on a descriptor."""
+        psbt, _decoy = TestMultisigPolicy._honest_change()
+        parser = PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK)
+        assert parser.num_change_outputs == 1
+        assert parser.unidentified_change_outputs == []
