@@ -531,3 +531,69 @@ def test_arms_a_real_build(tmp_path, new_key):
     assert rk.is_burn_armed(buf)
     for name, ok, detail in rr.verify_release(folder, int(new_key.n), ED_SEED):
         assert ok, "%s (%s) failed to verify" % (name, detail)
+
+
+# --- keys brought as files or SeedKeeper secrets ---------------------------------
+
+def test_parse_rsa_key_formats(new_key):
+    for data in (new_key.export_key(format="PEM"), new_key.export_key(format="DER"),
+                 new_key.export_key(format="PEM", pkcs=8)):
+        assert int(rr.parse_rsa_key(data).n) == int(new_key.n)
+
+
+def test_parse_rsa_key_refusals(new_key):
+    from Cryptodome.PublicKey import RSA
+    with pytest.raises(rr.ResignError, match="PUBLIC"):
+        rr.parse_rsa_key(new_key.publickey().export_key())
+    with pytest.raises(rr.ResignError, match="passphrase"):
+        rr.parse_rsa_key(new_key.export_key(passphrase="pw", pkcs=8,
+                                            protection="PBKDF2WithHMAC-SHA1AndAES128-CBC"))
+    with pytest.raises(rr.ResignError, match="RSA-2048 only"):
+        rr.parse_rsa_key(RSA.generate(1024 + 1024 + 1024, e=65537).export_key())
+    with pytest.raises(rr.ResignError, match="not an RSA"):
+        rr.parse_rsa_key(b"hello")
+
+
+def test_parse_ed25519_key_formats(tmp_path):
+    from Cryptodome.PublicKey import ECC
+    seed = bytes(range(32))
+    pub, sec = tmp_path / "k.pub", tmp_path / "k.key"
+    ms.main(["keygen", "--entropy", seed.hex(), "-p", str(pub), "-s", str(sec)])
+    assert rr.parse_ed25519_key(sec.read_bytes()) == seed
+    assert rr.parse_ed25519_key(seed) == seed
+    assert rr.parse_ed25519_key(seed.hex().encode() + b"\n") == seed
+    ecc = ECC.construct(curve="Ed25519", seed=seed)
+    assert rr.parse_ed25519_key(ecc.export_key(format="PEM").encode()) == seed
+    assert rr.parse_ed25519_key(ecc.export_key(format="DER")) == seed
+
+
+def test_parse_ed25519_key_refusals():
+    dev_key = os.path.join(secure_boot_tools.find_dir(), "dev-keys-rootfs", "dev.key")
+    with open(dev_key, "rb") as f:
+        with pytest.raises(rr.ResignError, match="1 GiB"):
+            rr.parse_ed25519_key(f.read())       # passphrase-protected
+    with pytest.raises(rr.ResignError, match="not an Ed25519"):
+        rr.parse_ed25519_key(b"short")
+
+
+def test_find_key_files_skips_images_and_big_files(tmp_path):
+    (tmp_path / "rsa.pem").write_bytes(b"x" * 100)
+    (tmp_path / "boot.img").write_bytes(b"x" * 100)
+    (tmp_path / "sd_update.txt").write_bytes(b"x")
+    (tmp_path / "huge.bin2").write_bytes(b"x" * (rr.KEY_FILE_MAX_BYTES + 1))
+    (tmp_path / "empty.key").write_bytes(b"")
+    (tmp_path / ".hidden").write_bytes(b"x")
+    (tmp_path / "keys").mkdir()
+    (tmp_path / "keys" / "ed.key").write_bytes(b"x")
+    (tmp_path / "keys" / "deep").mkdir()
+    (tmp_path / "keys" / "deep" / "too-deep.key").write_bytes(b"x")
+    found = [os.path.relpath(p, str(tmp_path)) for p in rr.find_key_files(str(tmp_path))]
+    assert found == ["rsa.pem", os.path.join("keys", "ed.key")]
+
+
+def test_seedkeeper_secret_bytes():
+    data = b"payload-bytes"
+    assert rr.seedkeeper_secret_bytes(list(bytes([len(data)]) + data), 1) == data
+    assert rr.seedkeeper_secret_bytes(list(len(data).to_bytes(2, "big") + data), 2) == data
+    long = b"k" * 300                                 # too long for a 1-byte prefix
+    assert rr.seedkeeper_secret_bytes(list(len(long).to_bytes(2, "big") + long), 2) == long

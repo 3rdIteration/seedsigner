@@ -51,7 +51,8 @@ ACTION__ARM = "arm"
 STEPS = {
     ACTION__CHECK: ("folder",),
     ACTION__EXPORT: ("seed_num", "rsa_index", "ed_index"),
-    ACTION__RESIGN: ("seed_num", "rsa_index", "ed_index", "folder"),
+    # Resign All asks where its keys come from first; see _steps().
+    ACTION__RESIGN: ("source", "folder"),
     ACTION__PROVISION: ("folder",),
     ACTION__FORCE: ("folder", "force_on", "seed_num", "rsa_index"),
     ACTION__ARM: ("folder", "arm_ok", "seed_num", "rsa_index"),
@@ -67,9 +68,37 @@ TITLES = {
 }
 
 
+# Where Resign All's keys come from.
+KEY_SOURCE__BIP85 = "bip85"
+KEY_SOURCE__MICROSD = "microsd"
+KEY_SOURCE__SEEDKEEPER = "seedkeeper"
+
+
+def _key_steps(flow: dict, want_ed: bool) -> tuple:
+    """What the chosen key source needs collecting."""
+    source = flow.get("source", KEY_SOURCE__BIP85)
+    if source == KEY_SOURCE__MICROSD:
+        return ("rsa_file",) + (("ed_file",) if want_ed else ())
+    if source == KEY_SOURCE__SEEDKEEPER:
+        return ("seedkeeper_keys",)
+    return ("seed_num", "rsa_index") + (("ed_index",) if want_ed else ())
+
+
+def _steps(flow: dict) -> tuple:
+    steps = STEPS[flow["action"]]
+    if "source" in steps and "source" in flow:
+        at = steps.index("source") + 1
+        steps = steps[:at] + _key_steps(flow, want_ed=True) + steps[at:]
+    return steps
+
+
 def next_step(flow: dict, skip_current_view: bool = False) -> Destination:
     """Route to the first thing `flow` still lacks, or to the action itself."""
     collectors = {
+        "source": ToolsLuckfoxKeySourceView,
+        "rsa_file": ToolsLuckfoxKeyFileView,
+        "ed_file": ToolsLuckfoxKeyFileView,
+        "seedkeeper_keys": ToolsLuckfoxSeedKeeperKeysView,
         "seed_num": ToolsLuckfoxSelectSeedView,
         "rsa_index": ToolsLuckfoxRsaIndexView,
         "ed_index": ToolsLuckfoxEd25519IndexView,
@@ -85,7 +114,7 @@ def next_step(flow: dict, skip_current_view: bool = False) -> Destination:
         ACTION__FORCE: ToolsLuckfoxForceRunView,
         ACTION__ARM: ToolsLuckfoxArmRunView,
     }
-    for key in STEPS[flow["action"]]:
+    for key in _steps(flow):
         if key not in flow:
             return Destination(collectors[key], view_args=dict(flow=flow),
                                skip_current_view=skip_current_view)
@@ -133,6 +162,22 @@ class _FlowView(View):
         return self.result(text, title=_("Cannot continue"), finish="back",
                            skip_current_view=True)
 
+    def load_keys(self, want_ed: bool):
+        """(rsa_key, ed_seed or None) from whichever source the flow chose."""
+        from seedsigner.helpers import resign_release
+        source = self.flow.get("source", KEY_SOURCE__BIP85)
+        if source == KEY_SOURCE__MICROSD:
+            return (resign_release.load_key_file(self.flow["rsa_file"], "rsa"),
+                    resign_release.load_key_file(self.flow["ed_file"], "ed25519")
+                    if want_ed else None)
+        if source == KEY_SOURCE__SEEDKEEPER:
+            keys = take_seedkeeper_keys(self.controller)
+            if keys is None:
+                raise resign_release.ResignError(
+                    "the SeedKeeper keys are no longer in memory; load them again")
+            return keys[0], keys[1] if want_ed else None
+        return self.derive_keys(want_ed)
+
     def derive_keys(self, want_ed: bool):
         """(rsa_key, ed_seed or None). RSA-2048 from a DRNG is slow on this
         hardware (tens of seconds is normal), so a loading screen goes up first."""
@@ -149,6 +194,22 @@ class _FlowView(View):
         return rsa_key, ed_seed
 
 
+# Keys read from a SeedKeeper are held here, in RAM only, between the picker and
+# the signing step (a flow dict is logged, so it carries labels, never keys). The
+# signing step takes them, and opening the submenu discards any left behind.
+_SEEDKEEPER_KEYS_ATTR = "luckfox_release_keys"
+
+
+def stash_seedkeeper_keys(controller, rsa_key, ed_seed):
+    setattr(controller, _SEEDKEEPER_KEYS_ATTR, (rsa_key, ed_seed))
+
+
+def take_seedkeeper_keys(controller):
+    keys = getattr(controller, _SEEDKEEPER_KEYS_ATTR, None)
+    setattr(controller, _SEEDKEEPER_KEYS_ATTR, None)
+    return keys
+
+
 """****************************************************************************
     The submenu
 ****************************************************************************"""
@@ -161,6 +222,7 @@ class ToolsLuckfoxBuildToolsMenuView(View):
     DANGER = ButtonOption("Danger Zone", button_label_color="red")
 
     def run(self):
+        take_seedkeeper_keys(self.controller)       # drop any abandoned ones
         if not MicroSD.get_instance().is_inserted:
             self.run_screen(
                 WarningScreen,
@@ -235,6 +297,159 @@ class ToolsLuckfoxResultView(View):
 """****************************************************************************
     Shared pickers
 ****************************************************************************"""
+class ToolsLuckfoxKeySourceView(_FlowView):
+    """Derive the keys from a seed, or bring them: a file each, or a secret each."""
+
+    BIP85 = ButtonOption("BIP85 Derive")
+    MICROSD = ButtonOption("Load from MicroSD")
+    SEEDKEEPER = ButtonOption("Load from SeedKeeper")
+
+    def run(self):
+        button_data = [self.BIP85, self.MICROSD, self.SEEDKEEPER]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title=_("Key Source"),
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        source = {0: KEY_SOURCE__BIP85, 1: KEY_SOURCE__MICROSD,
+                  2: KEY_SOURCE__SEEDKEEPER}[selected]
+        return next_step(dict(self.flow, source=source))
+
+
+class ToolsLuckfoxKeyFileView(_FlowView):
+    """Pick the file holding one key; the RSA key first, then the Ed25519 key."""
+
+    @property
+    def kind(self):
+        return "rsa" if "rsa_file" not in self.flow else "ed25519"
+
+    def run(self):
+        from seedsigner.helpers import resign_release
+
+        root = str(MicroSD.get_microsd_dir())
+        files = resign_release.find_key_files(root)
+        if not files:
+            self.run_screen(
+                WarningScreen,
+                title=_("No key files"),
+                status_headline=None,
+                text=_("No small files on the MicroSD that could hold a key."),
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        title = _("RSA Key File") if self.kind == "rsa" else _("Ed25519 Key File")
+        labels = [os.path.relpath(f, root) for f in files]
+        while True:
+            selected = self.run_screen(
+                ButtonListScreen,
+                title=title,
+                is_button_text_centered=False,
+                button_data=[ButtonOption(label) for label in labels],
+            )
+            if selected == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            try:
+                resign_release.load_key_file(files[selected], self.kind)
+            except Exception as e:
+                self.run_screen(
+                    WarningScreen,
+                    title=title,
+                    status_headline=_("Not usable"),
+                    text=str(e),
+                    button_data=[ButtonOption("Pick another")],
+                )
+                continue
+            field = "rsa_file" if self.kind == "rsa" else "ed_file"
+            return next_step(dict(self.flow, **{field: files[selected]}))
+
+
+class ToolsLuckfoxSeedKeeperKeysView(_FlowView):
+    """Pick one SeedKeeper secret per key, read both, and hold them in RAM."""
+
+    def run(self):
+        from seedsigner.helpers import resign_release, seedkeeper_utils
+
+        connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
+        if not connector:
+            return Destination(BackStackView)
+
+        loading = LoadingScreenThread(text=_("Listing secrets..."))
+        loading.start()
+        try:
+            headers = connector.seedkeeper_list_secret_headers()
+            minor = connector.card_get_status()[3].get("protocol_minor_version")
+        except Exception as e:
+            logger.exception("listing SeedKeeper secrets failed")
+            return self.refuse(seedkeeper_utils.describe_seedkeeper_error(e, connector))
+        finally:
+            loading.stop()
+
+        if not headers:
+            return self.refuse(_("This SeedKeeper holds no secrets."))
+        types = _seedkeeper_type_names()
+        labels = []
+        for h in headers:
+            label = h.get("label") or "#%d" % h["id"]
+            labels.append("%s (%s)" % (label, types[h["type"]]) if h["type"] in types else label)
+
+        picked = []                                   # [(key, label)], RSA then Ed25519
+        while len(picked) < 2:
+            kind = "rsa" if not picked else "ed25519"
+            selected = self.run_screen(
+                ButtonListScreen,
+                title=_("RSA Key Secret") if kind == "rsa" else _("Ed25519 Key Secret"),
+                is_button_text_centered=False,
+                button_data=[ButtonOption(label) for label in labels],
+            )
+            if selected == RET_CODE__BACK_BUTTON:
+                if not picked:
+                    return Destination(BackStackView)
+                picked.pop()
+                continue
+            loading = LoadingScreenThread(text=_("Reading secret..."))
+            loading.start()
+            try:
+                secret = connector.seedkeeper_export_secret(headers[selected]["id"], None)
+                data = resign_release.seedkeeper_secret_bytes(secret["secret_list"], minor)
+                key = (resign_release.parse_rsa_key(data) if kind == "rsa"
+                       else resign_release.parse_ed25519_key(data))
+            except Exception as e:
+                logger.exception("reading a SeedKeeper key failed")
+                error = e
+            else:
+                error = None
+            finally:
+                loading.stop()
+            if error is not None:
+                self.run_screen(
+                    WarningScreen,
+                    title=_("SeedKeeper"),
+                    status_headline=_("Not usable"),
+                    text=str(error),
+                    button_data=[ButtonOption("Pick another")],
+                )
+                continue
+            picked.append((key, labels[selected]))
+
+        stash_seedkeeper_keys(self.controller, picked[0][0], picked[1][0])
+        return next_step(dict(self.flow, seedkeeper_keys=True,
+                              rsa_label=picked[0][1], ed_label=picked[1][1]))
+
+
+def _seedkeeper_type_names() -> dict:
+    """pysatochip's secret-type names, when the real library is present."""
+    try:
+        from pysatochip.JCconstants import SEEDKEEPER_DIC_TYPE
+    except Exception:
+        return {}
+    return SEEDKEEPER_DIC_TYPE if isinstance(SEEDKEEPER_DIC_TYPE, dict) else {}
+
+
 class ToolsLuckfoxSelectSeedView(_FlowView):
     """Pick one of the loaded seeds, or send the user off to load one."""
 
@@ -380,9 +595,9 @@ class ToolsResignReleaseStartView(View):
         selected = self.run_screen(
             WarningScreen,
             title=_("Resign All"),
-            status_headline=_("Signing keys from your seed"),
-            text=_("Re-signs everything with BIP85 keys. Back up the seed and both "
-                   "indexes."),
+            status_headline=_("Your keys, your releases"),
+            text=_("Re-signs everything with your own keys. Keep a backup: a fused "
+                   "board needs them."),
             button_data=[self.CONTINUE],
         )
         if selected == RET_CODE__BACK_BUTTON:
@@ -403,9 +618,8 @@ class ToolsResignConfirmView(_FlowView):
         if info["rootfs"]:
             names.append(os.path.basename(info["rootfs"]))
         # The folder was picked on the previous screen; this one must fit 240px.
-        text = _("{n} files, RSA index {rsa}, Ed25519 index {ed}. Overwritten "
-                 "in place.").format(n=len(names), rsa=self.flow["rsa_index"],
-                                     ed=self.flow["ed_index"])
+        text = _("{n} files, {keys}. Overwritten in place.").format(
+            n=len(names), keys=self.key_summary())
         if info["update_img"]:
             text += " " + _("update.img is deleted.")
 
@@ -420,6 +634,15 @@ class ToolsResignConfirmView(_FlowView):
             return Destination(BackStackView)
         return Destination(ToolsResignRunView, view_args=dict(flow=self.flow))
 
+    def key_summary(self):
+        source = self.flow.get("source", KEY_SOURCE__BIP85)
+        if source == KEY_SOURCE__MICROSD:
+            return _("keys from MicroSD files")
+        if source == KEY_SOURCE__SEEDKEEPER:
+            return _("keys from SeedKeeper")
+        return _("RSA index {rsa}, Ed25519 index {ed}").format(
+            rsa=self.flow["rsa_index"], ed=self.flow["ed_index"])
+
 
 class ToolsResignRunView(_FlowView):
     """Derive the keys, re-sign, verify, and report."""
@@ -428,10 +651,10 @@ class ToolsResignRunView(_FlowView):
         from seedsigner.helpers import resign_release
 
         try:
-            rsa_key, ed_seed = self.derive_keys(want_ed=True)
+            rsa_key, ed_seed = self.load_keys(want_ed=True)
         except Exception as e:
-            logger.exception("BIP85 key derivation failed")
-            return self.result(_("Key derivation failed: {}").format(e))
+            logger.exception("loading the signing keys failed")
+            return self.result(_("Could not load the keys: {}").format(e))
 
         folder = self.flow["folder"]
         loading = LoadingScreenThread(text=_("Signing..."))

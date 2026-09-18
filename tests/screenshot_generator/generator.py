@@ -468,6 +468,24 @@ def generate_screenshots(locale):
                  patch.object(rr_helper, "provision_check", Mock(return_value=chk)):
                 yield
 
+        # Key files a user might bring on the card for Resign All.
+        (resign_card / "keys").mkdir(exist_ok=True)
+        for name in ("release-rsa.pem", "rootfs-minisign.key"):
+            (resign_card / "keys" / name).write_bytes(b"placeholder")
+
+        @contextmanager
+        def mock_seedkeeper_with_keys():
+            from seedsigner.helpers import seedkeeper_utils
+            card = Mock()
+            card.seedkeeper_list_secret_headers.return_value = [
+                dict(id=1, type=0xC0, label="release-rsa"),
+                dict(id=2, type=0xC0, label="rootfs-ed25519"),
+                dict(id=3, type=0xC0, label="notes"),
+            ]
+            card.card_get_status.return_value = (b"", 0x90, 0x00, dict(protocol_minor_version=2))
+            with patch.object(seedkeeper_utils, "init_satochip", Mock(return_value=card)):
+                yield
+
         @contextmanager
         def mock_force_on():
             with mock_release_helpers(force_state=True):
@@ -654,7 +672,10 @@ def generate_screenshots(locale):
                 ScreenshotConfig(resign_views.ToolsLuckfoxResultView, dict(title="Check Release", text=sample_check_text, finish="back"), screenshot_name="ToolsLuckfoxResultView_check_release"),
                 ScreenshotConfig(resign_views.ToolsLuckfoxResultView, dict(title="Cannot continue", text="This release's rootfs verifier predates the forced check, so it cannot be turned on. Use a newer build.", finish="back"), screenshot_name="ToolsLuckfoxResultView_refused"),
                 ScreenshotConfig(resign_views.ToolsResignReleaseStartView),
-                ScreenshotConfig(resign_views.ToolsLuckfoxSelectSeedView, dict(flow=dict(action=resign_views.ACTION__RESIGN))),
+                ScreenshotConfig(resign_views.ToolsLuckfoxKeySourceView, dict(flow=dict(action=resign_views.ACTION__RESIGN))),
+                ScreenshotConfig(resign_views.ToolsLuckfoxKeyFileView, dict(flow=dict(action=resign_views.ACTION__RESIGN, source=resign_views.KEY_SOURCE__MICROSD)), mock_context_manager=mock_microsd_with_release),
+                ScreenshotConfig(resign_views.ToolsLuckfoxSeedKeeperKeysView, dict(flow=dict(action=resign_views.ACTION__RESIGN, source=resign_views.KEY_SOURCE__SEEDKEEPER)), mock_context_manager=mock_seedkeeper_with_keys),
+                ScreenshotConfig(resign_views.ToolsLuckfoxSelectSeedView, dict(flow=dict(action=resign_views.ACTION__RESIGN, source=resign_views.KEY_SOURCE__BIP85))),
                 ScreenshotConfig(resign_views.ToolsLuckfoxRsaIndexView, dict(flow=dict(action=resign_views.ACTION__RESIGN, seed_num=0))),
                 ScreenshotConfig(resign_views.ToolsLuckfoxEd25519IndexView, dict(flow=dict(action=resign_views.ACTION__RESIGN, seed_num=0, rsa_index=0))),
                 ScreenshotConfig(resign_views.ToolsResignConfirmView, dict(flow=dict(resign_flow, folder=release_dir)), mock_context_manager=mock_release_helpers),

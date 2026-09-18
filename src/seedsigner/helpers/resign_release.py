@@ -186,6 +186,127 @@ def ed25519_key_id_text(seed):
     return _tools()[2].format_key_id(ed25519_key_id(seed))
 
 
+# --- keys loaded from a file or a SeedKeeper secret ------------------------------
+#
+# The alternative to deriving the keys: bring your own. Both kinds are parsed from
+# bytes, so a MicroSD file and a SeedKeeper secret go through the same code.
+
+# Files larger than this are not keys, and are not offered in the picker.
+KEY_FILE_MAX_BYTES = 16 * 1024
+_NOT_KEYS = (".img", ".bin", ".gz", ".tar", ".zip", ".png", ".jpg")
+_NOT_KEY_NAMES = ("sd_update.txt", "tftp_update.txt", "README.txt")
+
+
+def parse_rsa_key(data):
+    """A PEM/DER RSA private key -> PyCryptodome RSA key (2048-bit, e=65537)."""
+    from Cryptodome.PublicKey import RSA
+    if b"ENCRYPTED" in data:
+        raise ResignError("the RSA key is passphrase-protected; export it unencrypted "
+                          "(e.g. openssl rsa -in key.pem -out plain.pem)")
+    try:
+        key = RSA.import_key(data)
+    except (ValueError, IndexError, TypeError):
+        raise ResignError("not an RSA private key (expected PEM or DER)")
+    if not key.has_private():
+        raise ResignError("that is an RSA PUBLIC key; the private key is needed to sign")
+    rsa_numbers(key)                             # 2048-bit, e = 65537
+    return key
+
+
+def parse_ed25519_key(data):
+    """An Ed25519 private key -> its 32-byte seed.
+
+    Accepts a minisign secret key (unencrypted), a PKCS#8 PEM/DER Ed25519 key
+    (`openssl genpkey -algorithm ed25519`), or the bare seed as 32 raw bytes or
+    64 hex characters.
+    """
+    ms = _tools()[2]
+    text = data.strip()
+    if text.startswith(b"untrusted comment:"):
+        if ms.is_encrypted_seckey(data):
+            raise ResignError(
+                "this minisign key is passphrase-protected. Unlocking it needs about "
+                "1 GiB of RAM (minisign's scrypt default), more than this device has. "
+                "Re-create it unencrypted (minisign -G -W) or use a derived key.")
+        try:
+            return ms.parse_seckey(data)["seed"]
+        except ms.MsError as e:
+            raise ResignError("not a usable minisign secret key: %s" % e)
+    # A bare seed first: 64 hex characters can start with "0", which is the same
+    # byte as a DER SEQUENCE tag.
+    try:
+        seed = bytes.fromhex(text.decode("ascii")) if len(text) == 64 else b""
+    except (UnicodeDecodeError, ValueError):
+        seed = b""
+    if len(seed) == 32:
+        return seed
+    if len(data) == 32:
+        return bytes(data)
+    if b"PRIVATE KEY" in text or text[:1] == b"\x30":
+        if b"ENCRYPTED" in text:
+            raise ResignError("the Ed25519 key is passphrase-protected; export it unencrypted")
+        from Cryptodome.PublicKey import ECC
+        try:
+            key = ECC.import_key(data)
+        except (ValueError, IndexError, TypeError):
+            key = None
+        if key is None or key.curve not in ("Ed25519", "ed25519") or not key.has_private():
+            raise ResignError("not an Ed25519 private key")
+        return bytes(key.seed)
+    raise ResignError("not an Ed25519 key (minisign secret key, PKCS#8, or a "
+                      "32-byte seed)")
+
+
+def find_key_files(card_root, max_depth=2):
+    """Small files that could hold a key: the card root and `max_depth` - 1
+    levels of folders below it, as paths (card root first)."""
+    out = []
+    root_depth = card_root.rstrip(os.sep).count(os.sep)
+    for dirpath, dirnames, filenames in os.walk(card_root):
+        dirnames[:] = sorted(d for d in dirnames
+                             if not d.startswith(".") and d != "__MACOSX")
+        if dirpath.rstrip(os.sep).count(os.sep) - root_depth >= max_depth - 1:
+            dirnames[:] = []
+        for name in sorted(filenames):
+            path = os.path.join(dirpath, name)
+            if name.startswith(".") or name in _NOT_KEY_NAMES \
+                    or name.lower().endswith(_NOT_KEYS):
+                continue
+            try:
+                if 0 < os.path.getsize(path) <= KEY_FILE_MAX_BYTES:
+                    out.append(path)
+            except OSError:
+                pass
+    return out
+
+
+def load_key_file(path, kind):
+    """Read and parse a key file. `kind` is "rsa" or "ed25519"."""
+    with open(path, "rb") as f:
+        data = f.read(KEY_FILE_MAX_BYTES + 1)
+    if len(data) > KEY_FILE_MAX_BYTES:
+        raise ResignError("%s is too large to be a key" % os.path.basename(path))
+    return parse_rsa_key(data) if kind == "rsa" else parse_ed25519_key(data)
+
+
+def seedkeeper_secret_bytes(secret_list, protocol_minor_version):
+    """The payload of an exported SeedKeeper secret, without its length prefix.
+
+    SeedKeeper v1 prefixes one length byte, later versions two (the same rule the
+    GPG key views use). Anything whose prefix does not match is returned whole.
+    """
+    raw = bytes(secret_list)
+    if protocol_minor_version == 1 and raw and raw[0] == len(raw) - 1:
+        return raw[1:]
+    if len(raw) >= 2:
+        n = (raw[0] << 8) | raw[1]
+        if n == len(raw) - 2 or (protocol_minor_version != 1 and 0 < n <= len(raw) - 2):
+            return raw[2:2 + n]
+    if raw and 0 < raw[0] <= len(raw) - 1:
+        return raw[1:1 + raw[0]]
+    return raw
+
+
 def release_modulus(folder):
     """The RSA modulus the release's boot chain embeds (from idblock.img)."""
     n = inspect_release(folder)["current_rsa_modulus"]

@@ -167,13 +167,14 @@ class TestNavigation(LuckfoxFlowTest):
         self.store_seed()
         flow = {}
         session = UISession(script=(
-            select("Luckfox Build Tools", "Resign All", "Continue")
+            select("Luckfox Build Tools", "Resign All", "Continue", "BIP85 Derive")
             + select(0)                  # seed picker - the screen that used to crash
             + [TypeKeys("3"), TypeKeys("5")]
             + select("release")
         ))
         self.run_sequence(self.to_submenu() + [
             FlowStep(rv.ToolsResignReleaseStartView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxKeySourceView, real_screens=True),
             FlowStep(rv.ToolsLuckfoxSelectSeedView, real_screens=True),
             FlowStep(rv.ToolsLuckfoxRsaIndexView, real_screens=True),
             FlowStep(rv.ToolsLuckfoxEd25519IndexView, real_screens=True),
@@ -183,7 +184,8 @@ class TestNavigation(LuckfoxFlowTest):
                      before_run=captured_flow(flow)),
             FlowStep(rv.ToolsResignConfirmView),
         ], ui_session=session)
-        assert flow == dict(action="resign", seed_num=0, rsa_index=3, ed_index=5)
+        assert flow == dict(action="resign", source="bip85", seed_num=0, rsa_index=3,
+                            ed_index=5)
         assert session.renderer.frames
 
     def test_resign_confirm_screen(self, monkeypatch, tmp_path):
@@ -342,10 +344,11 @@ class TestEndToEnd(LuckfoxFlowTest):
         folder = self.release(card)
         seed = self.store_seed()
         session = UISession(script=(
-            select("Continue", 0) + [TypeKeys("3"), TypeKeys("5")]
+            select("Continue", "BIP85 Derive", 0) + [TypeKeys("3"), TypeKeys("5")]
             + select("release", "Sign", "OK")))
         self.run_sequence([
             FlowStep(rv.ToolsResignReleaseStartView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxKeySourceView, real_screens=True),
             FlowStep(rv.ToolsLuckfoxSelectSeedView, real_screens=True),
             FlowStep(rv.ToolsLuckfoxRsaIndexView, real_screens=True),
             FlowStep(rv.ToolsLuckfoxEd25519IndexView, real_screens=True),
@@ -454,3 +457,155 @@ class TestEndToEnd(LuckfoxFlowTest):
             ui_session=session)
         for name in ("sd_update.txt", "boot.img", "rootfs.img"):
             assert (card / name).is_file()
+
+
+# --- Resign All with keys brought from MicroSD or a SeedKeeper -----------------
+
+class FakeSeedKeeper:
+    """Just the SeedKeeper calls the key picker makes, holding Data secrets."""
+
+    def __init__(self, secrets, protocol_minor_version=2):
+        self.secrets = secrets                   # [(label, bytes)]
+        self.minor = protocol_minor_version
+        self.exported = []
+
+    def seedkeeper_list_secret_headers(self):
+        return [dict(id=i + 1, type=0xC0, label=label)
+                for i, (label, _data) in enumerate(self.secrets)]
+
+    def card_get_status(self):
+        return (b"", 0x90, 0x00, dict(protocol_minor_version=self.minor))
+
+    def seedkeeper_export_secret(self, sid, pubkey_id):
+        self.exported.append(sid)
+        data = self.secrets[sid - 1][1]
+        prefix = bytes([len(data)]) if self.minor == 1 else len(data).to_bytes(2, "big")
+        return dict(secret_list=list(prefix + data))
+
+
+def _own_keys():
+    """A fresh RSA-2048 key and Ed25519 seed, as a user would bring them."""
+    from Cryptodome.PublicKey import RSA
+    return RSA.generate(2048, e=65537), bytes(range(32, 64))
+
+
+def _minisign_seckey_bytes(seed):
+    ms = secure_boot_tools.load()[2]
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        pub, sec = os.path.join(d, "k.pub"), os.path.join(d, "k.key")
+        ms.main(["keygen", "--entropy", seed.hex(), "-p", pub, "-s", sec])
+        with open(sec, "rb") as f:
+            return f.read()
+
+
+class TestKeySourceNavigation(LuckfoxFlowTest):
+    def test_key_source_offers_all_three(self, monkeypatch, tmp_path):
+        self.tools_available(monkeypatch)
+        use_microsd(monkeypatch, tmp_path)
+        flow = {}
+        session = UISession(script=select("Continue", "Load from MicroSD"))
+        self.run_sequence([
+            FlowStep(rv.ToolsResignReleaseStartView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxKeySourceView, real_screens=True,
+                     before_run=captured_flow(flow)),
+            FlowStep(rv.ToolsLuckfoxKeyFileView),
+        ], ui_session=session)
+        labels = [b.button_label for b in (rv.ToolsLuckfoxKeySourceView.BIP85,
+                                           rv.ToolsLuckfoxKeySourceView.MICROSD,
+                                           rv.ToolsLuckfoxKeySourceView.SEEDKEEPER)]
+        assert labels == ["BIP85 Derive", "Load from MicroSD", "Load from SeedKeeper"]
+
+    def test_seedkeeper_source_goes_to_the_secret_picker(self, monkeypatch, tmp_path):
+        self.tools_available(monkeypatch)
+        use_microsd(monkeypatch, tmp_path)
+        session = UISession(script=select("Continue", "Load from SeedKeeper"))
+        self.run_sequence([
+            FlowStep(rv.ToolsResignReleaseStartView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxKeySourceView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxSeedKeeperKeysView),
+        ], ui_session=session)
+
+    def test_opening_the_submenu_drops_held_seedkeeper_keys(self, monkeypatch, tmp_path):
+        self.tools_available(monkeypatch)
+        use_microsd(monkeypatch, tmp_path)
+        rv.stash_seedkeeper_keys(self.controller, "rsa", b"ed")
+        session = UISession(script=select("Check Release"))
+        self.run_sequence([
+            FlowStep(rv.ToolsLuckfoxBuildToolsMenuView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxSelectFolderView),
+        ], ui_session=session)
+        assert rv.take_seedkeeper_keys(self.controller) is None
+
+
+@needs_tools
+class TestKeySourceEndToEnd(LuckfoxFlowTest):
+    def release(self, card):
+        from test_resign_release import _full_release
+        return _full_release(card)
+
+    def check_signed_with(self, folder, rsa_key, ed_seed):
+        from seedsigner.helpers import resign_release as rr
+        results = rr.verify_release(folder, int(rsa_key.n), ed_seed)
+        assert {n for n, _ok, _d in results} == {
+            "idblock.img", "download.bin", "uboot.img", "boot.img", "rootfs.img"}
+        for name, ok, detail in results:
+            assert ok, "%s (%s) did not verify under the loaded keys" % (name, detail)
+
+    def test_keys_from_microsd_files(self, monkeypatch, tmp_path):
+        card = use_microsd(monkeypatch, tmp_path)
+        folder = self.release(card)
+        rsa_key, ed_seed = _own_keys()
+        keys = card / "keys"
+        keys.mkdir()
+        (keys / "release-rsa.pem").write_bytes(rsa_key.export_key(format="PEM"))
+        (keys / "rootfs.key").write_bytes(_minisign_seckey_bytes(ed_seed))
+        rsa_label = os.path.join("keys", "release-rsa.pem")
+        ed_label = os.path.join("keys", "rootfs.key")
+
+        session = UISession(script=(
+            select("Continue", "Load from MicroSD")
+            + select(ed_label, "Pick another")   # the Ed25519 key is refused as RSA
+            + select(rsa_label, ed_label, "release", "Sign", "OK")))
+        self.run_sequence([
+            FlowStep(rv.ToolsResignReleaseStartView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxKeySourceView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxKeyFileView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxKeyFileView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxSelectFolderView, real_screens=True),
+            FlowStep(rv.ToolsResignConfirmView, real_screens=True),
+            FlowStep(rv.ToolsResignRunView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxUpdateImgDeletedView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxResultView),
+        ], ui_session=session)
+        self.check_signed_with(folder, rsa_key, ed_seed)
+
+    def test_keys_from_seedkeeper_secrets(self, monkeypatch, tmp_path):
+        from seedsigner.helpers import seedkeeper_utils
+        card = use_microsd(monkeypatch, tmp_path)
+        folder = self.release(card)
+        rsa_key, ed_seed = _own_keys()
+        card_ = FakeSeedKeeper([
+            ("notes", b"not a key"),
+            ("release-rsa", rsa_key.export_key(format="DER")),
+            ("rootfs-seed", ed_seed.hex().encode()),
+        ])
+        monkeypatch.setattr(seedkeeper_utils, "init_satochip", lambda *a, **kw: card_)
+
+        session = UISession(script=(
+            select("Continue", "Load from SeedKeeper")
+            + select(0, "Pick another")          # "notes" is not an RSA key
+            + select(1, 2, "release", "Sign", "OK")))
+        self.run_sequence([
+            FlowStep(rv.ToolsResignReleaseStartView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxKeySourceView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxSeedKeeperKeysView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxSelectFolderView, real_screens=True),
+            FlowStep(rv.ToolsResignConfirmView, real_screens=True),
+            FlowStep(rv.ToolsResignRunView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxUpdateImgDeletedView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxResultView),
+        ], ui_session=session)
+        self.check_signed_with(folder, rsa_key, ed_seed)
+        # the keys were consumed by the signing step, not left in RAM
+        assert rv.take_seedkeeper_keys(self.controller) is None
