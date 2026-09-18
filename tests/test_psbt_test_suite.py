@@ -851,3 +851,115 @@ class TestFeeRate:
                             network=SUITE_NETWORK, max_fee_rate=1)
         assert parser.fee_amount > 0          # parsed fine, was not refused
         assert RiskWarning.HIGH_FEE_RATE not in RiskWarning.INFORMATIONAL  # but interrupts
+
+
+class TestOutputClaimsMatchScripts:
+    """
+    Re-deriving a claimed key proves it is ours. It does not prove the output
+    pays it: a psbt can annotate a stranger's output with a genuine key and path
+    of ours (TX-21.claims_us_pays_other). Both halves have to hold.
+    """
+
+    def _with_other_genuine_key(self, name: str):
+        """The fixture's change output, re-annotated with a different key of ours."""
+        from embit.psbt import DerivationPath
+
+        psbt = load_psbt(name)
+        root = suite_seed().get_root(SUITE_NETWORK)
+        for out in psbt.outputs:
+            for pub, der in list(out.bip32_derivations.items()):
+                path = list(der.derivation[:-1]) + [der.derivation[-1] + 7]
+                del out.bip32_derivations[pub]
+                out.bip32_derivations[root.derive(path).key] = DerivationPath(der.fingerprint, path)
+        return psbt
+
+    @pytest.mark.parametrize("name", ["NORMAL-1_p2wpkh", "NORMAL-2_wrapped", "NORMAL-3_legacy",
+                                      "NORMAL-1_p2wpkh_V2"])
+    def test_genuine_key_on_a_script_that_does_not_pay_it_is_refused(self, name):
+        with pytest.raises(InvalidPSBTError) as excinfo:
+            PSBTParser(p=self._with_other_genuine_key(name), seed=suite_seed(), network=SUITE_NETWORK)
+        assert excinfo.value.code == RejectCode.FORGED_OUTPUT_OWNERSHIP
+
+    def test_a_bogus_script_on_a_foreign_output_is_not_a_claim(self):
+        """NORMAL-2's destination carries a redeem script that hashes to nothing; it names no key of ours."""
+        parser = PSBTParser(p=load_psbt("NORMAL-2_wrapped"), seed=suite_seed(), network=SUITE_NETWORK)
+        assert parser.num_change_outputs == 1
+
+
+class TestMultisigPolicy:
+    """
+    The multisig vectors against the suite's registered 2-of-3 wallet. Without a
+    descriptor the parser can only tell whether this seed's key is in a script;
+    whether the script is the *wallet's* is the descriptor's job.
+    """
+
+    @staticmethod
+    def _descriptor():
+        from embit.descriptor import Descriptor
+        from psbt_suite_util import MULTISIG_DESCRIPTOR
+        return Descriptor.from_string(MULTISIG_DESCRIPTOR)
+
+    @staticmethod
+    def _honest_change():
+        """TX-22.ms_decoy_first with its decoy removed: genuine multisig change."""
+        psbt = load_psbt("TX-22.ms_decoy_first")
+        out = psbt.outputs[0]
+        decoys = [pub for pub in out.bip32_derivations if pub.sec() not in out.witness_script.data]
+        assert len(decoys) == 1
+        decoy = (decoys[0], out.bip32_derivations.pop(decoys[0]))
+        return psbt, decoy
+
+    @pytest.mark.parametrize("name", ["TX-13.threshold", "TX-13.reorder"])
+    def test_tampered_change_is_not_the_wallets(self, name):
+        parser = parse_vector(VECTORS_BY_NAME[name])
+        assert parser.num_change_outputs == 1
+        assert parser.verify_multisig_output(self._descriptor(), 0) is False
+
+    def test_genuine_change_is_the_wallets(self):
+        psbt, _decoy = self._honest_change()
+        parser = PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK)
+        assert parser.num_change_outputs == 1
+        assert parser.verify_multisig_output(self._descriptor(), 0) is True
+
+    @pytest.mark.parametrize("position", ["first", "last"])
+    def test_a_decoy_fails_in_either_position(self, position):
+        """
+        embit's Descriptor.owns stops at the first matching entry, so a decoy listed
+        after a genuine one used to pass. Checked here on an already-parsed psbt,
+        because the parser itself now refuses the decoy before it gets this far.
+        """
+        from collections import OrderedDict
+
+        psbt, (decoy_pub, decoy_der) = self._honest_change()
+        parser = PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK)
+
+        out = parser.psbt.outputs[parser.get_change_data(0)["output_index"]]
+        entries = list(out.bip32_derivations.items())
+        entries = [(decoy_pub, decoy_der)] + entries if position == "first" else entries + [(decoy_pub, decoy_der)]
+        out.bip32_derivations = OrderedDict(entries)
+
+        assert parser.verify_multisig_output(self._descriptor(), 0) is False
+
+
+class TestScriptTimelock:
+    """CLTV / CSV inside an output's own script lock the funds, not the transaction."""
+
+    def test_committed_cltv_script_is_flagged(self):
+        assert Advisory.SCRIPT_TIMELOCK in parse_vector(VECTORS_BY_NAME["TX-20.cltv_time"]).risk_warnings
+
+    def test_uncommitted_script_is_ignored(self):
+        """TX-20.cltv_height's CLTV script does not hash to its p2wpkh output; it says nothing."""
+        assert Advisory.SCRIPT_TIMELOCK not in parse_vector(VECTORS_BY_NAME["TX-20.cltv_height"]).risk_warnings
+
+    def test_push_data_is_not_mistaken_for_an_opcode(self):
+        from embit.script import Script
+        # <b1b2b1> OP_DROP: the bytes are pushed as data, never executed.
+        assert PSBTParser._script_has_timelock(Script(bytes([0x03, 0xB1, 0xB2, 0xB1, 0x75]))) is False
+        # <0x0100> OP_CHECKSEQUENCEVERIFY
+        assert PSBTParser._script_has_timelock(Script(bytes([0x02, 0x00, 0x01, 0xB2]))) is True
+
+    def test_it_interrupts_rather_than_being_informational(self):
+        from seedsigner.models.psbt_parser import RiskWarning
+        from seedsigner.views.psbt_views import PSBTRiskWarningView
+        assert RiskWarning.SCRIPT_TIMELOCK not in RiskWarning.INFORMATIONAL
+        assert RiskWarning.SCRIPT_TIMELOCK in PSBTRiskWarningView.RISK_TEXT

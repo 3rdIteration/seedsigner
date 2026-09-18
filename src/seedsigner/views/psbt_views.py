@@ -511,6 +511,34 @@ REJECT_PRESENTATION = {
         button_label=_mft("Discard transaction"),
     ),
 
+    # Both are ownership claims that could not all be honest at once: several of
+    # this seed's keys on a single-key output, or the same seed named as both an
+    # ecdsa and a taproot key. Same threat as a forged output.
+    RejectCode.SURPLUS_DERIVATIONS: RejectPresentation(
+        screen=DireWarningScreen,
+        title=_mft("Suspicious Transaction"),
+        headline=_mft("Likely an Attack!"),
+        # TRANSLATOR_NOTE: A psbt's claims about which keys belong to this seed contradict each other
+        text=_mft("This transaction makes contradictory claims about which keys are yours."),
+        button_label=_mft("Discard transaction"),
+    ),
+
+    RejectCode.MIXED_DERIVATION_MAPS: RejectPresentation(
+        screen=DireWarningScreen,
+        title=_mft("Suspicious Transaction"),
+        headline=_mft("Likely an Attack!"),
+        text=_mft("This transaction makes contradictory claims about which keys are yours."),
+        button_label=_mft("Discard transaction"),
+    ),
+
+    RejectCode.MISLABELED_OUTPUT_OWNERSHIP: RejectPresentation(
+        screen=WarningScreen,
+        title=_mft("Transaction Problem"),
+        # TRANSLATOR_NOTE: A psbt labels an output that really pays this seed as another wallet's
+        text=_mft("An output that pays this seed is labelled as another wallet's. The transaction misdescribes itself."),
+        button_label=_mft("Discard transaction"),
+    ),
+
     RejectCode.FORGED_INPUT_OWNERSHIP: RejectPresentation(
         screen=WarningScreen,
         # TRANSLATOR_NOTE: Title of the screen shown when a psbt misstates who owns an input
@@ -758,6 +786,9 @@ class PSBTRiskWarningView(View):
         # TRANSLATOR_NOTE: BIP-68 relative timelock; the delay runs from when the
         # input confirmed, so no fixed date can be shown.
         RiskWarning.RELATIVE_TIMELOCK: _mft("An input is time-locked and cannot be spent yet."),
+        # TRANSLATOR_NOTE: An output's script (CLTV/CSV) locks the funds it
+        # receives, so whoever gets them cannot spend them until later.
+        RiskWarning.SCRIPT_TIMELOCK: _mft("An output is time-locked by its script; those funds cannot be spent until later."),
         RiskWarning.RBF: _mft("This transaction is marked replaceable (RBF)."),
     }
 

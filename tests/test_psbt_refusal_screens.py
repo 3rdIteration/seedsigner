@@ -105,9 +105,8 @@ class TestRefusalScreensFit:
             PSBTParser(p=load_psbt(vector.name), seed=suite_seed(), network=SUITE_NETWORK)
 
         presentation = REJECT_PRESENTATION.get(excinfo.value.code, RejectPresentation())
-        assert presentation.text is None, (
-            f"{vector.name}: this code now renders fixed prose, so the parser's own "
-            f"message is never shown; cover it in test_table_prose_fits instead.")
+        if presentation.text is not None:
+            pytest.skip(f"{excinfo.value.code} renders fixed prose; see test_table_prose_fits")
 
         text = str(excinfo.value)
         if presentation.tip:

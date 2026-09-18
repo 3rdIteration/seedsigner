@@ -132,7 +132,7 @@ class TestMaliciousPSBTFlows(FlowTest):
 
     def test_unparseable_psbt_is_rejected_at_scan(self):
         """
-        TX-16.foreign_fingerprint carries a pubkey embit cannot parse. Delivered
+        TX-04 carries a pubkey embit cannot parse. Delivered
         as UR2 (how a real scan arrives), `DecodeQR.is_psbt` is True but
         `get_psbt()` returns None. ScanView must refuse it there, rather than
         routing on with `controller.psbt = None` — which PSBTSelectSeedView
@@ -142,6 +142,6 @@ class TestMaliciousPSBTFlows(FlowTest):
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
             FlowStep(scan_views.ScanView,
-                     before_run=self.load_psbt_as_ur2("TX-16.foreign_fingerprint")),
+                     before_run=self.load_psbt_as_ur2("TX-04")),
             FlowStep(MainMenuView),
         ])
