@@ -260,6 +260,11 @@ class Controller(Singleton):
 
     address_explorer_data: dict = None
 
+    # Raw password-generator entropy (dice rolls / BIP85-derived bytes) cached
+    # across the password-generator flow screens. Secret: cleared on Home-wipe
+    # paths and on the inactivity auto-wipe, never persisted.
+    password_generator_entropy_cache: dict | None = None
+
     sign_message_data: dict = None
     gpg_keys_imported: bool = False
     gpg_pending_message: str = None
@@ -449,6 +454,14 @@ class Controller(Singleton):
 
 
     def discard_seed(self, seed: Seed):
+        # Zero the seed's secret material (mnemonic, seed bytes, xprv) before
+        # dropping the reference; garbage collection alone does not clear the
+        # in-memory buffers. Seed.wipe() is best-effort and must never block a
+        # discard flow (e.g. erase-seed).
+        try:
+            seed.wipe()
+        except Exception:
+            logger.debug("Error wiping discarded seed", exc_info=True)
         self.storage.seeds.remove(seed)
 
 
@@ -576,6 +589,10 @@ class Controller(Singleton):
                     # reconstruct seeds after the flow completes.
                     self.image_entropy_preview_frames = None
                     self.image_entropy_final_image = None
+
+                    # Same rationale: raw password-generator entropy (dice
+                    # rolls / BIP85 bytes) must not outlive its flow.
+                    self.password_generator_entropy_cache = None
 
                     # Clear the whole Smartcard session if caching PIN is disabled (Same as removing the card)
                     if Settings.get_instance().get_value(SettingsConstants.SETTING__CACHE_SCARD_PIN) != "E":
@@ -768,10 +785,21 @@ class Controller(Singleton):
         logger.info("Controller: wipe timer triggered; wiping data")
 
         # Wipe sensitive in-memory data
+        for seed in self.storage.seeds:
+            # Zero secret material (mnemonic, seed bytes, xprv) before dropping
+            # the references; gc alone does not clear the buffers.
+            try:
+                seed.wipe()
+            except Exception:
+                logger.debug("Error wiping seed on auto-wipe", exc_info=True)
         self.storage.seeds = []
         self.storage.clear_pending_seed()
         if self._storage2:
             self._storage2.clear_encryptedqr()
+
+        # Raw password-generator entropy (dice rolls / BIP85 bytes) must not
+        # survive the inactivity wipe either.
+        self.password_generator_entropy_cache = None
 
         self.psbt = None
         self.psbt_parser = None
