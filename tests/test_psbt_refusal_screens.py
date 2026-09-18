@@ -6,6 +6,12 @@ renders past the bottom edge, straight over the button. So an overlong refusal
 reason produces a visually broken screen that nothing else catches. These tests
 measure the real layout and fail if a message no longer fits.
 """
+# Before any seedsigner import: base installs the test doubles for the renderer
+# and the hardware buttons. Importing the GUI first bound the real ones for every
+# module collected after this file, so the flow tests that followed it hung -- on
+# an unconfigured Renderer, or on real buttons waiting for a key press.
+import base  # noqa: F401
+
 import threading
 
 from unittest.mock import patch
