@@ -29,6 +29,11 @@ import sys
 
 MODULES = ("rkloader", "fitsign", "minisign", "luckfox_release")
 
+# Boards the Luckfox Build Tools cannot run on, by runtime profile. The Pico Mini
+# (RV1103, 64 MB RAM) crashed running them on hardware, so its SeedSigner OS
+# image does not ship the tools, and the app refuses the setting there.
+UNSUPPORTED_BOARDS = {"luckfox_22": "Pico Mini"}
+
 ENV_VAR = "SEEDSIGNER_SECURE_BOOT_DIR"
 IMAGE_DIR = "/usr/lib/seedsigner/secure-boot"
 
@@ -62,6 +67,12 @@ def find_dir():
         if all(os.path.isfile(os.path.join(d, "%s.py" % m)) for m in MODULES):
             return d
     return None
+
+
+def unsupported_board():
+    """This board's name if the tools are not supported on it, else None."""
+    from seedsigner.models.settings import Settings
+    return UNSUPPORTED_BOARDS.get(getattr(Settings, "RUNTIME_PROFILE", None))
 
 
 def is_available():

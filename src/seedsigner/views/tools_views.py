@@ -404,6 +404,7 @@ class ToolsMenuView(View):
             self.LUCKFOX_BUILD_TOOLS if (
                 self.settings.get_value(SettingsConstants.SETTING__LUCKFOX_BUILD_TOOLS)
                 == SettingsConstants.OPTION__ENABLED
+                and not secure_boot_tools.unsupported_board()
                 and secure_boot_tools.is_available()
             ) else None,
             battery_calibration_button,

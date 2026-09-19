@@ -609,3 +609,65 @@ class TestKeySourceEndToEnd(LuckfoxFlowTest):
         self.check_signed_with(folder, rsa_key, ed_seed)
         # the keys were consumed by the signing step, not left in RAM
         assert rv.take_seedkeeper_keys(self.controller) is None
+
+
+# --- not supported on the Pico Mini --------------------------------------------
+
+class TestPicoMini(LuckfoxFlowTest):
+    """The tools crash on the Pico Mini (64 MB): its image omits them, and the app
+    refuses the setting there with an explanation."""
+
+    def setup_method(self):
+        super().setup_method()
+        self.enable_setting(False)
+
+    @staticmethod
+    def on_board(monkeypatch, runtime_profile):
+        from seedsigner.models.settings import Settings
+        monkeypatch.setattr(Settings, "RUNTIME_PROFILE", runtime_profile)
+
+    def test_only_the_mini_is_unsupported(self, monkeypatch):
+        for profile, board in (("luckfox_22", "Pico Mini"), ("luckfox_40", None),
+                               ("luckfox_pi", None), ("lc_lafrite", None), ("desktop", None)):
+            self.on_board(monkeypatch, profile)
+            assert secure_boot_tools.unsupported_board() == board, profile
+
+    def test_enabling_on_a_mini_is_refused(self, monkeypatch):
+        from seedsigner.views import settings_views as sv
+        self.on_board(monkeypatch, "luckfox_22")
+        attr = SettingsConstants.SETTING__LUCKFOX_BUILD_TOOLS
+        seen = {}
+        original_init = sv.SettingsFeatureUnsupportedView.__init__
+
+        def capture(view, *args, **kwargs):
+            seen.update(kwargs)
+            original_init(view, *args, **kwargs)
+
+        monkeypatch.setattr(sv.SettingsFeatureUnsupportedView, "__init__", capture)
+        session = UISession(script=select("Enabled", "OK"))
+        self.run_sequence([
+            FlowStep(sv.SettingsEntryUpdateSelectionView, real_screens=True),
+            FlowStep(sv.SettingsFeatureUnsupportedView, real_screens=True),
+            FlowStep(sv.SettingsEntryUpdateSelectionView),
+        ], initial_destination_view_args=dict(attr_name=attr), ui_session=session)
+        assert seen == dict(attr_name=attr, board="Pico Mini")
+        assert self.settings.get_value(attr) == SettingsConstants.OPTION__DISABLED
+
+    def test_enabling_elsewhere_still_works(self, monkeypatch):
+        from seedsigner.views import settings_views as sv
+        self.on_board(monkeypatch, "luckfox_40")
+        attr = SettingsConstants.SETTING__LUCKFOX_BUILD_TOOLS
+        # Run the view directly: it redisplays itself with skip_current_view, which
+        # the flow harness cannot follow from a first step.
+        view = sv.SettingsEntryUpdateSelectionView(attr_name=attr)
+        view.run_screen = lambda *a, **kw: 0              # "Enabled"
+        destination = view.run()
+        assert destination.View_cls is sv.SettingsEntryUpdateSelectionView
+        assert self.settings.get_value(attr) == SettingsConstants.OPTION__ENABLED
+
+    def test_menu_hidden_on_a_mini_even_if_enabled(self, monkeypatch):
+        """e.g. enabled by a SettingsQR, or carried over from an older build."""
+        self.on_board(monkeypatch, "luckfox_22")
+        self.enable_setting(True)
+        self.tools_available(monkeypatch, True)
+        assert "Luckfox Build Tools" not in TestMenuEntry.tools_menu_labels()

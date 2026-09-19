@@ -688,6 +688,7 @@ def generate_screenshots(locale):
                 ScreenshotConfig(resign_views.ToolsLuckfoxForceInfoView, dict(page=2), screenshot_name="ToolsLuckfoxForceInfoView_2"),
                 ScreenshotConfig(resign_views.ToolsLuckfoxForceStateView, dict(flow=dict(action=resign_views.ACTION__FORCE, folder=release_dir)), screenshot_name="ToolsLuckfoxForceStateView_off", mock_context_manager=mock_release_helpers),
                 ScreenshotConfig(resign_views.ToolsLuckfoxForceStateView, dict(flow=dict(action=resign_views.ACTION__FORCE, folder=release_dir)), screenshot_name="ToolsLuckfoxForceStateView_on", mock_context_manager=mock_force_on),
+                ScreenshotConfig(settings_views.SettingsFeatureUnsupportedView, dict(attr_name=SettingsConstants.SETTING__LUCKFOX_BUILD_TOOLS, board="Pico Mini")),
                 ScreenshotConfig(resign_views.ToolsLuckfoxDangerZoneView),
                 ScreenshotConfig(resign_views.ToolsLuckfoxArmWarningView),
                 # Not screenshotted: the views that derive an RSA-2048 key or run the
