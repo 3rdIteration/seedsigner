@@ -74,6 +74,15 @@ jobs:
           git clone --recursive --depth 1 \
             https://github.com/status-im/status-keycard.git \
             "$HOME/applet-repos/status-keycard"
+      # The Luckfox release signers are provided by SeedSigner OS rather than
+      # vendored in this app, so the tests that actually sign a release need them
+      # fetched. Cloned outside the workspace so pytest does not collect
+      # seedsigner-os's own tests. Missing or older checkout: those tests skip with
+      # a reason, like the applet ones - it never breaks the run.
+      - name: Check out SeedSigner OS signing tools
+        run: |
+          git clone --depth 1 https://github.com/3rdIteration/seedsigner-os.git \
+            "$HOME/seedsigner-os" || echo "seedsigner-os unavailable; signing tests will skip"
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -95,6 +104,8 @@ jobs:
           # Where the applet checkouts above landed. The jcardsim harness looks here for
           # them and skips with a reason if any are missing, so this never breaks the run.
           export SEEDSIGNER_APPLET_ROOT="$HOME/applet-repos"
+          # Resolved by seedsigner.helpers.secure_boot_tools; absent -> skip.
+          export SEEDSIGNER_SECURE_BOOT_DIR="$HOME/seedsigner-os/opt/luckfox/secure-boot"
           python -m pytest \
             --color=yes \
             --cov=seedsigner \
