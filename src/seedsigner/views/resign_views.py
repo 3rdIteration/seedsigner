@@ -163,7 +163,11 @@ class _FlowView(View):
                            skip_current_view=True)
 
     def load_keys(self, want_ed: bool):
-        """(rsa_key, ed_seed or None) from whichever source the flow chose."""
+        """(rsa_key, (ed_seed, stored key id or None)) or a None pair.
+
+        The key id is only non-None for keys loaded from a minisign secret-key
+        file that carries its own; derived and bare-seed keys use the id their
+        seed deterministically produces."""
         from seedsigner.helpers import resign_release
         source = self.flow.get("source", KEY_SOURCE__BIP85)
         if source == KEY_SOURCE__MICROSD:
@@ -179,8 +183,9 @@ class _FlowView(View):
         return self.derive_keys(want_ed)
 
     def derive_keys(self, want_ed: bool):
-        """(rsa_key, ed_seed or None). RSA-2048 from a DRNG is slow on this
-        hardware (tens of seconds is normal), so a loading screen goes up first."""
+        """(rsa_key, (ed_seed, None) or None). RSA-2048 from a DRNG is slow on
+        this hardware (tens of seconds is normal), so a loading screen goes up
+        first. Derived keys have no stored id: it comes from the seed."""
         from seedsigner.views.gpg_views import bip85_rsa_from_root, bip85_ed25519_seed_from_root
         seed = self.controller.storage.seeds[self.flow["seed_num"]]
         root = seed.get_root(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
@@ -191,7 +196,7 @@ class _FlowView(View):
             ed_seed = bip85_ed25519_seed_from_root(root, self.flow["ed_index"]) if want_ed else None
         finally:
             loading.stop()
-        return rsa_key, ed_seed
+        return rsa_key, (ed_seed, None) if want_ed else None
 
 
 # Keys read from a SeedKeeper are held here, in RAM only, between the picker and
@@ -567,7 +572,7 @@ class ToolsLuckfoxExportRunView(_FlowView):
         from seedsigner.helpers import resign_release
 
         try:
-            rsa_key, ed_seed = self.derive_keys(want_ed=True)
+            rsa_key, (ed_seed, _kid) = self.derive_keys(want_ed=True)
             out = resign_release.export_pubkeys(
                 str(MicroSD.get_microsd_dir()), rsa_key, ed_seed,
                 self.flow["rsa_index"], self.flow["ed_index"])
@@ -651,7 +656,7 @@ class ToolsResignRunView(_FlowView):
         from seedsigner.helpers import resign_release
 
         try:
-            rsa_key, ed_seed = self.load_keys(want_ed=True)
+            rsa_key, (ed_seed, stored_key_id) = self.load_keys(want_ed=True)
         except Exception as e:
             logger.exception("loading the signing keys failed")
             return self.result(_("Could not load the keys: {}").format(e))
@@ -660,8 +665,10 @@ class ToolsResignRunView(_FlowView):
         loading = LoadingScreenThread(text=_("Signing..."))
         loading.start()
         try:
-            report = resign_release.resign_release(folder, rsa_key, ed_seed)
-            checks = resign_release.verify_release(folder, int(rsa_key.n), ed_seed)
+            report = resign_release.resign_release(folder, rsa_key, ed_seed,
+                                                   stored_key_id=stored_key_id)
+            checks = resign_release.verify_release(folder, int(rsa_key.n), ed_seed,
+                                                   stored_key_id=stored_key_id)
         except Exception as e:
             logger.exception("re-signing failed")
             return self.result(_("Signing failed, nothing was written: {}").format(e))

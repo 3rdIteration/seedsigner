@@ -559,12 +559,36 @@ def test_parse_ed25519_key_formats(tmp_path):
     seed = bytes(range(32))
     pub, sec = tmp_path / "k.pub", tmp_path / "k.key"
     ms.main(["keygen", "--entropy", seed.hex(), "-p", str(pub), "-s", str(sec)])
-    assert rr.parse_ed25519_key(sec.read_bytes()) == seed
-    assert rr.parse_ed25519_key(seed) == seed
-    assert rr.parse_ed25519_key(seed.hex().encode() + b"\n") == seed
+    # A key this tooling generated: the stored id is the derived one.
+    assert rr.parse_ed25519_key(sec.read_bytes()) == (seed, rr.ed25519_key_id(seed))
+    # The other formats carry no id: None means "derive it from the seed".
+    assert rr.parse_ed25519_key(seed) == (seed, None)
+    assert rr.parse_ed25519_key(seed.hex().encode() + b"\n") == (seed, None)
     ecc = ECC.construct(curve="Ed25519", seed=seed)
-    assert rr.parse_ed25519_key(ecc.export_key(format="PEM").encode()) == seed
-    assert rr.parse_ed25519_key(ecc.export_key(format="DER")) == seed
+    assert rr.parse_ed25519_key(ecc.export_key(format="PEM").encode()) == (seed, None)
+    assert rr.parse_ed25519_key(ecc.export_key(format="DER")) == (seed, None)
+
+
+def test_parse_ed25519_key_keeps_a_third_partys_stored_id(tmp_path):
+    """minisign -G randomises the key id; it is not derivable from the seed and
+    must travel with the key, or signatures fail host-side verification against
+    the original public key file."""
+    seed = bytes(range(32))
+    pk = ms.ed25519_public(seed)
+    foreign_id = b"\x01" * 8
+    assert foreign_id != rr.ed25519_key_id(seed)
+    sec, pub = tmp_path / "f.key", tmp_path / "f.pub"
+    ms.write_seckey(str(sec), foreign_id, seed + pk)
+    ms.write_pubkey(str(pub), foreign_id, pk)
+
+    parsed_seed, parsed_id = rr.parse_ed25519_key(sec.read_bytes())
+    assert (parsed_seed, parsed_id) == (seed, foreign_id)
+
+    # A signature tagged with the stored id verifies against the original
+    # public key; one tagged with the derived id would not.
+    digest = hashlib.blake2b(b"rootfs-bytes", digest_size=64).digest()
+    sig = ms.ed25519_sign(seed, digest)
+    assert ms.ed25519_verify(pk, digest, sig)
 
 
 def test_parse_ed25519_key_refusals():

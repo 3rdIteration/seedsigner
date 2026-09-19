@@ -177,13 +177,16 @@ def rsa_modulus_fingerprint(n):
     return hashlib.sha256(n.to_bytes(256, "big")).hexdigest()
 
 
-def ed25519_key_id(seed):
-    """Same derivation minisign.py keygen uses, so the two always agree."""
+def ed25519_key_id(seed, key_id=None):
+    """The minisign key id for this seed: the stored one when given (a third-party
+    secret key carries its own), else the derivation minisign.py keygen uses."""
+    if key_id is not None:
+        return bytes(key_id)
     return _tools()[2].key_id_for(_tools()[2].ed25519_public(seed))
 
 
-def ed25519_key_id_text(seed):
-    return _tools()[2].format_key_id(ed25519_key_id(seed))
+def ed25519_key_id_text(seed, key_id=None):
+    return _tools()[2].format_key_id(ed25519_key_id(seed, key_id))
 
 
 # --- keys loaded from a file or a SeedKeeper secret ------------------------------
@@ -214,11 +217,18 @@ def parse_rsa_key(data):
 
 
 def parse_ed25519_key(data):
-    """An Ed25519 private key -> its 32-byte seed.
+    """An Ed25519 private key -> (its 32-byte seed, its minisign key id or None).
 
     Accepts a minisign secret key (unencrypted), a PKCS#8 PEM/DER Ed25519 key
     (`openssl genpkey -algorithm ed25519`), or the bare seed as 32 raw bytes or
     64 hex characters.
+
+    A minisign secret key carries its own key id in the file; third-party keys
+    (minisign -G) randomise it, so it cannot be derived from the seed and must
+    travel with it - signatures tagged with a different id fail host-side
+    verification against the original public key. The other formats have no
+    stored id: None means "derive it from the seed", which is what this tooling's
+    own keys (BIP85, minisign.py keygen) always satisfy.
     """
     ms = _tools()[2]
     text = data.strip()
@@ -229,9 +239,10 @@ def parse_ed25519_key(data):
                 "1 GiB of RAM (minisign's scrypt default), more than this device has. "
                 "Re-create it unencrypted (minisign -G -W) or use a derived key.")
         try:
-            return ms.parse_seckey(data)["seed"]
+            key = ms.parse_seckey(data)
         except ms.MsError as e:
             raise ResignError("not a usable minisign secret key: %s" % e)
+        return key["seed"], key["key_id"]
     # A bare seed first: 64 hex characters can start with "0", which is the same
     # byte as a DER SEQUENCE tag.
     try:
@@ -239,9 +250,9 @@ def parse_ed25519_key(data):
     except (UnicodeDecodeError, ValueError):
         seed = b""
     if len(seed) == 32:
-        return seed
+        return seed, None
     if len(data) == 32:
-        return bytes(data)
+        return bytes(data), None
     if b"PRIVATE KEY" in text or text[:1] == b"\x30":
         if b"ENCRYPTED" in text:
             raise ResignError("the Ed25519 key is passphrase-protected; export it unencrypted")
@@ -252,7 +263,7 @@ def parse_ed25519_key(data):
             key = None
         if key is None or key.curve not in ("Ed25519", "ed25519") or not key.has_private():
             raise ResignError("not an Ed25519 private key")
-        return bytes(key.seed)
+        return bytes(key.seed), None
     raise ResignError("not an Ed25519 key (minisign secret key, PKCS#8, or a "
                       "32-byte seed)")
 
@@ -429,12 +440,14 @@ def export_pubkeys(card_root, rsa_key, ed25519_seed, rsa_index, ed_index):
 
 # --- 3. resign all -----------------------------------------------------------
 
-def resign_release(folder, rsa_key, ed25519_seed, progress=None):
+def resign_release(folder, rsa_key, ed25519_seed, progress=None, stored_key_id=None):
     """Re-sign the boot chain and the rootfs. Returns a ResignReport.
 
     `rsa_key` is a PyCryptodome RSA object (from bip85_rsa_from_root);
-    `ed25519_seed` is 32 raw bytes (from the BIP85 Ed25519 path). Pass
-    `progress` a callable to receive one short status line per step.
+    `ed25519_seed` is 32 raw bytes (from the BIP85 Ed25519 path or a loaded key
+    file). `stored_key_id` is that file's minisign key id when it carries one;
+    None derives it from the seed. Pass `progress` a callable to receive one
+    short status line per step.
     """
     def step(msg):
         if progress:
@@ -502,12 +515,13 @@ def resign_release(folder, rsa_key, ed25519_seed, progress=None):
             else:
                 report.skip("rootfs.img", "not in this folder, so its key was not changed")
             try:
-                buf, done = lr.rework_initramfs(buf, folder, rootfs_seed=seed, rsa_n=n)
+                buf, done = lr.rework_initramfs(buf, folder, rootfs_seed=seed, rsa_n=n,
+                                                rootfs_key_id=stored_key_id)
             except lr.ReleaseError as e:
                 raise ResignError(str(e))
             if seed is not None:
                 report.add("rootfs.img", "signed with key %s (the signature is "
-                           "stored in boot.img)" % ed25519_key_id_text(seed))
+                           "stored in boot.img)" % ed25519_key_id_text(seed, stored_key_id))
         else:
             done = []
         step("Signing %s" % FIT_PLAIN)
@@ -524,7 +538,7 @@ def resign_release(folder, rsa_key, ed25519_seed, progress=None):
         with open(rootfs + ".size") as f:
             size = int(f.read().strip())
         digest = ms.prehash(rootfs, size)
-        key_id = ed25519_key_id(ed25519_seed)
+        key_id = ed25519_key_id(ed25519_seed, stored_key_id)
         sig = ms.ed25519_sign(ed25519_seed, digest)
         gsig = ms.ed25519_sign(ed25519_seed, sig + ms.TRUSTED_COMMENT.encode())
         pending.append((rootfs + ".minisig", ms.format_sig(
@@ -540,8 +554,11 @@ def resign_release(folder, rsa_key, ed25519_seed, progress=None):
     return report
 
 
-def verify_release(folder, rsa_pubkey_n, ed25519_seed=None):
-    """Re-check a release under the given keys. Returns [(name, ok, detail)]."""
+def verify_release(folder, rsa_pubkey_n, ed25519_seed=None, stored_key_id=None):
+    """Re-check a release under the given keys. Returns [(name, ok, detail)].
+
+    `stored_key_id` is the minisign key id of `ed25519_seed` when it came from a
+    third-party secret key; None derives it."""
     rk, fs, ms, lr = _tools()
     results = []
     for name in LOADER_FILES:
@@ -572,7 +589,7 @@ def verify_release(folder, rsa_pubkey_n, ed25519_seed=None):
         ok, detail = lr.verify_rootfs(folder, members)
         if ok and ed25519_seed is not None:
             embedded = lr.parse_pubkey_bytes(members["pubkey"])["key_id"]
-            if embedded != ed25519_key_id(ed25519_seed):
+            if embedded != ed25519_key_id(ed25519_seed, stored_key_id):
                 ok, detail = False, "boot.img trusts a different rootfs key"
         results.append(("rootfs.img", ok, detail))
     else:
