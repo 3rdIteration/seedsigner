@@ -51,7 +51,7 @@ ACTION__ARM = "arm"
 STEPS = {
     ACTION__CHECK: ("folder",),
     ACTION__EXPORT: ("seed_num", "rsa_index", "ed_index"),
-    # Resign All asks where its keys come from first; see _steps().
+    # Resign Release asks where its keys come from first; see _steps().
     ACTION__RESIGN: ("source", "folder"),
     ACTION__PROVISION: ("folder",),
     ACTION__FORCE: ("folder", "force_on", "seed_num", "rsa_index"),
@@ -61,14 +61,14 @@ STEPS = {
 TITLES = {
     ACTION__CHECK: _mft("Check Release"),
     ACTION__EXPORT: _mft("Export Pubkeys"),
-    ACTION__RESIGN: _mft("Resign All"),
+    ACTION__RESIGN: _mft("Resign Release"),
     ACTION__PROVISION: _mft("Provision MicroSD"),
     ACTION__FORCE: _mft("Force Rootfs Check"),
     ACTION__ARM: _mft("Arm eFuse Burn"),
 }
 
 
-# Where Resign All's keys come from.
+# Where Resign Release's keys come from.
 KEY_SOURCE__BIP85 = "bip85"
 KEY_SOURCE__MICROSD = "microsd"
 KEY_SOURCE__SEEDKEEPER = "seedkeeper"
@@ -216,7 +216,7 @@ def take_seedkeeper_keys(controller):
 class ToolsLuckfoxBuildToolsMenuView(View):
     CHECK = ButtonOption("Check Release")
     EXPORT = ButtonOption("Export Pubkeys")
-    RESIGN = ButtonOption("Resign All")
+    RESIGN = ButtonOption("Resign Release")
     PROVISION = ButtonOption("Provision MicroSD")
     FORCE = ButtonOption("Force Rootfs Check")
     DANGER = ButtonOption("Danger Zone", button_label_color="red")
@@ -584,7 +584,7 @@ class ToolsLuckfoxExportRunView(_FlowView):
 
 
 """****************************************************************************
-    3. Resign All
+    3. Resign Release
 ****************************************************************************"""
 class ToolsResignReleaseStartView(View):
     """Explain what this does before asking for anything."""
@@ -594,7 +594,7 @@ class ToolsResignReleaseStartView(View):
     def run(self):
         selected = self.run_screen(
             WarningScreen,
-            title=_("Resign All"),
+            title=_("Resign Release"),
             status_headline=_("Your keys, your releases"),
             text=_("Re-signs everything with your own keys. Keep a backup: a fused "
                    "board needs them."),

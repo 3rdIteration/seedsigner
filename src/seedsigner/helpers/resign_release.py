@@ -594,13 +594,13 @@ def require_release_key(folder, rsa_key):
 
     Force Rootfs Check and Arm eFuse Burn re-sign a single file; the rest of the
     chain (and uboot.img's embedded key) stays as it is, so the key has to match
-    it. Resign All is the way to change keys.
+    it. Resign Release is the way to change keys.
     """
     rk, fs, _ms, _lr = _tools()
     n, _d = rsa_numbers(rsa_key)
     if release_modulus(folder) != n:
         raise ResignError("this key is not the one the release is signed with "
-                          "(RSA fingerprint %s). Use Resign All to change keys."
+                          "(RSA fingerprint %s). Use Resign Release to change keys."
                           % rsa_modulus_fingerprint(release_modulus(folder))[:16])
     boot = os.path.join(folder, FIT_PLAIN)
     if os.path.isfile(boot) and not fs.verify_buf(rk.read(boot), n):

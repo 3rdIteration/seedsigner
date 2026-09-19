@@ -145,7 +145,7 @@ class TestMenuEntry(LuckfoxFlowTest):
             rv.ToolsLuckfoxBuildToolsMenuView.CHECK, rv.ToolsLuckfoxBuildToolsMenuView.EXPORT,
             rv.ToolsLuckfoxBuildToolsMenuView.RESIGN, rv.ToolsLuckfoxBuildToolsMenuView.PROVISION,
             rv.ToolsLuckfoxBuildToolsMenuView.FORCE, rv.ToolsLuckfoxBuildToolsMenuView.DANGER)]
-        assert labels == ["Check Release", "Export Pubkeys", "Resign All",
+        assert labels == ["Check Release", "Export Pubkeys", "Resign Release",
                           "Provision MicroSD", "Force Rootfs Check", "Danger Zone"]
 
     def test_no_microsd_warns_and_backs_out(self, monkeypatch):
@@ -167,7 +167,7 @@ class TestNavigation(LuckfoxFlowTest):
         self.store_seed()
         flow = {}
         session = UISession(script=(
-            select("Luckfox Build Tools", "Resign All", "Continue", "BIP85 Derive")
+            select("Luckfox Build Tools", "Resign Release", "Continue", "BIP85 Derive")
             + select(0)                  # seed picker - the screen that used to crash
             + [TypeKeys("3"), TypeKeys("5")]
             + select("release")
@@ -318,7 +318,7 @@ class TestNavigation(LuckfoxFlowTest):
         self.run_sequence([
             FlowStep(rv.ToolsLuckfoxResultView, real_screens=True),
             FlowStep(MainMenuView),
-        ], initial_destination_view_args=dict(title="Resign All", text="Done:\n- boot.img"),
+        ], initial_destination_view_args=dict(title="Resign Release", text="Done:\n- boot.img"),
             ui_session=session)
 
     def test_update_img_deleted_screen(self):
@@ -326,7 +326,7 @@ class TestNavigation(LuckfoxFlowTest):
         self.run_sequence([
             FlowStep(rv.ToolsLuckfoxUpdateImgDeletedView, real_screens=True),
             FlowStep(rv.ToolsLuckfoxResultView),
-        ], initial_destination_view_args=dict(title="Resign All", text="x"),
+        ], initial_destination_view_args=dict(title="Resign Release", text="x"),
             ui_session=session)
 
 
@@ -459,7 +459,7 @@ class TestEndToEnd(LuckfoxFlowTest):
             assert (card / name).is_file()
 
 
-# --- Resign All with keys brought from MicroSD or a SeedKeeper -----------------
+# --- Resign Release with keys brought from MicroSD or a SeedKeeper -----------------
 
 class FakeSeedKeeper:
     """Just the SeedKeeper calls the key picker makes, holding Data secrets."""

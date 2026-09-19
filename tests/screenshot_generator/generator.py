@@ -468,7 +468,7 @@ def generate_screenshots(locale):
                  patch.object(rr_helper, "provision_check", Mock(return_value=chk)):
                 yield
 
-        # Key files a user might bring on the card for Resign All.
+        # Key files a user might bring on the card for Resign Release.
         (resign_card / "keys").mkdir(exist_ok=True)
         for name in ("release-rsa.pem", "rootfs-minisign.key"):
             (resign_card / "keys" / name).write_bytes(b"placeholder")
@@ -679,8 +679,8 @@ def generate_screenshots(locale):
                 ScreenshotConfig(resign_views.ToolsLuckfoxRsaIndexView, dict(flow=dict(action=resign_views.ACTION__RESIGN, seed_num=0))),
                 ScreenshotConfig(resign_views.ToolsLuckfoxEd25519IndexView, dict(flow=dict(action=resign_views.ACTION__RESIGN, seed_num=0, rsa_index=0))),
                 ScreenshotConfig(resign_views.ToolsResignConfirmView, dict(flow=dict(resign_flow, folder=release_dir)), mock_context_manager=mock_release_helpers),
-                ScreenshotConfig(resign_views.ToolsLuckfoxUpdateImgDeletedView, dict(title="Resign All", text=sample_resign_text)),
-                ScreenshotConfig(resign_views.ToolsLuckfoxResultView, dict(title="Resign All", text=sample_resign_text), screenshot_name="ToolsLuckfoxResultView_resign_all"),
+                ScreenshotConfig(resign_views.ToolsLuckfoxUpdateImgDeletedView, dict(title="Resign Release", text=sample_resign_text)),
+                ScreenshotConfig(resign_views.ToolsLuckfoxResultView, dict(title="Resign Release", text=sample_resign_text), screenshot_name="ToolsLuckfoxResultView_resign_all"),
                 ScreenshotConfig(resign_views.ToolsLuckfoxProvisionView, dict(flow=dict(action=resign_views.ACTION__PROVISION, folder=release_dir)), mock_context_manager=mock_release_helpers),
                 ScreenshotConfig(resign_views.ToolsLuckfoxProvisionView, dict(flow=dict(action=resign_views.ACTION__PROVISION, folder=release_dir)), screenshot_name="ToolsLuckfoxProvisionView_warnings", mock_context_manager=mock_provision_warnings),
                 ScreenshotConfig(resign_views.ToolsLuckfoxProvisionDoneView),
