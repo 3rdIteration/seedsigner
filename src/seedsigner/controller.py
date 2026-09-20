@@ -238,7 +238,10 @@ class Controller(Singleton):
     # TODO: Refactor these flow-related attrs that survive across multiple Screens.
     # TODO: Should all in-memory flow-related attrs get wiped on MainMenuView?
     psbt: PSBT = None
-    psbt_seed: Seed = None
+    # Behind the psbt_seed property. Tests patch this field, not the
+    # property: patch.object undoes a property patch by deleting it, and
+    # a property with no deleter refuses.
+    _psbt_seed: Seed = None
     psbt_parser: PSBTParser = None
     psbt_sign_with_satochip: bool = False
     psbt_from_microsd: bool = False
@@ -298,6 +301,32 @@ class Controller(Singleton):
     # against a descriptor. None means no card flow is in progress.
     psbt_card_keys: dict | None = None
 
+
+    @property
+    def psbt_seed(self) -> Seed:
+        return self._psbt_seed
+
+
+    @psbt_seed.setter
+    def psbt_seed(self, seed: Seed):
+        """
+        Storing a seed to sign with ends any card flow that was in progress.
+
+        Every view that picks a signer stores it here: the stored-seed list, a
+        scanned or typed seed, WIF and BIP38 keys and a Satodime slot among
+        them. Clearing the card flag in each of those views is a line the next
+        one added will miss -- and missing it signs with the card the user
+        navigated away from, or with a card that is no longer in the reader.
+        The flag has no meaning once a seed is chosen, so it is cleared where
+        the seed lands.
+
+        Clearing the seed is not choosing one: the card flow itself sets
+        psbt_seed = None on its way in, and must keep its own state.
+        """
+        self._psbt_seed = seed
+        if seed is not None:
+            self.psbt_sign_with_satochip = False
+            self.psbt_card_keys = None
 
     # Destination placeholder for when we need to jump out to a side flow but intend to
     # return navigation to the main flow (e.g. PSBT flow, load multisig descriptor,

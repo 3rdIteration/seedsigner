@@ -321,7 +321,9 @@ def generate_screenshots(locale):
             decoder = DecodeQR()
             decoder.add_data(base64_psbt)
             with patch.object(controller, 'psbt', decoder.get_psbt()):
-                with patch.object(controller, 'psbt_seed', seed):
+                # psbt_seed is a property, which patch.object cannot undo;
+                # the field behind it can be patched and restored.
+                with patch.object(controller, '_psbt_seed', seed):
                     with patch.object(controller, 'psbt_parser', PSBTParser(p=controller.psbt, seed=seed, multisig_descriptor=controller.multisig_wallet_descriptor)):
                         yield
 
@@ -384,7 +386,7 @@ def generate_screenshots(locale):
         @contextmanager
         def mock_controller_psbt_seed_empty():
             # Have to ensure this is cleared out in order to get the seed selection screen
-            with patch.object(controller, 'psbt_seed', None):
+            with patch.object(controller, '_psbt_seed', None):
                 yield
 
 
