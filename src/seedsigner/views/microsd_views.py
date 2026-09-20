@@ -20,13 +20,26 @@ logger = logging.getLogger(__name__)
 
 
 def find_sd_card_device():
+    """Return the device node of the inserted MicroSD card, or None.
+
+    A card counts as present once its disk node exists, whether or not it
+    carries a partition table. A brand-new card has none, and neither does one
+    this tool just zero-wiped, so requiring a partition would make the wipe and
+    flash tools blind to exactly the cards they are meant to work on. A
+    partitioned card still wins, so a host with more than one MMC device keeps
+    resolving to the same node as before.
+    """
     import re
-    for device in os.listdir("/sys/block"):
-        if device.startswith("mmcblk") and re.fullmatch(r'mmcblk\d+', device):
-            partitions = os.listdir(f"/sys/block/{device}")
-            if any(p.startswith(device + "p") for p in partitions):
-                return f"/dev/{device}"
-    return None
+    blank = None
+    for device in sorted(os.listdir("/sys/block")):
+        if not re.fullmatch(r'mmcblk\d+', device):
+            continue
+        partitions = os.listdir(f"/sys/block/{device}")
+        if any(p.startswith(device + "p") for p in partitions):
+            return f"/dev/{device}"
+        if blank is None:
+            blank = f"/dev/{device}"
+    return blank
 
 
 def refuse_without_card(view: View, text: str) -> Destination:

@@ -209,3 +209,43 @@ class TestFlashOnADevHost(BaseTest):
 
         assert_dd_targets(commands, SD_DEV)
         assert destination.View_cls is MainMenuView
+
+
+class TestBlankCardIsStillACard(BaseTest):
+    """A card with no partition table is in the slot; the tool zeroed it itself."""
+
+    def fake_sysfs(self, layout):
+        real_listdir = os.listdir
+
+        def listdir(path):
+            # Only sysfs is faked: other threads keep reading real directories
+            # while this test runs, and they must not see this layout.
+            if path == "/sys/block":
+                return list(layout)
+            device = str(path).rsplit("/", 1)[-1]
+            if str(path).startswith("/sys/block/") and device in layout:
+                return layout[device]
+            return real_listdir(path)
+
+        return listdir
+
+    @pytest.mark.parametrize(
+        "layout,expected",
+        [
+            ({"mmcblk0": ["mmcblk0p1", "size"]}, "/dev/mmcblk0"),
+            # Freshly zero-wiped or brand-new: present, but no partition table
+            ({"mmcblk0": ["size", "removable"]}, "/dev/mmcblk0"),
+            ({}, None),
+            ({"sda": ["sda1"]}, None),
+        ],
+    )
+    def test_detection(self, monkeypatch, layout, expected):
+        monkeypatch.setattr(os, "listdir", self.fake_sysfs(layout))
+
+        assert microsd_views.find_sd_card_device() == expected
+
+    def test_a_partitioned_card_wins_over_a_blank_one(self, monkeypatch):
+        layout = {"mmcblk0": ["size"], "mmcblk1": ["mmcblk1p1", "size"]}
+        monkeypatch.setattr(os, "listdir", self.fake_sysfs(layout))
+
+        assert microsd_views.find_sd_card_device() == "/dev/mmcblk1"
