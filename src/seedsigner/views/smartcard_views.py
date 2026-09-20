@@ -3150,11 +3150,14 @@ class ToolsKeycardBenchmarkMessageSignView(View):
                 digest = os.urandom(32)
                 start = time.monotonic()
                 try:
+                    # Name the key derived above: the connector needs one to
+                    # make the signature recoverable, and not every SIGN
+                    # response carries it.
                     response, sw1, sw2, _compsig = _call_with_timeout(
                         connector.card_sign_message,
                         timeout,
                         0xFF,
-                        None,
+                        expected_pubkey,
                         list(digest),
                     )
                 except Exception as exc:

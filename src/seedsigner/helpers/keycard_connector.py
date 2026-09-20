@@ -7,7 +7,10 @@ from pathlib import Path
 from types import SimpleNamespace
 import re
 
+import logging
+
 from embit import bip32, ec
+from embit.util import secp256k1
 
 
 _XPUB_HEADERS_MAINNET = {
@@ -301,6 +304,76 @@ def _path_from_indices(indices: list[int]) -> str:
         hardened = bool(i & 0x80000000)
         parts.append(f"{base}'" if hardened else str(base))
     return "m/" + "/".join(parts)
+
+
+
+logger = logging.getLogger(__name__)
+
+
+def _pubkey_sec(pubkey) -> bytes | None:
+    """Compressed SEC bytes for any pubkey shape used around here, or None.
+
+    Callers hand this module four different things: an embit PublicKey, the
+    ECPubkeyCompat wrapper returned by card_bip32_get_extendedkey(), raw
+    bytes, and the uncompressed key a SIGN response carries. Assuming any one
+    of them silently turned every real message signature into a failure.
+    """
+    if pubkey is None:
+        return None
+    raw = None
+    if isinstance(pubkey, (bytes, bytearray, list)):
+        raw = bytes(pubkey)
+    else:
+        for attr, args in (("sec", ()), ("get_public_key_bytes", (True,))):
+            getter = getattr(pubkey, attr, None)
+            if callable(getter):
+                try:
+                    value = getter(*args)
+                except Exception:
+                    continue
+                if isinstance(value, (bytes, bytearray)):
+                    raw = bytes(value)
+                    break
+    if raw is None:
+        return None
+    try:
+        key = ec.PublicKey.parse(raw)
+    except Exception:
+        return None
+    # Recovery yields a compressed key; compare like with like.
+    key.compressed = True
+    return key.sec()
+
+
+def compact_signature_for(sig_der: bytes, digest: bytes, pubkey) -> bytes | None:
+    """Return the 65-byte compact signature for `sig_der`, or None.
+
+    A compact (recoverable) signature carries a recovery id so that a verifier
+    can recover the signer's pubkey from the message alone -- that is what makes
+    a signed message checkable. The recovery id is not in the DER encoding, so
+    it is found by trying each candidate and keeping the one that recovers this
+    card's pubkey. None means no candidate did: the signature is not this key's,
+    or it is malformed, and there is nothing honest to return.
+    """
+    expected = _pubkey_sec(pubkey)
+    if expected is None:
+        return None
+    try:
+        sig = ec.Signature.parse(sig_der)
+        compact64 = secp256k1.ecdsa_signature_serialize_compact(sig._sig)
+    except Exception:
+        return None
+
+    for recid in range(4):
+        try:
+            recsig = secp256k1.ecdsa_recoverable_signature_parse_compact(compact64, recid)
+            recovered = ec.PublicKey(secp256k1.ecdsa_recover(recsig, digest))
+            if recovered.sec() == expected:
+                # 27 marks a compact signature, +4 marks a compressed pubkey.
+                return bytes([27 + 4 + recid]) + compact64
+        except Exception:
+            continue
+    return None
 
 
 class ECPubkeyCompat:
@@ -968,7 +1041,6 @@ class KeycardSatochipConnector:
         return (list(der), 0x90, 0x00)
 
     def card_sign_message(self, keynbr, pubkey, message, hmac=b"", altcoin=None):
-        _ = pubkey
         _ = hmac
         _ = altcoin
         self._ensure_secure_channel()
@@ -996,5 +1068,16 @@ class KeycardSatochipConnector:
             if recovery_id is not None:
                 compact = bytes([27 + recovery_id + 4]) + compact
         if not compact or len(compact) != 65:
-            compact = b"\x1f" + b"\x00" * 64
+            # The caller's key when it names one, else the key the card named
+            # in its SIGN response. Asking the card for it again would put a
+            # second round trip inside every sample the benchmark times.
+            expected = _pubkey_sec(pubkey)
+            if expected is None:
+                expected = _pubkey_sec(getattr(sig, "public_key", None))
+            compact = compact_signature_for(der, digest, expected)
+        if not compact:
+            # Returning a placeholder here used to produce a "signed message"
+            # the recipient could never verify, reported to the user as success.
+            logger.warning("Keycard message signature could not be made recoverable")
+            return (list(der), 0x6F, 0x00, None)
         return (list(der), 0x90, 0x00, compact)
