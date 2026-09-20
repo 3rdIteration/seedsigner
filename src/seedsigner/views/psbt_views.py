@@ -27,6 +27,49 @@ logger = logging.getLogger(__name__)
 
 
 
+def account_path_for_inputs(psbt, master_fingerprint: bytes = None) -> list[int] | None:
+    """The hardened prefix of an input derivation, or None.
+
+    Every input is considered, not just the first: an input can legitimately
+    carry no ECDSA bip32 derivation -- taproot, or one another wallet has
+    already finished -- and reading input 0 alone raised a bare StopIteration
+    that surfaced as a crash rather than a refusal.
+
+    With `master_fingerprint`, only derivations claiming that key are read. A
+    psbt may spend from several wallets, and the account to export from a card
+    is the one that card's own fingerprint names: taking whichever input comes
+    first exports an account the card has nothing to do with, and then rejects
+    the input it could actually have signed. No input naming that fingerprint
+    means the card is not a signer here, which is a refusal, not a fallback.
+
+    A zero fingerprint is the one exception, read only when no derivation names
+    the card: a coordinator given only an xpub writes 00000000 for the master
+    it was never told. It proves nothing on its own. The parser backfills it
+    only where the card's key derives the input, and the card's fingerprint is
+    checked after that.
+    """
+    HARDENED_INDEX = 0x80000000
+    MISSING_FINGERPRINT = b"\x00" * 4
+
+    def hardened_prefix(derivation):
+        account_path = []
+        for idx in derivation:
+            if idx & HARDENED_INDEX:
+                account_path.append(idx)
+            else:
+                break
+        return account_path
+
+    unnamed = None
+    for inp in getattr(psbt, "inputs", None) or []:
+        for deriv in inp.bip32_derivations.values():
+            if master_fingerprint is None or deriv.fingerprint == master_fingerprint:
+                return hardened_prefix(deriv.derivation)
+            if unnamed is None and deriv.fingerprint == MISSING_FINGERPRINT:
+                unnamed = hardened_prefix(deriv.derivation)
+    return unnamed
+
+
 class PSBTSelectSeedView(View):
     SCAN_SEED = ButtonOption("Scan a seed", SeedSignerIconConstants.QRCODE)
     SATOCHIP = ButtonOption("Use Satochip card", SeedSignerIconConstants.FINGERPRINT)
@@ -236,15 +279,43 @@ class PSBTSelectSeedView(View):
 
             network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
             is_mainnet = network == SettingsConstants.MAINNET
-            first_der = next(iter(self.controller.psbt.inputs[0].bip32_derivations.values())).derivation
-            account_path = []
-            HARDENED_INDEX = 0x80000000
-            for idx in first_der:
-                if idx & HARDENED_INDEX:
-                    account_path.append(idx)
-                else:
-                    break
 
+            # Ask the card who it is before reading the psbt's account paths. A
+            # psbt may spend from several wallets, and only the derivations
+            # naming this card's fingerprint say which account it holds; the
+            # first input's path can belong to a wallet the card has no part in.
+            # The master key's xtype only picks version bytes, and a fingerprint
+            # does not depend on those.
+            try:
+                master_xpub = connector.card_bip32_get_xpub("", "standard", is_mainnet)
+                master_fp = HDKey.from_base58(master_xpub).my_fingerprint
+            except Exception as e:
+                logger.exception("Failed to export master xpub from %s card", card_label)
+                self.run_screen(
+                    WarningScreen,
+                    title="Failed",
+                    status_headline=None,
+                    text=str(e),
+                )
+                return Destination(PSBTSelectSeedView, clear_history=True)
+
+            account_path = account_path_for_inputs(self.controller.psbt, master_fp)
+            if account_path is None:
+                # No input names a key for this card to derive: a taproot-only
+                # psbt, one whose ECDSA inputs another wallet already finished,
+                # or simply a psbt this card is not a signer on. Say so rather
+                # than raising StopIteration out of a next(iter(...)) on the
+                # first input, or exporting some other wallet's account.
+                self.run_screen(
+                    WarningScreen,
+                    title=_("Cannot sign"),
+                    status_icon_name=SeedSignerIconConstants.WARNING,
+                    status_headline=None,
+                    text=_("No input in this PSBT names a key this card can derive."),
+                )
+                return Destination(PSBTSelectSeedView, clear_history=True)
+
+            HARDENED_INDEX = 0x80000000
             account_path_str = "m"
             for i in account_path:
                 hardened = bool(i & HARDENED_INDEX)
@@ -267,7 +338,6 @@ class PSBTSelectSeedView(View):
             try:
                 try:
                     account_xpub = connector.card_bip32_get_xpub(account_path_str, xtype, is_mainnet)
-                    master_xpub = connector.card_bip32_get_xpub("", xtype, is_mainnet)
                 except Exception as e:
                     logger.exception("Failed to export xpub from %s card", card_label)
                     loading.stop()
@@ -281,7 +351,6 @@ class PSBTSelectSeedView(View):
                     return Destination(PSBTSelectSeedView, clear_history=True)
 
                 root_key = HDKey.from_base58(account_xpub)
-                master_fp = HDKey.from_base58(master_xpub).my_fingerprint
 
                 try:
                     self.controller.psbt_parser = PSBTParser(
