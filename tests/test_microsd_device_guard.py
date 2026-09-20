@@ -56,7 +56,7 @@ class DummyLoadingScreenThread:
         pass
 
 
-def patch_environment(monkeypatch, commands, on_seedsigner_os=True):
+def patch_environment(monkeypatch, commands, on_seedsigner_os=True, dd_returncode=0):
     """Make a MicroSD View runnable headlessly and record the commands it runs."""
     hostname = "seedsigner-os" if on_seedsigner_os else "testhost"
     monkeypatch.setattr(
@@ -80,6 +80,11 @@ def patch_environment(monkeypatch, commands, on_seedsigner_os=True):
             return SimpleNamespace(stdout="", stderr="", returncode=0)
         if cmd[0] == "sha256sum":
             return SimpleNamespace(stdout="0" * 64 + "  /tmp/img.img\n", stderr="", returncode=0)
+        if dd_returncode != 0 and "dd" in cmd:
+            return SimpleNamespace(
+                stdout="", stderr="dd: /dev/mmcblk0: Input/output error\n",
+                returncode=dd_returncode,
+            )
         return SimpleNamespace(stdout="", stderr=DD_OK, returncode=0)
 
     monkeypatch.setattr("subprocess.run", fake_run)
@@ -249,3 +254,21 @@ class TestBlankCardIsStillACard(BaseTest):
         monkeypatch.setattr(os, "listdir", self.fake_sysfs(layout))
 
         assert microsd_views.find_sd_card_device() == "/dev/mmcblk1"
+
+
+class TestVerifyReportsAFailedRead(BaseTest):
+    """A checksum is only meaningful if dd actually read the card."""
+
+    def test_failed_dd_is_not_reported_as_a_checksum(self, monkeypatch):
+        commands = []
+        patch_environment(monkeypatch, commands, dd_returncode=1)
+        monkeypatch.setattr(microsd_views, "find_sd_card_device", lambda: SD_DEV)
+
+        view, screens = build_view(monkeypatch, microsd_views.ToolsMicroSDVerifyView)
+
+        destination = view.run()
+
+        assert not screens.showed("Matched Checksum")
+        assert not screens.showed("Unfamilliar Checksum")
+        assert screens.showed("Could not read")
+        assert destination.View_cls is MainMenuView

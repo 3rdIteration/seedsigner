@@ -294,7 +294,23 @@ class ToolsMicroSDVerifyView(View):
         dd_cmd = ["dd", f"if={microsd_dev}", "of=/tmp/img.img", "bs=1M", "count=26"]
         if platform.uname()[1] != "seedsigner-os":
             dd_cmd = ["sudo"] + dd_cmd
-        run(dd_cmd, check=False)
+        read = run(dd_cmd, capture_output=True, text=True)
+        logger.info(read)
+
+        if read.returncode != 0:
+            # /tmp/img.img still holds whatever the last read or flash left
+            # there, so hashing it now would report a checksum for that image
+            # instead of for this card.
+            self.loading_screen.stop()
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Could not read the MicroSD card.",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")]
+            )
+            return Destination(MainMenuView)
 
         data = run(["sha256sum", "/tmp/img.img"], capture_output=True, text=True)
         logger.info(data)
