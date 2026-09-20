@@ -600,7 +600,14 @@ def _parse_gpg_verify_status(stdout: str, stderr: str) -> dict:
         parts = line[len("[GNUPG:] "):].split(" ")
         code = parts[0]
         if code == "VALIDSIG" and len(parts) > 1:
-            valid_fprs.append(parts[1].upper())
+            # VALIDSIG's first argument is the key that made the signature, which
+            # for a normal release is a signing subkey. Its tenth is the primary
+            # key that subkey belongs to (GnuPG DETAILS), and the primary is what
+            # the trust registry lists -- six of the registered primaries cannot
+            # sign at all. Reading the first reports a genuine release as coming
+            # from an unknown key. The two are equal when the primary signed, and
+            # the short form some gpg output carries has no tenth field.
+            valid_fprs.append((parts[10] if len(parts) > 10 else parts[1]).upper())
         elif code in ("ERRSIG", "BADSIG"):
             bad_sig = True
         elif code == "NO_PUBKEY":
