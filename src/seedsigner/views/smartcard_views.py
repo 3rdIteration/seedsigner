@@ -3341,11 +3341,17 @@ class ToolsKeycardUnblockPinView(View):
             )
         else:
             if sw1 == 0x63 and (sw2 & 0xF0) == 0xC0:
-                seedkeeper_utils.show_incorrect_pin_warning(
-                    self,
-                    connector=connector,
-                    sw1=sw1,
-                    sw2=sw2,
+                # The PIN is already blocked here, so this is the card refusing
+                # the PUK, and the count is PUK tries. Running out of those
+                # blocks the card for good.
+                attempts_left = sw2 & 0x0F
+                attempt_word = "attempt" if attempts_left == 1 else "attempts"
+                self.run_screen(
+                    WarningScreen,
+                    title="Incorrect PUK",
+                    status_headline=None,
+                    text=f"PUK is incorrect.\n{attempts_left} {attempt_word} remaining.",
+                    show_back_button=True,
                 )
             else:
                 self.run_screen(

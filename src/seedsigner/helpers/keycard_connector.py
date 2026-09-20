@@ -481,6 +481,19 @@ class KeycardSatochipConnector:
 
         return None
 
+    def _status_word_result(self, exc: Exception):
+        """Turn a card exception into an (data, sw1, sw2) result, or re-raise.
+
+        Callers of these APDU wrappers read sw1/sw2 to decide what to show; an
+        exception escaping instead reaches the View as an unhandled error, and
+        returning 0x9000 would report a refused change as done.
+        """
+        status_word = self._extract_status_word(exc)
+        if status_word is None:
+            raise exc
+        logger.info("Keycard refused the operation: SW=%04X", status_word)
+        return ([], (status_word >> 8) & 0xFF, status_word & 0xFF)
+
     def _pin_tries_from_status(self) -> int | None:
         try:
             status = getattr(self._card, "status", None)
@@ -760,11 +773,18 @@ class KeycardSatochipConnector:
         self._ensure_secure_channel()
         old_text = _value_to_text(old_pin)
         new_text = _value_to_text(new_pin)
+        cached_pin = self.pin
         self.pin = list(old_text.encode("utf-8"))
         sw1, sw2 = self._verify_pin_sw()
         if (sw1, sw2) != (0x90, 0x00):
+            # The old PIN was wrong, so it is not the card's PIN and must not
+            # stay cached as though it were.
+            self.pin = cached_pin
             return ([], sw1, sw2)
-        self._card.change_pin(new_text)
+        try:
+            self._card.change_pin(new_text)
+        except Exception as exc:
+            return self._status_word_result(exc)
         self.pin = list(new_text.encode("utf-8"))
         return ([], 0x90, 0x00)
 
@@ -774,7 +794,10 @@ class KeycardSatochipConnector:
         self._ensure_secure_channel()
         self._ensure_pin_verified()
         new_text = _value_to_text(new_puk)
-        self._card.change_puk(new_text)
+        try:
+            self._card.change_puk(new_text)
+        except Exception as exc:
+            return self._status_word_result(exc)
         return ([], 0x90, 0x00)
 
     def card_unblock_PIN(self, pin_nbr, puk, new_pin=None):
@@ -787,7 +810,12 @@ class KeycardSatochipConnector:
             new_pin_text = _pin_to_text(self.pin)
         else:
             new_pin_text = _value_to_text(new_pin)
-        self._card.unblock_pin(puk_text, new_pin_text)
+        try:
+            self._card.unblock_pin(puk_text, new_pin_text)
+        except Exception as exc:
+            # A wrong PUK is an ordinary answer from the card, not a crash, and
+            # the cached PIN must not move to a PIN the card never accepted.
+            return self._status_word_result(exc)
         self.pin = list(new_pin_text.encode("utf-8"))
         return ([], 0x90, 0x00)
 
