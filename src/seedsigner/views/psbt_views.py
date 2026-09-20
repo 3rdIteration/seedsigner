@@ -27,6 +27,34 @@ logger = logging.getLogger(__name__)
 
 
 
+
+# How much a "Retry (higher timeout)" adds, in seconds.
+RETRY_TIMEOUT_STEP = 0.75
+
+
+def signing_timeout(controller, configured_timeout: float) -> float:
+    """The timeout this signing attempt should use."""
+    return getattr(controller, "_psbt_sign_retry_timeout", None) or configured_timeout
+
+
+def bump_retry_timeout(controller, used_timeout: float) -> float:
+    """Raise the retry timeout above the value that just timed out.
+
+    Raising it from the configured setting instead meant every retry landed on
+    the same value, so pressing "Retry (higher timeout)" a second time changed
+    nothing.
+    """
+    new_timeout = used_timeout + RETRY_TIMEOUT_STEP
+    controller._psbt_sign_retry_timeout = new_timeout
+    return new_timeout
+
+
+def clear_retry_timeout(controller) -> None:
+    """Forget the raised timeout, so the next PSBT starts from the setting."""
+    if hasattr(controller, "_psbt_sign_retry_timeout"):
+        delattr(controller, "_psbt_sign_retry_timeout")
+
+
 def account_path_for_inputs(psbt, master_fingerprint: bytes = None) -> list[int] | None:
     """The hardened prefix of an input derivation, or None.
 
@@ -1491,10 +1519,16 @@ class PSBTFinalizeView(View):
         loading.start()
         try:
             sign_result = None
+            retry_timeout = None
             if self.controller.psbt_sign_with_satochip:
                 is_keycard = getattr(connector, "is_keycard_backend", False)
                 # Track retry state on the controller so we can increase timeout across retries
-                retry_timeout = getattr(self.controller, "_psbt_sign_retry_timeout", None)
+                configured_timeout = (
+                    self.settings.get_value(SettingsConstants.SETTING__KEYCARD_SIGN_TIMEOUT)
+                    if is_keycard
+                    else self.settings.get_value(SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT)
+                )
+                retry_timeout = signing_timeout(self.controller, configured_timeout)
                 if is_keycard:
                     from seedsigner.helpers.keycard_signer import sign_psbt_with_keycard
                     sign_result = sign_psbt_with_keycard(psbt, connector, timeout=retry_timeout)
@@ -1549,18 +1583,17 @@ class PSBTFinalizeView(View):
                 "PSBTFinalizeView" if self.controller.psbt_sign_with_satochip else "PSBTSigningErrorView",
             )
             # Clean up retry state regardless of path taken
-            if hasattr(self.controller, "_psbt_sign_retry_timeout"):
-                delattr(self.controller, "_psbt_sign_retry_timeout")
+            used_timeout = retry_timeout
+            clear_retry_timeout(self.controller)
 
             if self.controller.psbt_sign_with_satochip:
                 # If a timeout occurred during signing, offer to retry with higher timeout
                 if sign_result and sign_result.timed_out:
                     is_keycard = getattr(connector, "is_keycard_backend", False)
-                    current_timeout = (
-                        self.settings.get_value(SettingsConstants.SETTING__KEYCARD_SIGN_TIMEOUT)
-                        if is_keycard
-                        else self.settings.get_value(SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT)
-                    )
+                    # The value that actually timed out, not the setting: after a
+                    # retry those differ, and quoting the setting told the user a
+                    # timeout they had already moved past.
+                    current_timeout = used_timeout
                     card_label = "Keycard" if is_keycard else "Satochip"
 
                     selected = self.run_screen(
@@ -1576,8 +1609,7 @@ class PSBTFinalizeView(View):
 
                     if selected == 0:
                         # Increase timeout by one step and retry
-                        new_timeout = current_timeout + 0.75
-                        self.controller._psbt_sign_retry_timeout = new_timeout
+                        new_timeout = bump_retry_timeout(self.controller, current_timeout)
                         logger.info(
                             "PSBTFinalize: user chose to retry with timeout=%.2fs", new_timeout
                         )
@@ -1589,6 +1621,9 @@ class PSBTFinalizeView(View):
         logger.info("PSBTFinalize: signatures added; routing=PSBTSignedQRDisplayView")
         self.controller.psbt = trimmed_psbt
         self.controller.psbt_sign_with_satochip = False
+        # A raised timeout belonged to this psbt only; the next one starts from
+        # the configured setting again.
+        clear_retry_timeout(self.controller)
         return Destination(PSBTSignedQRDisplayView)
 
 
