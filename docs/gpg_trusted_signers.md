@@ -37,7 +37,7 @@ Filenames are matched case-insensitively; one trailing detached-signature extens
 |--------|-------------|-------------|
 | Steve Rothery (CryptoGuide) | `7C817290 6B9A7EAF 9F0BD8F1 62A1D33E 233C8EA0` | `gpg_keys/ShieldSigner_CryptoGuide.asc` |
 
-Note: ShieldSigner is a fork of SeedSigner (see [SECURITY.md](../SECURITY.md) and [docs/repositories.md](./repositories.md)). Its release artifacts reuse the upstream `seedsigner_os.` filename prefix, so the whitelist patterns are scoped to fork-specific names (`-smartcard.`, `-luckfox`, versioned `SHA256SUMS`). Where a name still matches both projects (the versioned manifest), attribution falls back to the signer's fingerprint.
+Note: ShieldSigner is a fork of SeedSigner (see [SECURITY.md](https://github.com/3rdIteration/seedsigner/blob/dev/SECURITY.md) and [docs/repositories.md](./repositories.md)). Its release artifacts reuse the upstream `seedsigner_os.` filename prefix, so the whitelist patterns are scoped to fork-specific names (`-smartcard.`, `-luckfox`, versioned `SHA256SUMS`). Where a name still matches both projects (the versioned manifest), attribution falls back to the signer's fingerprint.
 
 ## Sparrow Wallet
 

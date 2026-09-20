@@ -110,9 +110,7 @@ This is a quick reference summary of the mappings currently defined in
   - `KEY2`: `["/dev/gpiochip0", 20, "pull_up"]`
   - `KEY3`: `["/dev/gpiochip0", 16, "pull_up"]`
 - Camera:
-  - Device: `/dev/video0`
-  - Resolution: `1280x720`
-  - Pixel format: `YUYV`
+  - Resolution: `480x480`
   - Framerate: `4`
 
 ### `RPI_26`
@@ -132,9 +130,7 @@ This is a quick reference summary of the mappings currently defined in
   - `KEY2`: `["/dev/gpiochip0", 18, "pull_up"]`
   - `KEY3`: `["/dev/gpiochip0", 14, "pull_up"]`
 - Camera:
-  - Device: `/dev/video0`
-  - Resolution: `1280x720`
-  - Pixel format: `YUYV`
+  - Resolution: `480x480`
   - Framerate: `4`
 
 ### `FOX_22`
@@ -142,16 +138,16 @@ This is a quick reference summary of the mappings currently defined in
 - Display:
   - `dc`: `["/dev/gpiochip1", 20]`
   - `rst`: `["/dev/gpiochip1", 19]`
-  - `bl`: `["/dev/gpiochip1", 11]`
+  - `bl`: `"disabled"`
   - SPI: `bus 0`, `device 0`
 - Buttons (all with `"pull_up"`):
   - `KEY_UP`: `["/dev/gpiochip1", 25, "pull_up"]`
-  - `KEY_DOWN`: `["/dev/gpiochip1", 27, "pull_up"]`
+  - `KEY_DOWN`: `["/dev/gpiochip1", 23, "pull_up"]`
   - `KEY_LEFT`: `["/dev/gpiochip1", 24, "pull_up"]`
-  - `KEY_RIGHT`: `["/dev/gpiochip1", 22, "pull_up"]`
-  - `KEY_PRESS`: `["/dev/gpiochip1", 26, "pull_up"]`
-  - `KEY1`: `["/dev/gpiochip1", 23, "pull_up"]`
-  - `KEY2`: `["/dev/gpiochip0", 4, "pull_up"]`
+  - `KEY_RIGHT`: `["/dev/gpiochip0", 4, "pull_up"]`
+  - `KEY_PRESS`: `["/dev/gpiochip1", 22, "pull_up"]`
+  - `KEY1`: `["/dev/gpiochip4", 16, "pull_up"]`
+  - `KEY2`: `["/dev/gpiochip4", 17, "pull_up"]`
   - `KEY3`: `["/dev/gpiochip1", 21, "pull_up"]`
 - Camera:
   - Device: `/dev/video12`
@@ -161,19 +157,19 @@ This is a quick reference summary of the mappings currently defined in
 ### `FOX_40`
 
 - Display:
-  - `dc`: `["/dev/gpiochip1", 24]`
-  - `rst`: `["/dev/gpiochip1", 25]`
-  - `bl`: `["/dev/gpiochip2", 8]`
+  - `dc`: `["/dev/gpiochip2", 8]`
+  - `rst`: `["/dev/gpiochip1", 24]`
+  - `bl`: `["/dev/gpiochip1", 25]`
   - SPI: `bus 0`, `device 0`
 - Buttons (all with `"pull_up"`):
-  - `KEY_UP`: `["/dev/gpiochip1", 26, "pull_up"]`
-  - `KEY_DOWN`: `["/dev/gpiochip1", 21, "pull_up"]`
-  - `KEY_LEFT`: `["/dev/gpiochip1", 27, "pull_up"]`
-  - `KEY_RIGHT`: `["/dev/gpiochip1", 22, "pull_up"]`
-  - `KEY_PRESS`: `["/dev/gpiochip1", 20, "pull_up"]`
+  - `KEY_UP`: `["/dev/gpiochip2", 9, "pull_up"]`
+  - `KEY_DOWN`: `["/dev/gpiochip1", 26, "pull_up"]`
+  - `KEY_LEFT`: `["/dev/gpiochip1", 19, "pull_up"]`
+  - `KEY_RIGHT`: `["/dev/gpiochip1", 20, "pull_up"]`
+  - `KEY_PRESS`: `["/dev/gpiochip1", 27, "pull_up"]`
   - `KEY1`: `["/dev/gpiochip1", 23, "pull_up"]`
-  - `KEY2`: `["/dev/gpiochip1", 11, "pull_up"]`
-  - `KEY3`: `["/dev/gpiochip1", 10, "pull_up"]`
+  - `KEY2`: `["/dev/gpiochip1", 22, "pull_up"]`
+  - `KEY3`: `["/dev/gpiochip1", 21, "pull_up"]`
 - Camera:
   - Device: `/dev/video12`
   - Pixel format: `GREY`
