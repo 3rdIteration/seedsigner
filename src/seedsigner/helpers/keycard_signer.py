@@ -13,6 +13,7 @@ from seedsigner.helpers.satochip_signer import (
     _call_with_timeout,
     _format_path,
     normalize_signature_der,
+    signature_matches_pubkey,
 )
 from seedsigner.models.settings import Settings, SettingsConstants
 
@@ -178,6 +179,18 @@ def sign_psbt_with_keycard(psbt: PSBT, connector, timeout: float | None = None) 
                 sig_der = normalize_signature_der(sig_der)
             except Exception as e:
                 logger.warning("Failed to normalize Keycard signature: %s", e)
+
+            # The path fallback above never proved the card holds this input's
+            # key -- it only asked the card to sign for a path. Verifying the
+            # signature is what establishes that, so an unrelated card cannot
+            # have its signature filed under the PSBT's pubkey.
+            if not signature_matches_pubkey(sig_der, tx_hash, pubkey):
+                logger.warning(
+                    "Keycard signer input %d: signature does not verify against "
+                    "the input's pubkey; not filing it",
+                    i,
+                )
+                continue
 
             inp.partial_sigs[pubkey] = sig_der + b"\x01"
             signed += 1

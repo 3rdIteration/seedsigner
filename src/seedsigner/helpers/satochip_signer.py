@@ -10,7 +10,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
 from embit import bip32
-from embit.ec import PublicKey
+from embit.ec import PublicKey, Signature
 from embit.psbt import PSBT
 from embit.util import secp256k1
 from seedsigner.helpers import embit_utils
@@ -176,6 +176,20 @@ def normalize_signature_der(der: bytes) -> bytes:
         return secp256k1.ecdsa_signature_serialize_der(sig_norm)
     except Exception:
         return _normalize_low_s_der_pure(der)
+
+
+def signature_matches_pubkey(sig_der: bytes, sighash: bytes, pubkey) -> bool:
+    """True when sig_der is a valid signature of sighash by pubkey.
+
+    A partial_sig is a claim that this pubkey signed this input, and the
+    coordinator has no way to tell a wrong one from a right one until it tries
+    to broadcast. A card holding a different seed, or returning a malformed or
+    truncated signature, must not have that claim filed on its behalf.
+    """
+    try:
+        return bool(pubkey.verify(Signature.parse(sig_der), sighash))
+    except Exception:
+        return False
 
 
 def _call_with_timeout(func, timeout: float, *args):
@@ -406,6 +420,14 @@ def sign_psbt_with_satochip(psbt: PSBT, connector, timeout: float | None = None)
                 sig_der = normalize_signature_der(sig_der)
             except Exception as e:
                 logger.warning("Failed to normalize Satochip signature: %s", e)
+
+            if not signature_matches_pubkey(sig_der, tx_hash, pubkey):
+                logger.warning(
+                    "PSBT signer input %d: signature does not verify against the "
+                    "input's pubkey; not filing it",
+                    i,
+                )
+                continue
 
             inp.partial_sigs[pubkey] = sig_der + b"\x01"
             signed += 1
