@@ -216,6 +216,8 @@ class PSBTSelectSeedView(View):
             # User selected one of the n seeds
             if not ensure_microsd_seed_warning():
                 return Destination(PSBTSelectSeedView)
+            # Storing the seed is what ends any card flow that was entered and
+            # backed out of -- see Controller.psbt_seed.
             self.controller.psbt_seed = seeds[selected_menu_num]
             return Destination(PSBTOverviewView)
 
