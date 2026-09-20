@@ -273,9 +273,11 @@ class TestSecretWiping(BaseTest):
         seeds = [FakeSeed(), FakeSeed()]
         controller._storage = SimpleNamespace(seeds=seeds, clear_pending_seed=lambda: None)
         controller._storage2 = None
+        # Private copies: the wipe zeroes these in place, and a literal here
+        # would be the code object's own constant.
         controller.password_generator_entropy_cache = {
-            "roll_data": "1234512345",
-            "entropy_bytes": b"\x00\x01\x02\x03",
+            "roll_data": "".join("1234512345"),
+            "entropy_bytes": bytearray(b"\x00\x01\x02\x03"),
         }
         toasts = []
         import seedsigner.gui.toast as gui_toast

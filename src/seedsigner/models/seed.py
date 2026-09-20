@@ -9,7 +9,7 @@ import shamir_mnemonic
 from embit.networks import NETWORKS
 from typing import List
 
-from seedsigner.helpers.secure_delete import wipe_bytes, wipe_string, wipe_list
+from seedsigner.helpers.secure_delete import wipe_bytes, wipe_string, wipe_list, wipe_private_key
 from seedsigner.models.settings import SettingsConstants
 from seedsigner.models import aezeed
 
@@ -338,6 +338,8 @@ class Slip39Seed(Seed):
         # Passphrase used to decrypt the shares
         self._slip39_passphrase: str = unicodedata.normalize("NFKD", slip39_passphrase) if slip39_passphrase else ""
 
+        self._mnemonic: List[str] = []
+        self._passphrase: str = ""
         self.seed_bytes: bytes = None
         self.master_secret: bytes | None = None
         self._initial_master_secret: bytes | None = None
@@ -489,6 +491,7 @@ class XprvSeed(Seed):
         self._xprv = normalized
         self._root = root
         self._wordlist_language_code = SettingsConstants.WORDLIST_LANGUAGE__ENGLISH
+        self._mnemonic: List[str] = []
         self._passphrase = ""
         self.seed_bytes = None
         self.master_secret = None
@@ -535,6 +538,9 @@ class XprvSeed(Seed):
         """Securely clear xprv-specific fields, then delegate to parent."""
         wipe_string(self._xprv)
         self._xprv = ""
+        # The HDKey parsed from the xprv holds the key and chain code in bytes
+        # of its own; dropping the reference leaves them in freed memory.
+        wipe_private_key(self._root)
         self._root = None
         super().wipe()
 

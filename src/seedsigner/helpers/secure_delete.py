@@ -163,4 +163,50 @@ def wipe_list(lst: list | None) -> None:
             wipe_bytes(item)
         elif isinstance(item, str):
             wipe_string(item)
+    # The slots give a secret away too. An int element (a PIN digit, a byte of
+    # an unlock secret) has no buffer to zero, only the cached int it points
+    # at, and a wordlist word the guard left alone is known by its address.
+    # clear() frees the slot array with those pointers still in it.
+    for index in range(len(lst)):
+        lst[index] = 0
     lst.clear()
+
+
+def wipe_value(value) -> None:
+    """Wipe one secret held as str, bytes, bytearray or list; ignore the rest."""
+    if isinstance(value, (bytes, bytearray)):
+        wipe_bytes(value)
+    elif isinstance(value, str):
+        wipe_string(value)
+    elif isinstance(value, list):
+        wipe_list(value)
+
+
+def wipe_dict(d: dict | None, keys) -> None:
+    """Wipe the values stored under *keys*, then clear the dict.
+
+    Only the named values are wiped. A dict of secrets carries metadata too,
+    such as a type tag or a source name, and that is usually a code constant.
+    On CPython < 3.12 a constant is not immortal and has fewer references than
+    _SHARED_REFCOUNT_LIMIT, so wipe_string() would zero it in place for every
+    other user of the same object.
+    """
+    if d is None:
+        return
+    for key in keys:
+        wipe_value(d.get(key))
+    d.clear()
+
+
+def wipe_private_key(key) -> None:
+    """Zero an embit private key in place: a PrivateKey, or a private HDKey.
+
+    A public key is left alone. It is not secret, and it can be shared with
+    state that still needs it.
+    """
+    if key is None or not getattr(key, "is_private", False):
+        return
+    inner = getattr(key, "key", key)
+    wipe_bytes(getattr(inner, "_secret", None))
+    if inner is not key:
+        wipe_bytes(getattr(key, "chain_code", None))
