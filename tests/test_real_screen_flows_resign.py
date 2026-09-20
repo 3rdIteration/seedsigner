@@ -143,9 +143,10 @@ class TestMenuEntry(LuckfoxFlowTest):
                           ui_session=session)
         labels = [b.button_label for b in (
             rv.ToolsLuckfoxBuildToolsMenuView.CHECK, rv.ToolsLuckfoxBuildToolsMenuView.EXPORT,
-            rv.ToolsLuckfoxBuildToolsMenuView.RESIGN, rv.ToolsLuckfoxBuildToolsMenuView.PROVISION,
-            rv.ToolsLuckfoxBuildToolsMenuView.FORCE, rv.ToolsLuckfoxBuildToolsMenuView.DANGER)]
-        assert labels == ["Check Release", "Export Pubkeys", "Resign Release",
+            rv.ToolsLuckfoxBuildToolsMenuView.RESIGN, rv.ToolsLuckfoxBuildToolsMenuView.SIGN_DIGEST,
+            rv.ToolsLuckfoxBuildToolsMenuView.PROVISION, rv.ToolsLuckfoxBuildToolsMenuView.FORCE,
+            rv.ToolsLuckfoxBuildToolsMenuView.DANGER)]
+        assert labels == ["Check Release", "Export Pubkeys", "Resign Release", "Sign Digest",
                           "Provision MicroSD", "Force Rootfs Check", "Danger Zone"]
 
     def test_no_microsd_warns_and_backs_out(self, monkeypatch):
@@ -611,11 +612,59 @@ class TestKeySourceEndToEnd(LuckfoxFlowTest):
         assert rv.take_seedkeeper_keys(self.controller) is None
 
 
-# --- not supported on the Pico Mini --------------------------------------------
+@needs_tools
+class TestLowMemoryWarning(LuckfoxFlowTest):
+    """The heavy actions warn when free RAM looks tight, and stay quiet otherwise."""
 
-class TestPicoMini(LuckfoxFlowTest):
-    """The tools crash on the Pico Mini (64 MB): its image omits them, and the app
-    refuses the setting there with an explanation."""
+    @staticmethod
+    def stats(available_kb, total_kb=64 * 1024):
+        from seedsigner.helpers.system_memory import MemoryStats
+        return MemoryStats(total_kb=total_kb, available_kb=available_kb)
+
+    def test_line_is_empty_when_memory_is_comfortable(self, monkeypatch):
+        from seedsigner.helpers import system_memory
+        monkeypatch.setattr(system_memory, "get_memory_stats", lambda: self.stats(48 * 1024))
+        assert rv._low_memory_line("hint") == ""
+
+    def test_line_is_empty_without_meminfo(self, monkeypatch):
+        """Desktop/CI hosts have no /proc: the check degrades to a skip."""
+        from seedsigner.helpers import system_memory
+        monkeypatch.setattr(system_memory, "get_memory_stats", lambda: self.stats(None))
+        assert rv._low_memory_line("hint") == ""
+
+    def test_line_reports_free_and_total_below_the_threshold(self, monkeypatch):
+        from seedsigner.helpers import system_memory
+        monkeypatch.setattr(system_memory, "get_memory_stats", lambda: self.stats(20 * 1024))
+        line = rv._low_memory_line("The hint.")
+        assert line.startswith("Low memory") and "20.0 MB" in line and "64.0 MB" in line
+        assert line.endswith("The hint.")
+
+    def test_confirm_screen_carries_the_warning(self, monkeypatch, tmp_path):
+        from seedsigner.helpers import system_memory
+        from test_resign_release import _full_release
+        folder = _full_release(tmp_path)
+        monkeypatch.setattr(system_memory, "get_memory_stats", lambda: self.stats(20 * 1024))
+
+        view = rv.ToolsResignConfirmView(flow=dict(action=rv.ACTION__RESIGN,
+                                                   rsa_index=3, ed_index=5, folder=str(folder)))
+        captured = {}
+
+        def run_screen(Screen_cls, **kwargs):
+            captured.update(kwargs)
+            return 0
+        view.run_screen = run_screen
+        view.run()
+        assert "Low memory" in captured["text"]
+
+
+# --- board support ---------------------------------------------------------------
+
+class TestBoardSupport(LuckfoxFlowTest):
+    """Every board can run the tools: they are ~55 KB of stdlib and every heavy
+    path streams (a full mini-bundle re-sign peaks at ~14 MB measured), so even
+    the Pico Mini's 64 MB DRAM fits them. There is no per-board refusal; an image
+    whose build opted out simply does not carry the signers, and the menu hides
+    itself via is_available() like Network Info does."""
 
     def setup_method(self):
         super().setup_method()
@@ -626,48 +675,31 @@ class TestPicoMini(LuckfoxFlowTest):
         from seedsigner.models.settings import Settings
         monkeypatch.setattr(Settings, "RUNTIME_PROFILE", runtime_profile)
 
-    def test_only_the_mini_is_unsupported(self, monkeypatch):
-        for profile, board in (("luckfox_22", "Pico Mini"), ("luckfox_40", None),
-                               ("luckfox_pi", None), ("lc_lafrite", None), ("desktop", None)):
+    def test_enabling_works_on_every_board(self, monkeypatch):
+        from seedsigner.views import settings_views as sv
+        attr = SettingsConstants.SETTING__LUCKFOX_BUILD_TOOLS
+        for profile in ("luckfox_22", "luckfox_40", "luckfox_pi", "lc_lafrite", "desktop"):
             self.on_board(monkeypatch, profile)
-            assert secure_boot_tools.unsupported_board() == board, profile
+            self.enable_setting(False)                        # start from Disabled each time
+            # Run the view directly: it redisplays itself with skip_current_view, which
+            # the flow harness cannot follow from a first step.
+            view = sv.SettingsEntryUpdateSelectionView(attr_name=attr)
+            view.run_screen = lambda *a, **kw: 0              # "Enabled"
+            destination = view.run()
+            assert destination.View_cls is sv.SettingsEntryUpdateSelectionView, profile
+            assert self.settings.get_value(attr) == SettingsConstants.OPTION__ENABLED, profile
 
-    def test_enabling_on_a_mini_is_refused(self, monkeypatch):
-        from seedsigner.views import settings_views as sv
-        self.on_board(monkeypatch, "luckfox_22")
-        attr = SettingsConstants.SETTING__LUCKFOX_BUILD_TOOLS
-        seen = {}
-        original_init = sv.SettingsFeatureUnsupportedView.__init__
-
-        def capture(view, *args, **kwargs):
-            seen.update(kwargs)
-            original_init(view, *args, **kwargs)
-
-        monkeypatch.setattr(sv.SettingsFeatureUnsupportedView, "__init__", capture)
-        session = UISession(script=select("Enabled", "OK"))
-        self.run_sequence([
-            FlowStep(sv.SettingsEntryUpdateSelectionView, real_screens=True),
-            FlowStep(sv.SettingsFeatureUnsupportedView, real_screens=True),
-            FlowStep(sv.SettingsEntryUpdateSelectionView),
-        ], initial_destination_view_args=dict(attr_name=attr), ui_session=session)
-        assert seen == dict(attr_name=attr, board="Pico Mini")
-        assert self.settings.get_value(attr) == SettingsConstants.OPTION__DISABLED
-
-    def test_enabling_elsewhere_still_works(self, monkeypatch):
-        from seedsigner.views import settings_views as sv
-        self.on_board(monkeypatch, "luckfox_40")
-        attr = SettingsConstants.SETTING__LUCKFOX_BUILD_TOOLS
-        # Run the view directly: it redisplays itself with skip_current_view, which
-        # the flow harness cannot follow from a first step.
-        view = sv.SettingsEntryUpdateSelectionView(attr_name=attr)
-        view.run_screen = lambda *a, **kw: 0              # "Enabled"
-        destination = view.run()
-        assert destination.View_cls is sv.SettingsEntryUpdateSelectionView
-        assert self.settings.get_value(attr) == SettingsConstants.OPTION__ENABLED
-
-    def test_menu_hidden_on_a_mini_even_if_enabled(self, monkeypatch):
-        """e.g. enabled by a SettingsQR, or carried over from an older build."""
+    def test_menu_shown_on_a_mini_when_the_tools_are_present(self, monkeypatch):
+        """The old per-board block is gone: with the signers installed and the
+        setting on, a Pico Mini gets the menu like any other board."""
         self.on_board(monkeypatch, "luckfox_22")
         self.enable_setting(True)
         self.tools_available(monkeypatch, True)
+        assert "Luckfox Build Tools" in TestMenuEntry.tools_menu_labels()
+
+    def test_menu_still_hidden_when_the_image_lacks_the_tools(self, monkeypatch):
+        """An image built with no-secure-boot-tools has nothing to run, on any board."""
+        self.on_board(monkeypatch, "luckfox_22")
+        self.enable_setting(True)
+        self.tools_available(monkeypatch, False)
         assert "Luckfox Build Tools" not in TestMenuEntry.tools_menu_labels()

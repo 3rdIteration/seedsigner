@@ -398,13 +398,13 @@ class ToolsMenuView(View):
             # Two gates, both deliberate. The setting is off by default because
             # this turns the device into a signing machine for SeedSigner OS
             # releases. The availability check is because the signers are
-            # provided by SeedSigner OS, not by this app, so a board whose
-            # defconfig omits them has nothing to run - the same shape as
-            # Network Info above.
+            # provided by SeedSigner OS, not by this app, so an image whose
+            # build opted out has nothing to run - the same shape as Network
+            # Info above. (Every board can run the tools: they stream, and the
+            # heavy actions warn when free memory is low.)
             self.LUCKFOX_BUILD_TOOLS if (
                 self.settings.get_value(SettingsConstants.SETTING__LUCKFOX_BUILD_TOOLS)
                 == SettingsConstants.OPTION__ENABLED
-                and not secure_boot_tools.unsupported_board()
                 and secure_boot_tools.is_available()
             ) else None,
             battery_calibration_button,

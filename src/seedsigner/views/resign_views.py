@@ -42,17 +42,20 @@ RSA_KEY_BITS = 2048
 ACTION__CHECK = "check"
 ACTION__EXPORT = "export"
 ACTION__RESIGN = "resign"
+ACTION__SIGN_DIGEST = "sign_digest"
 ACTION__PROVISION = "provision"
 ACTION__FORCE = "force"
 ACTION__ARM = "arm"
 
 # What each action collects, in order. Force and Arm pick the folder first so a
-# release they cannot work on is refused before anyone types in a seed.
+# release they cannot work on is refused before anyone types in a seed. Sign
+# Digest needs no folder: it signs whatever digests the card carries.
 STEPS = {
     ACTION__CHECK: ("folder",),
     ACTION__EXPORT: ("seed_num", "rsa_index", "ed_index"),
     # Resign Release asks where its keys come from first; see _steps().
     ACTION__RESIGN: ("source", "folder"),
+    ACTION__SIGN_DIGEST: ("source",),
     ACTION__PROVISION: ("folder",),
     ACTION__FORCE: ("folder", "force_on", "seed_num", "rsa_index"),
     ACTION__ARM: ("folder", "arm_ok", "seed_num", "rsa_index"),
@@ -62,10 +65,36 @@ TITLES = {
     ACTION__CHECK: _mft("Check Release"),
     ACTION__EXPORT: _mft("Export Pubkeys"),
     ACTION__RESIGN: _mft("Resign Release"),
+    ACTION__SIGN_DIGEST: _mft("Sign Digest"),
     ACTION__PROVISION: _mft("Provision MicroSD"),
     ACTION__FORCE: _mft("Force Rootfs Check"),
     ACTION__ARM: _mft("Arm eFuse Burn"),
 }
+
+# Free RAM below this, in kB, earns a warning before the heavy actions run. A
+# full mini-bundle re-sign peaks at ~14 MB of Python heap measured; 32 MB leaves
+# headroom for the app itself and is expected to trip on the Pico Mini (64 MB)
+# but not on the Max/Pi or the Pi/La Frite boards. Re-tune after a hardware run.
+RESIGN_MIN_AVAILABLE_KB = 32 * 1024
+
+
+def _low_memory_line(hint=""):
+    """A warning line when free RAM looks tight for the heavy actions, else "".
+
+    Reads the kernel's own /proc/meminfo via helpers.system_memory, which never
+    raises and degrades to None on a desktop/CI host without /proc - there the
+    check is simply skipped. `hint` is one action-specific sentence."""
+    from seedsigner.helpers import system_memory
+
+    stats = system_memory.get_memory_stats()
+    if stats.available_kb is None or stats.available_kb >= RESIGN_MIN_AVAILABLE_KB:
+        return ""
+    line = _("Low memory: {free} free of {total}.").format(
+                 free=system_memory.format_kb(stats.available_kb),
+                 total=system_memory.format_kb(stats.total_kb))
+    if hint:
+        line += " " + hint
+    return line
 
 
 # Where Resign Release's keys come from.
@@ -110,6 +139,7 @@ def next_step(flow: dict, skip_current_view: bool = False) -> Destination:
         ACTION__CHECK: ToolsLuckfoxCheckReleaseView,
         ACTION__EXPORT: ToolsLuckfoxExportRunView,
         ACTION__RESIGN: ToolsResignConfirmView,
+        ACTION__SIGN_DIGEST: ToolsSignDigestRunView,
         ACTION__PROVISION: ToolsLuckfoxProvisionView,
         ACTION__FORCE: ToolsLuckfoxForceRunView,
         ACTION__ARM: ToolsLuckfoxArmRunView,
@@ -222,6 +252,7 @@ class ToolsLuckfoxBuildToolsMenuView(View):
     CHECK = ButtonOption("Check Release")
     EXPORT = ButtonOption("Export Pubkeys")
     RESIGN = ButtonOption("Resign Release")
+    SIGN_DIGEST = ButtonOption("Sign Digest")
     PROVISION = ButtonOption("Provision MicroSD")
     FORCE = ButtonOption("Force Rootfs Check")
     DANGER = ButtonOption("Danger Zone", button_label_color="red")
@@ -239,8 +270,8 @@ class ToolsLuckfoxBuildToolsMenuView(View):
             )
             return Destination(BackStackView)
 
-        button_data = [self.CHECK, self.EXPORT, self.RESIGN, self.PROVISION,
-                       self.FORCE, self.DANGER]
+        button_data = [self.CHECK, self.EXPORT, self.RESIGN, self.SIGN_DIGEST,
+                       self.PROVISION, self.FORCE, self.DANGER]
         selected = self.run_screen(
             ButtonListScreen,
             title=_("Luckfox Build Tools"),
@@ -256,6 +287,8 @@ class ToolsLuckfoxBuildToolsMenuView(View):
             return next_step(dict(action=ACTION__EXPORT))
         if choice == self.RESIGN:
             return Destination(ToolsResignReleaseStartView)
+        if choice == self.SIGN_DIGEST:
+            return Destination(ToolsSignDigestStartView)
         if choice == self.PROVISION:
             return next_step(dict(action=ACTION__PROVISION))
         if choice == self.FORCE:
@@ -544,8 +577,25 @@ class ToolsLuckfoxSelectFolderView(_FlowView):
     1. Check Release
 ****************************************************************************"""
 class ToolsLuckfoxCheckReleaseView(_FlowView):
+    CONTINUE = ButtonOption("Continue")
+
     def run(self):
         from seedsigner.helpers import resign_release
+
+        # The check streams the rootfs and peaks at ~14 MB measured; on a tight
+        # board say so before it runs, the same way Resign Release does.
+        low_memory = _low_memory_line(
+            _("The check streams the rootfs and usually fits."))
+        if low_memory:
+            selected = self.run_screen(
+                WarningScreen,
+                title=self.title,
+                status_headline=_("Low memory"),
+                text=low_memory,
+                button_data=[self.CONTINUE],
+            )
+            if selected == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
 
         loading = LoadingScreenThread(text=_("Checking..."))
         loading.start()
@@ -627,6 +677,9 @@ class ToolsResignConfirmView(_FlowView):
             n=len(names), keys=self.key_summary())
         if info["update_img"]:
             text += " " + _("update.img is deleted.")
+        low_memory = _low_memory_line(_("This may run out; Sign Digest needs far less."))
+        if low_memory:
+            text += "\n\n" + low_memory
 
         selected = self.run_screen(
             DireWarningScreen,
@@ -704,6 +757,60 @@ class ToolsLuckfoxUpdateImgDeletedView(View):
         )
         return Destination(ToolsLuckfoxResultView,
                            view_args=dict(title=self.title, text=self.text))
+
+
+"""****************************************************************************
+    3b. Sign Digest (air-gap: no bundle on the device)
+****************************************************************************"""
+class ToolsSignDigestStartView(View):
+    """Explain the digest-signer role before asking for anything."""
+
+    CONTINUE = ButtonOption("Continue")
+
+    def run(self):
+        selected = self.run_screen(
+            WarningScreen,
+            title=_("Sign Digest"),
+            status_headline=_("No bundle needed"),
+            text=_("Signs bare digests from the card's seedsigner-release-sign/ "
+                   "folder: a few dozen bytes in, one signature out. The PC lays "
+                   "the digests there and splices the signatures back."),
+            button_data=[self.CONTINUE],
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        return next_step(dict(action=ACTION__SIGN_DIGEST))
+
+
+class ToolsSignDigestRunView(_FlowView):
+    """Load the keys, sign every digest on the card, and report."""
+
+    def run(self):
+        from seedsigner.helpers import resign_release
+
+        try:
+            rsa_key, (ed_seed, stored_key_id) = self.load_keys(want_ed=True)
+        except Exception as e:
+            logger.exception("loading the signing keys failed")
+            return self.result(_("Could not load the keys: {}").format(e))
+
+        loading = LoadingScreenThread(text=_("Signing..."))
+        loading.start()
+        try:
+            report = resign_release.sign_digests(str(MicroSD.get_microsd_dir()),
+                                                  rsa_key, ed_seed,
+                                                  stored_key_id=stored_key_id)
+        except Exception as e:
+            logger.exception("signing the digests failed")
+            return self.result(_("Signing failed, nothing was written: {}").format(e))
+        finally:
+            loading.stop()
+
+        text = _report_text(report) + "\n\n" + \
+            _("Take the card back to the PC and run `airgap-sign.py splice`.")
+        if not report.ok:
+            return self.refuse(text)
+        return self.result(text, finish="back")
 
 
 """****************************************************************************

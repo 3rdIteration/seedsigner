@@ -604,6 +604,118 @@ def verify_release(folder, rsa_pubkey_n, ed25519_seed=None, stored_key_id=None):
     return results
 
 
+# --- 3b. sign digests (air-gap: no bundle on the device) -----------------------
+#
+# The digest signer role from airgapped-signing.md: a PC lays bare digests on the
+# card (`tools/airgap-sign.py digests`), this signs them, and the PC splices the
+# signatures back. Nothing here reads a release folder, so it runs on any board -
+# even one whose DRAM cannot stage a bundle.
+
+DIGEST_DIR = "seedsigner-release-sign"
+
+# artifact -> tier. The .sig byte order differs per tier: loaders store their
+# RSA-PSS value little-endian in the 0x600 header, FITs big-endian in the
+# signature node; the rootfs comes back as minisign text instead of raw bytes.
+_DIGEST_TIERS = {
+    "download": "ldr",
+    "idblock":  "ldr",
+    "uboot":    "fit",
+    "boot":     "fit",
+    "rootfs":   "minisign",
+}
+
+
+def find_digest_dir(card_root):
+    """The <card>/seedsigner-release-sign/ folder, or None."""
+    d = os.path.join(card_root, DIGEST_DIR)
+    return d if os.path.isdir(d) else None
+
+
+def list_digests(digest_dir):
+    """{artifact: path} for every recognised .digest file in the folder."""
+    out = {}
+    try:
+        entries = sorted(os.listdir(digest_dir))
+    except OSError:
+        return out
+    for name in entries:
+        base, ext = os.path.splitext(name)
+        if ext == ".digest" and base in _DIGEST_TIERS:
+            out[base] = os.path.join(digest_dir, name)
+    return out
+
+
+def sign_digests(card_root, rsa_key=None, ed25519_seed=None, stored_key_id=None):
+    """Sign every digest on the card and write each signature back beside it.
+
+    `rsa_key` covers tiers A/B (32-byte SHA-256 digests); `ed25519_seed` +
+    `stored_key_id` cover tier C (a 64-byte BLAKE2b-512 prehash). Each is only
+    needed when the card carries a digest for its tiers. RSA signatures use the
+    deterministic salt, so signing the same digest twice is byte-identical.
+
+    Returns a ResignReport: one entry per file signed; a wrong-sized digest is
+    reported as skipped with its size, and nothing on the card is touched except
+    the .sig / .minisig files written here.
+    """
+    rk, _fs, ms, _lr = _tools()
+    digest_dir = find_digest_dir(card_root)
+    if digest_dir is None:
+        raise ResignError("no %s/ folder on the MicroSD - have the PC run "
+                          "`airgap-sign.py digests` first" % DIGEST_DIR)
+    names = list_digests(digest_dir)
+    if not names:
+        raise ResignError("no .digest files in %s/" % digest_dir)
+
+    tiers = {_DIGEST_TIERS[name] for name in names}
+    if {"ldr", "fit"} & tiers and rsa_key is None:
+        raise ResignError("the card has tier A/B digests but no RSA key was loaded")
+    if "minisign" in tiers and ed25519_seed is None:
+        raise ResignError("the card has a rootfs digest but no Ed25519 key was loaded")
+
+    report = ResignReport()
+    n, d = rsa_numbers(rsa_key) if rsa_key is not None else (None, None)
+    key_id = ed25519_key_id(ed25519_seed, stored_key_id) if ed25519_seed is not None else None
+
+    for name in sorted(names):
+        path = names[name]
+        with open(path, "rb") as f:
+            digest = f.read()
+        tier = _DIGEST_TIERS[name]
+        out_path = os.path.join(digest_dir,
+                                name + (".minisig" if tier == "minisign" else ".sig"))
+        try:
+            if tier in ("ldr", "fit"):
+                if len(digest) != 32:
+                    raise ResignError("%s.digest is %d bytes; a %s digest must be 32 (SHA-256)"
+                                      % (name, len(digest),
+                                         "tier A" if tier == "ldr" else "tier B"))
+                # The deterministic salt, with each toolchain's canonical length:
+                # rkloader's SALT_LEN for loaders, the max mkimage uses for FITs.
+                # Same digest + same key therefore gives byte-identical .sig files
+                # no matter which device signs them.
+                salt_len = rk.SALT_LEN if tier == "ldr" else _fs.max_salt_len(n)
+                em = rk.pss_encode(digest, n.bit_length() - 1,
+                                   rk.deterministic_salt(digest, salt_len))
+                value = pow(int.from_bytes(em, "big"), d, n).to_bytes(
+                    256, "little" if tier == "ldr" else "big")
+            else:
+                if len(digest) != 64:
+                    raise ResignError("rootfs.digest is %d bytes; a tier C digest must be "
+                                      "64 (BLAKE2b-512)" % len(digest))
+                sig, gsig = ms._sign_with(ed25519_seed, key_id, digest, ms.TRUSTED_COMMENT)
+                value = ms.format_sig(ms.ALG_PREHASHED, key_id, sig, ms.TRUSTED_COMMENT, gsig)
+        except ResignError as e:
+            report.skip(name + ".digest", str(e))
+            continue
+        _write(out_path, value)
+        if tier == "minisign":
+            report.add(name + ".minisig", "Ed25519 over the 64-byte prehash (key %s)"
+                       % ed25519_key_id_text(ed25519_seed, stored_key_id))
+        else:
+            report.add(name + ".sig", "RSA-2048 PSS over the 32-byte digest")
+    return report
+
+
 # --- keys that must already match the release ----------------------------------
 
 def require_release_key(folder, rsa_key):

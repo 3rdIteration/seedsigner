@@ -404,14 +404,6 @@ class SettingsEntryUpdateSelectionView(View):
             else:
                 updated_value = value
 
-        if (self.settings_entry.attr_name == SettingsConstants.SETTING__LUCKFOX_BUILD_TOOLS
-                and updated_value == SettingsConstants.OPTION__ENABLED):
-            from seedsigner.helpers import secure_boot_tools
-            board = secure_boot_tools.unsupported_board()
-            if board:
-                return Destination(SettingsFeatureUnsupportedView, view_args=dict(
-                    attr_name=self.settings_entry.attr_name, board=board))
-
         self.settings.set_value(
             attr_name=self.settings_entry.attr_name,
             value=updated_value
@@ -440,33 +432,6 @@ class SettingsEntryUpdateSelectionView(View):
         self.selected_button = ret_value
 
         return Destination(SettingsEntryUpdateSelectionView, view_args=dict(attr_name=self.settings_entry.attr_name, parent_initial_scroll=self.parent_initial_scroll, selected_button=self.selected_button, blocking_view=self.blocking_view, unblocking_view=self.unblocking_view), skip_current_view=True)
-
-
-
-class SettingsFeatureUnsupportedView(View):
-    """A feature this board cannot run: say so, and leave the setting as it was."""
-
-    def __init__(self, attr_name: str, board: str):
-        super().__init__()
-        self.settings_entry = SettingsDefinition.get_settings_entry(attr_name)
-        self.board = board
-
-
-    def run(self):
-        from seedsigner.gui.screens.screen import WarningScreen
-
-        self.run_screen(
-            WarningScreen,
-            title=_("Not Supported"),
-            status_headline=self.settings_entry.display_name,
-            # TRANSLATOR_NOTE: The board name (e.g. "Pico Mini") is inserted.
-            text=_("This feature does not run on the {board}.").format(board=self.board),
-            button_data=[ButtonOption("OK")],
-            show_back_button=False,
-        )
-        return Destination(SettingsEntryUpdateSelectionView,
-                           view_args=dict(attr_name=self.settings_entry.attr_name),
-                           skip_current_view=True)
 
 
 

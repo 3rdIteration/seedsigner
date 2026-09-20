@@ -621,3 +621,110 @@ def test_seedkeeper_secret_bytes():
     assert rr.seedkeeper_secret_bytes(list(len(data).to_bytes(2, "big") + data), 2) == data
     long = b"k" * 300                                 # too long for a 1-byte prefix
     assert rr.seedkeeper_secret_bytes(list(len(long).to_bytes(2, "big") + long), 2) == long
+
+
+# --- Sign Digest (air-gap: no bundle on the device) ------------------------------
+
+def _digest_dir(tmp_path):
+    d = tmp_path / rr.DIGEST_DIR
+    d.mkdir(parents=True)
+    return d
+
+
+def test_sign_digests_roundtrip_all_tiers(tmp_path, new_key):
+    n, d = int(new_key.n), int(new_key.d)
+    digests = _digest_dir(tmp_path)
+
+    ldr = _rk_container(n)                            # tier A: a real loader digest
+    (digests / "download.digest").write_bytes(rk.signing_digest(ldr, rk.layout(ldr)))
+    fit = _fit(b"BOOT" * 64)                          # tier B: a real FIT digest
+    (digests / "boot.digest").write_bytes(fs.signed_digest(fit))
+    rootfs_bytes = b"ROOTFS" * 1000                   # tier C: a prehash of some bytes
+    (digests / "rootfs.digest").write_bytes(hashlib.blake2b(rootfs_bytes, digest_size=64).digest())
+
+    report = rr.sign_digests(str(tmp_path), new_key, ED_SEED)
+    assert report.ok
+    assert set(dict(report.signed)) == {"download.sig", "boot.sig", "rootfs.minisig"}
+
+    # tier A verifies little-endian against the loader digest
+    sig = (digests / "download.sig").read_bytes()
+    assert len(sig) == 256
+    assert rk.rsa_verify_digest(rk.signing_digest(ldr, rk.layout(ldr)),
+                                int.from_bytes(sig, "little"), n)
+
+    # tier B verifies big-endian: splice it into a copy the way the PC does
+    sig = (digests / "boot.sig").read_bytes()
+    assert len(sig) == 256
+    fit2 = bytearray(fit)
+    fs._write_value(fit2, fs.signature_node(fit2), sig)
+    assert fs.verify_buf(fit2, n)
+
+    # tier C: minisign text with the derived key id; both signatures check out
+    msig = ms.load_sig(str(digests / "rootfs.minisig"))
+    pk = ms.ed25519_public(ED_SEED)
+    digest = (digests / "rootfs.digest").read_bytes()
+    assert msig["key_id"] == rr.ed25519_key_id(ED_SEED)
+    assert ms.ed25519_verify(pk, digest, msig["sig"])
+    assert ms.ed25519_verify(pk, msig["sig"] + msig["trusted_comment"].encode(),
+                             msig["global_sig"])
+
+
+def test_sign_digests_is_deterministic(tmp_path, new_key):
+    digests = _digest_dir(tmp_path)
+    (digests / "download.digest").write_bytes(b"\x11" * 32)
+    (digests / "rootfs.digest").write_bytes(b"\x22" * 64)
+    rr.sign_digests(str(tmp_path), new_key, ED_SEED)
+    first = {(f.name): f.read_bytes() for f in digests.iterdir()}
+    rr.sign_digests(str(tmp_path), new_key, ED_SEED)
+    assert {(f.name): f.read_bytes() for f in digests.iterdir()} == first
+
+
+def test_sign_digests_third_party_key_id_travels_with_the_signature(tmp_path, new_key):
+    """A minisign -G key's stored id is not derivable from the seed; the .minisig
+    must carry it, or host-side verification against the original pubkey fails."""
+    foreign = b"\x01" * 8
+    assert foreign != rr.ed25519_key_id(ED_SEED)
+    digests = _digest_dir(tmp_path)
+    (digests / "rootfs.digest").write_bytes(b"\x33" * 64)
+    report = rr.sign_digests(str(tmp_path), new_key, ED_SEED, stored_key_id=foreign)
+    assert report.ok
+    msig = ms.load_sig(str(digests / "rootfs.minisig"))
+    assert msig["key_id"] == foreign
+
+
+def test_sign_digests_refuses_wrong_sized_files(tmp_path, new_key):
+    digests = _digest_dir(tmp_path)
+    (digests / "download.digest").write_bytes(b"\x11" * 64)     # tier A wants 32
+    (digests / "rootfs.digest").write_bytes(b"\x22" * 32)       # tier C wants 64
+    report = rr.sign_digests(str(tmp_path), new_key, ED_SEED)
+    assert not report.ok
+    skipped = dict(report.skipped)
+    assert "64 bytes" in skipped["download.digest"] and "must be 32" in skipped["download.digest"]
+    assert "32 bytes" in skipped["rootfs.digest"] and "must be 64" in skipped["rootfs.digest"]
+    assert not (digests / "download.sig").exists()
+    assert not (digests / "rootfs.minisig").exists()
+
+
+def test_sign_digests_missing_keys_are_refused_upfront(tmp_path):
+    digests = _digest_dir(tmp_path)
+    (digests / "download.digest").write_bytes(b"\x11" * 32)
+    with pytest.raises(rr.ResignError, match="no RSA key"):
+        rr.sign_digests(str(tmp_path))
+    (digests / "download.digest").unlink()
+    (digests / "rootfs.digest").write_bytes(b"\x22" * 64)
+    with pytest.raises(rr.ResignError, match="no Ed25519 key"):
+        rr.sign_digests(str(tmp_path))
+
+
+def test_sign_digests_refuses_a_card_without_the_folder(tmp_path, new_key):
+    (tmp_path / "other").mkdir()
+    with pytest.raises(rr.ResignError, match="airgap-sign.py digests"):
+        rr.sign_digests(str(tmp_path), new_key, ED_SEED)
+
+
+def test_sign_digests_ignores_unrecognised_files(tmp_path, new_key):
+    digests = _digest_dir(tmp_path)
+    (digests / "manifest.txt").write_text("not a digest")
+    (digests / "unknown.digest").write_bytes(b"\x11" * 32)
+    with pytest.raises(rr.ResignError, match="no .digest files"):
+        rr.sign_digests(str(tmp_path), new_key, ED_SEED)
