@@ -1090,6 +1090,53 @@ class PSBTParser():
         return True
 
 
+    def _change_derivations_to_check(self, index: int, out: OutputScope) -> list[list[int]]:
+        """
+        The derivations on a change output that the binding checks apply to.
+
+        Only this seed's own path decides whether our change is reachable: the
+        prefixes it is measured against were gathered from the inputs this seed
+        owns, and a cosigner's path was never a candidate to match them. A
+        multisig whose cosigners keep the wallet at different account indices --
+        m/48h/0h/0h/2h here, m/48h/0h/1h/2h there, routine across vendors -- is
+        perfectly ordinary, and judging our change by their prefix refused it
+        outright, leaving the psbt unsignable.
+
+        What a cosigner's path still has to do is agree with ours on the last two
+        levels. A multisig address is built from every cosigner's key at once, so
+        the wallet only reproduces it by scanning all of them at the same branch
+        and index; a cosigner moved to 1/9999 while we sit at 1/0 yields an
+        address that no member's change scan will ever generate, and the funds are
+        gone even though our own path reads as ordinary. The account prefix above
+        those two levels is each cosigner's own business -- that is the part this
+        fixes -- but the branch and index are shared or the output is unreachable.
+
+        So this narrows what is checked, never what is required: our own path is
+        still measured against the inputs, and every other path on the output is
+        still held to ours. Where the seed's own path could not be established --
+        no BIP32 tree, or no verified claim on this output -- every derivation is
+        checked against the inputs, exactly as before.
+        """
+        derivations = self._scope_derivations(out)
+        if not (self.can_verify_derivations and index < len(self.verified_output_derivation_paths)):
+            return derivations
+
+        seed_derivation = self.verified_output_derivation_paths[index]
+        if not seed_derivation:
+            return derivations
+
+        suffix = list(seed_derivation[-2:])
+        for derivation in derivations:
+            if list(derivation[-2:]) != suffix:
+                raise InvalidPSBTError(
+                    f"Change path {bip32.path_to_str(list(derivation))} does not "
+                    f"share this wallet's change index.",
+                    code=RejectCode.UNREACHABLE_CHANGE_PATH,
+                )
+
+        return [seed_derivation]
+
+
     @staticmethod
     def _scope_derivations(scope: InputScope | OutputScope) -> list[list[int]]:
         """Every claimed bip32 derivation on a scope, taproot and non-taproot alike."""
@@ -1560,7 +1607,7 @@ class PSBTParser():
                 # output "your change" while the funds land somewhere the wallet
                 # can never find them. Refuse rather than relabel -- a psbt that
                 # tried to deceive the display should not be signed at all.
-                derivations = self._scope_derivations(out)
+                derivations = self._change_derivations_to_check(i, out)
                 unreachable = [
                     d for d in derivations
                     if not PSBTParser.is_reachable_derivation(
