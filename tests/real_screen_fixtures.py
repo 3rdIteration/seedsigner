@@ -129,6 +129,47 @@ def simulated_satochip(monkeypatch, applet: str = "satochip", setup_pin: str = "
 
 
 @contextmanager
+def simulated_seedkeeper(monkeypatch, version: str = "seedkeeper_v02", pin: str = "1234"):
+    """
+    Put a *real* SeedKeeper applet behind `init_satochip`, running in jcardsim.
+
+    The sibling of ``simulated_satochip``: the connector the flows receive is
+    pysatochip talking to actual SeedKeeper bytecode, so secret labels, ids and free
+    space are the applet's own. The card is taken through ``card_setup`` and PIN
+    verification so write flows work immediately.
+
+    Skips (via JCardSimUnavailable) when Java or the applet sources are absent.
+    """
+    import sys
+    from unittest.mock import MagicMock as _MagicMock
+
+    for name in [m for m in sys.modules if m == "pysatochip" or m.startswith("pysatochip.")]:
+        if isinstance(sys.modules[name], _MagicMock):
+            del sys.modules[name]
+
+    from jcardsim import open_card
+    from jcardsim.pcsc_shim import patched_pcsc
+
+    from seedsigner.helpers import seedkeeper_utils
+
+    with open_card(version) as card:
+        card.select()
+        card.version = version
+        with patched_pcsc(card):
+            from pysatochip.CardConnector import CardConnector
+
+            connector = CardConnector(card_filter=["seedkeeper"])
+            connector.version = version
+            pin_bytes = list(pin.encode())
+            connector.card_setup(5, 1, pin_bytes, pin_bytes, 5, 1, pin_bytes, pin_bytes, 32, 32, 0x01, 0x01, 0x01)
+            connector.set_pin(0, pin_bytes)
+            connector.card_verify_PIN()
+
+            monkeypatch.setattr(seedkeeper_utils, "init_satochip", lambda *a, **kw: connector)
+            yield connector
+
+
+@contextmanager
 def simulated_satodime(monkeypatch):
     """
     Put a *real* Satodime applet behind `init_satochip`, running in jcardsim.
