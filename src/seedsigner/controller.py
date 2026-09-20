@@ -424,13 +424,7 @@ class Controller(Singleton):
             controller.battery_hat.start()
 
         # Store one working psbt in memory
-        controller.psbt = None
-        controller.psbt_parser = None
-        controller.psbt_sign_with_satochip = False
-        controller.psbt_from_microsd = False
-        controller.psbt_microsd_save_path = None
-        controller.psbt_microsd_seed_warning_shown = False
-        controller.psbt_source_time = None
+        controller.reset_psbt_flow_state()
         controller.sign_message_with_satochip = False
 
         # Configure the Renderer
@@ -616,10 +610,7 @@ class Controller(Singleton):
                     # self.multisig_wallet_descriptor = None
                     self.unverified_address = None
                     self.address_explorer_data = None
-                    self.psbt = None
-                    self.psbt_parser = None
-                    self.psbt_seed = None
-                    self.psbt_sign_with_satochip = False
+                    self.reset_psbt_flow_state()
                     self.sign_message_with_satochip = False
 
                     # Clear camera entropy data so it cannot be used to
@@ -814,6 +805,31 @@ class Controller(Singleton):
         self.toast_notification_thread.start()
 
 
+    def reset_psbt_flow_state(self):
+        """
+        Drop everything the psbt signing flow accumulated.
+
+        Home, the inactivity wipe and start-up each used to clear their own
+        subset of this list, so state added later reached only some of them:
+        the card's account xpub and the raised retry timeout both outlived
+        Home and the wipe. The xpub of a card the user had walked away from
+        stayed in memory, and the next psbt began with another transaction's
+        timeout. One list, called from all three.
+        """
+        self.psbt = None
+        self.psbt_parser = None
+        self.psbt_seed = None
+        self.psbt_sign_with_satochip = False
+        self.psbt_card_keys = None
+        self.psbt_from_microsd = False
+        self.psbt_microsd_save_path = None
+        self.psbt_microsd_seed_warning_shown = False
+        self.psbt_source_time = None
+        # Set by the "Retry (higher timeout)" path in psbt_views.
+        if hasattr(self, "_psbt_sign_retry_timeout"):
+            del self._psbt_sign_retry_timeout
+
+
     def handle_wipe_timeout(self):
         from seedsigner.gui.toast import InfoToast
         from seedsigner.views import MainMenuView
@@ -838,10 +854,7 @@ class Controller(Singleton):
         # survive the inactivity wipe either.
         self.password_generator_entropy_cache = None
 
-        self.psbt = None
-        self.psbt_parser = None
-        self.psbt_seed = None
-        self.psbt_sign_with_satochip = False
+        self.reset_psbt_flow_state()
         self.sign_message_with_satochip = False
         self.multisig_wallet_descriptor = None
         self.unverified_address = None

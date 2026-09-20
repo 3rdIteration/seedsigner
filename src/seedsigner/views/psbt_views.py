@@ -742,8 +742,12 @@ class PSBTRefusalView(View):
             self.controller.psbt = None
         self.controller.psbt_parser = None
         self.controller.psbt_seed = None
-        # Whichever signer was selected, it isn't signing this psbt.
+        # Whichever signer was selected, it isn't signing this psbt: the card's
+        # account xpub and any raised retry timeout belong to an attempt that is
+        # over, and the next psbt must not inherit either.
         self.controller.psbt_sign_with_satochip = False
+        self.controller.psbt_card_keys = None
+        clear_retry_timeout(self.controller)
 
         # Named rather than referenced directly so the table can sit above the Views it
         # points at. test_every_reject_code_has_a_reachable_destination resolves them all.
@@ -1538,6 +1542,9 @@ class PSBTFinalizeView(View):
         )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
+            # This signing attempt is abandoned, so a timeout it raised is not
+            # owed to whatever is reviewed next.
+            clear_retry_timeout(self.controller)
             return Destination(BackStackView)
 
         sig_cnt = PSBTParser.sig_count(psbt)

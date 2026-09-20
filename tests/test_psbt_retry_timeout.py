@@ -97,3 +97,31 @@ class TestFinalizeRetriesClimb(BaseTest):
         setting = self.settings.get_value(SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT)
         assert timeouts == [setting, setting + RETRY_TIMEOUT_STEP, setting + 2 * RETRY_TIMEOUT_STEP]
         assert f"timed out at {timeouts[-1]}s" in quoted[-1]
+
+
+class TestPSBTFlowStateIsResetTogether(BaseTest):
+    """
+    The card's key data and the raised retry timeout are psbt-flow state, so
+    they belong with the rest of it. Leaving them behind meant the next psbt
+    started from another transaction's timeout, or with a card whose xpub the
+    user had walked away from -- and Home, the wipe and start-up each cleared
+    their own subset of the same list.
+    """
+
+    def test_resetting_the_flow_clears_the_card_keys_and_retry_timeout(self):
+        from seedsigner.controller import Controller
+        from seedsigner.views.psbt_views import bump_retry_timeout, signing_timeout
+
+        controller = Controller.get_instance()
+        controller.psbt_sign_with_satochip = True
+        controller.psbt_card_keys = {"root": object()}
+        bump_retry_timeout(controller, 5.0)
+
+        controller.reset_psbt_flow_state()
+
+        assert controller.psbt is None
+        assert controller.psbt_parser is None
+        assert controller.psbt_seed is None
+        assert controller.psbt_sign_with_satochip is False
+        assert controller.psbt_card_keys is None
+        assert signing_timeout(controller, 2.0) == 2.0
