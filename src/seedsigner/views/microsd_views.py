@@ -112,18 +112,18 @@ class ToolsMicroSDFlashView(View):
             return Destination(BackStackView)
 
         microsd_image = microsd_images[selected_file_num]
-        logger.info("Selected:", microsd_image)
+        logger.info("Selected: %s", microsd_image)
 
         if platform.uname()[1] == "seedsigner-os":
             image_path = os.path.join('/mnt/microsd/microsd-images', microsd_image)
             data = run(['cp', image_path, '/tmp/img.img'], capture_output=True, text=True)
-            print(data)
+            logger.info(data)
             if len(data.stderr) > 1:
                 self.run_screen(
                     WarningScreen,
                     title="Error",
                     status_headline=None,
-                    text="data.stderr",
+                    text=data.stderr,
                     show_back_button=False,
                 )
                 return Destination(MainMenuView)
