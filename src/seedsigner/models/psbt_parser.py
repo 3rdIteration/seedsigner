@@ -367,6 +367,11 @@ class PSBTParser():
         self.verified_input_derivation_paths: List[List[DerivationPath]] = []
         self.verified_output_derivation_paths: List[List[DerivationPath]] = []
 
+        # Whether a successful parse has run. Constructing without key material
+        # leaves every total at zero, which reads exactly like a transaction that
+        # moves nothing -- see PSBTOverviewView, which has to finish the job.
+        self.parsed: bool = False
+
         if self.seed is not None or self.root is not None:
             self.parse()
 
@@ -547,6 +552,7 @@ class PSBTParser():
         # Every total is known now, so settle this once rather than per view.
         self.is_high_fee = self.has_high_fee()
 
+        self.parsed = True
         return True
 
 

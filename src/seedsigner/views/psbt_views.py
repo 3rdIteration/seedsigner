@@ -303,6 +303,11 @@ class PSBTSelectSeedView(View):
                 self.controller.psbt_parser = parser
                 self.controller.psbt_seed = None
                 self.controller.psbt_sign_with_satochip = True
+                # Built with no key material on purpose: a multisig is reviewed
+                # against its descriptor, not against one cosigner's xpub. Say so
+                # rather than leaving it unset, so a later rebuild reproduces this
+                # parser instead of refusing for want of a card key.
+                self.controller.psbt_card_keys = {}
                 return Destination(PSBTOverviewView)
 
             network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
@@ -444,6 +449,15 @@ class PSBTSelectSeedView(View):
 
             self.controller.psbt_seed = None
             self.controller.psbt_sign_with_satochip = True
+            # The card, not a seed, holds the key. Keep what the parser was built
+            # from: anything that rebuilds it later (loading a descriptor, for
+            # one) has no seed to fall back on and would otherwise build a parser
+            # with no root, which can answer nothing about the transaction.
+            self.controller.psbt_card_keys = dict(
+                root=root_key,
+                root_path=account_path,
+                master_fingerprint=master_fp,
+            )
             return Destination(PSBTOverviewView)
 
         elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_15WORD, self.TYPE_18WORD, self.TYPE_21WORD, self.TYPE_24WORD]:
@@ -824,19 +838,6 @@ class PSBTOverviewView(View):
 
         self.loading_screen = None
 
-        if (not self.controller.psbt_parser
-                and self.controller.psbt_seed is None
-                and self.controller.psbt_sign_with_satochip):
-            # Card multisig: the parser was dropped to re-read the psbt with a newly
-            # loaded descriptor (see MultisigWalletDescriptorView). There is no seed to
-            # hand the constructor, so it is parsed seedless, as it was the first time.
-            try:
-                self.controller.psbt_parser = seedless_multisig_parser(self.controller, self.settings)
-            except InvalidPSBTError as e:
-                logger.info("Refusing psbt: %s (%s)", e, e.code)
-                self.set_redirect(refusal_destination(e))
-            return
-
         if not self.controller.psbt_parser or self.controller.psbt_parser.seed != self.controller.psbt_seed:
             # The PSBTParser takes a while to read the PSBT. Run the loading screen while
             # we wait.
@@ -844,6 +845,19 @@ class PSBTOverviewView(View):
             self.loading_screen = LoadingScreenThread(text=_("Parsing PSBT..."))
             self.loading_screen.start()
                 
+            card_keys = getattr(self.controller, "psbt_card_keys", None)
+            if self.controller.psbt_sign_with_satochip and card_keys is None:
+                # Signing with a card but nothing to derive with: a parser built
+                # here would show an empty transaction and fail later. Refuse
+                # while the reason is still knowable.
+                self.loading_screen.stop()
+                self.loading_screen = None
+                self.set_redirect(refusal_destination(InvalidPSBTError(
+                    "Card key data is no longer available for this transaction.",
+                    code=RejectCode.SEED_CANNOT_SIGN,
+                )))
+                return
+
             try:
                 from seedsigner.controller import Controller as _Controller
                 self.controller.psbt_parser = PSBTParser(
@@ -853,13 +867,32 @@ class PSBTOverviewView(View):
                     reference_time=getattr(self.controller, "psbt_source_time", None),
                     block_anchor=(_Controller.RELEASE_BLOCK_HEIGHT, _Controller.RELEASE_BLOCK_TIME),
                     multisig_descriptor=self.controller.multisig_wallet_descriptor,
+                    **(card_keys or {}),
                 )
+                if not self.controller.psbt_parser.parsed:
+                    # A parser built without key material -- the card's multisig
+                    # flow, reviewed against a descriptor -- does not parse on
+                    # construction. Unparsed it reports no inputs, no outputs and
+                    # no fee, which the review screens show as a transaction that
+                    # moves nothing.
+                    self.controller.psbt_parser.parse()
             except InvalidPSBTError as e:
                 # A deliberate refusal, not a crash: the psbt is parseable but unsafe to
                 # present, or not this seed's to sign. Redirect to the View that renders
                 # this code -- see REJECT_PRESENTATION.
                 logger.info("Refusing psbt: %s (%s)", e, e.code)
                 self.set_redirect(refusal_destination(e))
+                return
+            except RuntimeError as e:
+                # parse() refuses a single-key psbt with no key to parse it with.
+                # Only the card's multisig flow gets here without key material, so
+                # this is a state that should not arise -- but it is a refusal
+                # either way, not a crash screen.
+                logger.info("Cannot parse psbt without a key: %s", e)
+                self.set_redirect(refusal_destination(InvalidPSBTError(
+                    "No key is available to review this transaction.",
+                    code=RejectCode.SEED_CANNOT_SIGN,
+                )))
                 return
             finally:
                 self.loading_screen.stop()
