@@ -5,6 +5,8 @@ import random
 import time
 import logging
 
+from concurrent.futures import TimeoutError as FuturesTimeoutError
+
 from embit.util import secp256k1
 
 from seedsigner.hardware.microsd import MicroSD
@@ -114,6 +116,17 @@ class ToolsSatochipBiasCheckView(View):
                     sig, sw1, sw2 = _call_with_timeout(
                         connector.card_sign_transaction_hash, timeout, 0xFF, list(tx_hash), None
                     )
+                except (TimeoutError, FuturesTimeoutError):
+                    # A signature that never arrived is a harder timeout than one
+                    # that arrived late: counting it as a generic exception left
+                    # the "hard timeout" verdict below unable to ever fire, so a
+                    # card that stalls could still be reported as PASS.
+                    latency_ms = int((time.monotonic() - start) * 1000)
+                    csv_rows.append({"index": idx, "r_hex": "", "s_hex": "", "msb_r": "", "lsb_r": "", "lsb4_bucket": "", "latency_ms": latency_ms, "dropped_reason": "hard_timeout"})
+                    dropped["hard_timeout"] += 1
+                    idx += 1
+                    consecutive_failures += 1
+                    break
                 except Exception:
                     csv_rows.append({"index": idx, "r_hex": "", "s_hex": "", "msb_r": "", "lsb_r": "", "lsb4_bucket": "", "latency_ms": "", "dropped_reason": "exception"})
                     dropped["exception"] += 1

@@ -195,13 +195,17 @@ def signature_matches_pubkey(sig_der: bytes, sighash: bytes, pubkey) -> bool:
 def _call_with_timeout(func, timeout: float, *args):
     """Execute ``func`` with the provided timeout and log duration."""
     start = time.monotonic()
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(func, *args)
-        try:
-            return future.result(timeout=timeout)
-        finally:
-            elapsed = time.monotonic() - start
-            logger.info("Satochip %s took %.3fs", func.__name__, elapsed)
+    # Not a context manager: leaving that block calls shutdown(wait=True), which
+    # blocks until the worker returns -- so a card that never answers would hold
+    # the caller for as long as it liked, timeout or no timeout.
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(func, *args)
+    try:
+        return future.result(timeout=timeout)
+    finally:
+        elapsed = time.monotonic() - start
+        logger.info("Satochip %s took %.3fs", func.__name__, elapsed)
+        executor.shutdown(wait=False, cancel_futures=True)
 
 def _format_path(derivation: list[int]) -> str:
     """Convert a list of BIP32 indices to string path"""

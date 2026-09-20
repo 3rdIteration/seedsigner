@@ -5,6 +5,7 @@ import os
 import random
 import time
 import logging
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 
 from embit.util import secp256k1
 
@@ -116,6 +117,16 @@ class ToolsKeycardBiasCheckView(View):
                     sig, sw1, sw2 = _call_with_timeout(
                         connector.card_sign_transaction_hash, timeout, 0xFF, list(tx_hash), None
                     )
+                except (TimeoutError, FuturesTimeoutError):
+                    # A signature that never arrived is the strongest timeout
+                    # evidence there is; filed as a generic "exception" it fed no
+                    # verdict, so a Keycard that stalls could still pass.
+                    latency_ms = int((time.monotonic() - start) * 1000)
+                    csv_rows.append({"index": idx, "r_hex": "", "s_hex": "", "msb_r": "", "lsb_r": "", "lsb4_bucket": "", "latency_ms": latency_ms, "dropped_reason": "hard_timeout"})
+                    dropped["hard_timeout"] += 1
+                    idx += 1
+                    consecutive_failures += 1
+                    break
                 except Exception:
                     csv_rows.append({"index": idx, "r_hex": "", "s_hex": "", "msb_r": "", "lsb_r": "", "lsb4_bucket": "", "latency_ms": "", "dropped_reason": "exception"})
                     dropped["exception"] += 1
