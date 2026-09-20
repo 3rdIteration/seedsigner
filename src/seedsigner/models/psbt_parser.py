@@ -325,6 +325,11 @@ class PSBTParser():
         self.verified_input_derivation_paths: List[List[int] | None] = []
         self.verified_output_derivation_paths: List[List[int] | None] = []
 
+        # Whether a successful parse has run. Constructing without key material
+        # leaves every total at zero, which reads exactly like a transaction that
+        # moves nothing -- see PSBTOverviewView, which has to finish the job.
+        self.parsed: bool = False
+
         if self.seed is not None or self.root is not None:
             self.parse()
 
@@ -489,6 +494,7 @@ class PSBTParser():
         # one reported.
         self._reject_inconsistent_fingerprints(child_key_derivation_cache)
 
+        self.parsed = True
         return True
 
 

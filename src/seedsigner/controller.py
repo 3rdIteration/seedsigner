@@ -291,6 +291,14 @@ class Controller(Singleton):
     GPG_Admin_PIN = None
     javacard_keys: dict | None = None
 
+    # What the card flow's PSBTParser was built from (root, root_path,
+    # master_fingerprint). The card holds the key, so there is no seed to
+    # rebuild a parser from later. An empty dict means the parser was built
+    # without key material on purpose -- the multisig card flow, which reviews
+    # against a descriptor. None means no card flow is in progress.
+    psbt_card_keys: dict | None = None
+
+
     # Destination placeholder for when we need to jump out to a side flow but intend to
     # return navigation to the main flow (e.g. PSBT flow, load multisig descriptor,
     # then resume PSBT flow).
