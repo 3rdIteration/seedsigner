@@ -29,6 +29,26 @@ def find_sd_card_device():
     return None
 
 
+def refuse_without_card(view: View, text: str) -> Destination:
+    """Report that nothing was done and return to the main menu.
+
+    find_sd_card_device() returns None when no card is in the slot, and every
+    caller must check it immediately before running dd: a path looked up any
+    earlier describes whichever card was inserted then, and None reaches dd as
+    the literal string "None" (`of=None`, `if=None`), which either fails
+    obscurely or writes to a file of that name.
+    """
+    view.run_screen(
+        WarningScreen,
+        title="Error",
+        status_headline=None,
+        text=text,
+        show_back_button=False,
+        button_data=[ButtonOption("Continue")]
+    )
+    return Destination(MainMenuView)
+
+
 class ToolsMicroSDMenuView(View):
     FLASH_IMAGE = ButtonOption("Flash Image")
     VERIFY_IMAGE = ButtonOption("Verify MicroSD")
@@ -90,8 +110,6 @@ class ToolsMicroSDFlashView(View):
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
 
-        microsd_dev = find_sd_card_device()
-
         if platform.uname()[1] == "seedsigner-os":
             microsd_images = os.listdir('/mnt/microsd/microsd-images/')
         else:
@@ -139,6 +157,10 @@ class ToolsMicroSDFlashView(View):
 
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
+
+            microsd_dev = find_sd_card_device()
+            if microsd_dev is None:
+                return refuse_without_card(self, "No MicroSD card detected. Nothing was written.")
 
             self.loading_screen = LoadingScreenThread(text="Flashing MicroSD\n\n\n\n\n\n")
             self.loading_screen.start()
@@ -203,6 +225,10 @@ class ToolsMicroSDFlashView(View):
                     return Destination(MainMenuView)
 
         else:
+            microsd_dev = find_sd_card_device()
+            if microsd_dev is None:
+                return refuse_without_card(self, "No MicroSD card detected. Nothing was written.")
+
             image_path = os.path.join('/boot/microsd-images', microsd_image)
             run(['cp', image_path, '/tmp/img.img'], check=False)
             run(['sudo', 'dd', f'if=/tmp/img.img', f'of={microsd_dev}'], check=False)
@@ -246,21 +272,8 @@ class ToolsMicroSDVerifyView(View):
         from subprocess import run
 
         microsd_dev = find_sd_card_device()
-
-        # Nothing to read without a card. Say so rather than running dd against "if=None"
-        # -- which on a desktop without dd/sudo/sha256sum is a hard crash (Windows), and
-        # on Linux quietly produces an empty checksum and a misleading "unfamiliar
-        # checksum" warning.
         if microsd_dev is None:
-            self.run_screen(
-                WarningScreen,
-                title="No MicroSD Card",
-                status_headline=None,
-                text="No MicroSD card detected.",
-                show_back_button=False,
-                button_data=[ButtonOption("OK")],
-            )
-            return Destination(MainMenuView)
+            return refuse_without_card(self, "No MicroSD card detected. Nothing was read.")
 
         self.loading_screen = LoadingScreenThread(text="Reading MicroSD\n\n\n\n\n\n")
         self.loading_screen.start()
@@ -311,8 +324,6 @@ class ToolsMicroSDWipeZeroView(View):
     def run(self):
         from subprocess import run
 
-        microsd_dev = find_sd_card_device()
-
         button_data = [self.WIPE_64MB, self.WIPE_256MB, self.WIPE_ALL]
 
         wipe_selection = self.run_screen(
@@ -345,6 +356,10 @@ class ToolsMicroSDWipeZeroView(View):
 
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
+
+        microsd_dev = find_sd_card_device()
+        if microsd_dev is None:
+            return refuse_without_card(self, "No MicroSD card detected. Nothing was wiped.")
 
         self.loading_screen = LoadingScreenThread(text="Wiping MicroSD\n\n\n\n\n\n(This takes a while)")
         self.loading_screen.start()
@@ -413,8 +428,6 @@ class ToolsMicroSDWipeRandomView(View):
     def run(self):
         from subprocess import run
 
-        microsd_dev = find_sd_card_device()
-
         button_data = [self.WIPE_64MB, self.WIPE_256MB, self.WIPE_ALL]
 
         wipe_selection = self.run_screen(
@@ -447,6 +460,10 @@ class ToolsMicroSDWipeRandomView(View):
 
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
+
+        microsd_dev = find_sd_card_device()
+        if microsd_dev is None:
+            return refuse_without_card(self, "No MicroSD card detected. Nothing was wiped.")
 
         self.loading_screen = LoadingScreenThread(text="Wiping MicroSD\n\n\n\n\n\n(This takes a while)")
         self.loading_screen.start()
