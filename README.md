@@ -11,6 +11,14 @@ All releases are now running SeedSigner-OS and are built via BuildRoot just like
 
 Support and discussion relating to this fork can happen via this [Telegram Group](https://t.me/+mp3CIjCQuk0yMjUx)
 
+## Documentation
+
+Full user documentation for the fork's features lives in [`docs/`](./docs/README.md), including:
+
+- **[Bundled JavaCard applets](./docs/javacard_applets.md)** — what every bundled `.cap` is, and which one to install (start here if you are unsure about SeedKeeper vs SeedKeeper-NDEF)
+- **[Quick starts](./docs/README.md#quick-starts)** — install applets, save/load seeds and descriptors to a SeedKeeper, initialise a Satochip, save generated passwords to a card, and more
+- Feature guides: [SeedKeeper](./docs/seedkeeper.md), [Satochip](./docs/satochip.md), [Keycard](./docs/keycard.md), [Satodime](./docs/satodime.md), [Specter-DIY](./docs/specter_diy.md), [Password Generator](./docs/password_generator.md), [Multisig descriptors](./docs/multisig_descriptors.md), [SLIP-39](./docs/slip39.md), [BIP85](./docs/bip85.md), [MicroSD Tools](./docs/microsd_tools.md), [GPG](./docs/gpg_tools.md)
+
 ## Difference from Stock SeedSigner
 * Multiple Smartcard interface options… 
    - Smartcard Hat (SEC1210 Connected via UART)

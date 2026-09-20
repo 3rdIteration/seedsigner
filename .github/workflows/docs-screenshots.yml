@@ -1,0 +1,99 @@
+name: Refresh documentation screenshots
+
+# Regenerates the screenshots embedded in docs/ and opens a pull request with any
+# changes. The static screens come from the normal screenshot generator; the
+# smartcard card-data screens are captured against real JavaCard applets running in
+# jcardsim, so a JDK and the applet source checkouts are required (the same ones the
+# test workflow uses).
+#
+# Run manually or weekly. The Pages deploy workflow republishes the site once the
+# resulting PR is merged.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Mondays at 06:00 UTC
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: |
+            requirements.txt
+            tests/requirements.txt
+
+      - name: Set up JDK 11
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "11"
+
+      - name: Check out JavaCard applet sources
+        run: |
+          mkdir -p "$HOME/applet-repos"
+          git clone --recursive --depth 1 \
+            https://github.com/3rdIteration/Satochip-DIY.git \
+            "$HOME/applet-repos/Satochip-DIY"
+          git clone --recursive \
+            https://github.com/Toporin/Seedkeeper-Applet.git \
+            "$HOME/applet-repos/Seedkeeper-Applet"
+          git clone --recursive --depth 1 \
+            https://github.com/status-im/status-keycard.git \
+            "$HOME/applet-repos/status-keycard"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libraqm0 libzbar0 libpcsclite-dev pcscd swig
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r tests/requirements.txt
+          pip install -r l10n/requirements-l10n.txt
+          pip install -e .
+
+      - name: Compile translations
+        run: python setup.py compile_catalog
+
+      - name: Generate static screenshots
+        run: |
+          export SEEDSIGNER_SCREENSHOT_ROOT="$RUNNER_TEMP/ss"
+          python -m pytest tests/screenshot_generator/generator.py --locale en -q
+          python tools/collect_docs_screenshots.py "$RUNNER_TEMP/ss/en"
+
+      - name: Capture smartcard screenshots against jcardsim
+        run: |
+          export SEEDSIGNER_APPLET_ROOT="$HOME/applet-repos"
+          export SEEDSIGNER_DOCS_OUT="docs/img/guide"
+          python -m pytest tests/docs_screenshots -q
+
+      - name: Open a pull request with any updated screenshots
+        uses: peter-evans/create-pull-request@v7
+        with:
+          base: dev
+          branch: docs/refresh-screenshots
+          delete-branch: true
+          commit-message: "docs: refresh generated screenshots"
+          title: "docs: refresh generated screenshots"
+          body: |
+            Automated refresh of the screenshots embedded in `docs/img/guide/`.
+
+            - Static screens: `tests/screenshot_generator`
+            - Smartcard screens: `tests/docs_screenshots` (real JavaCard applets in jcardsim)
+
+            Review the changed images and merge to republish the documentation site.
+          add-paths: |
+            docs/img/guide

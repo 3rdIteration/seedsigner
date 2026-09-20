@@ -254,7 +254,7 @@ Continue by configuring your host computer to [share internet access](#linux) wi
 
 
 ## Complete the setup
-Return to the main [README](../README.md) and complete the setup steps. But remember to come back here and disable internet access over USB on your SeedSigner.
+Return to the main [README](https://github.com/3rdIteration/seedsigner/blob/dev/README.md) and complete the setup steps. But remember to come back here and disable internet access over USB on your SeedSigner.
 
 
 ## Disable internet access
