@@ -189,6 +189,27 @@ def ed25519_key_id_text(seed, key_id=None):
     return _tools()[2].format_key_id(ed25519_key_id(seed, key_id))
 
 
+def pubkeys_on_card(card_root, rsa_key, ed25519_seed):
+    """True when <card>/seedsigner-release-keys/ already holds exactly these halves.
+
+    Lets the guided re-key skip a redundant export (and tells the user their card
+    is from an earlier round of the same ceremony). A file that is missing or not
+    parseable counts as absent, so this never raises."""
+    rk, _fs, ms, _lr = _tools()
+    d = os.path.join(card_root, KEYS_DIR)
+    rsa_path = os.path.join(d, "release-rsa.pub")
+    ed_path = os.path.join(d, "release-rootfs.pub")
+    if not (os.path.isfile(rsa_path) and os.path.isfile(ed_path)):
+        return False
+    try:
+        n = rk.load_pubkey(rsa_path)[0]
+        key_id = ms.load_pubkey(ed_path)["key_id"]
+    except Exception:
+        return False
+    return (n == int(rsa_key.n)
+            and key_id == ed25519_key_id(ed25519_seed))
+
+
 # --- keys loaded from a file or a SeedKeeper secret ------------------------------
 #
 # The alternative to deriving the keys: bring your own. Both kinds are parsed from

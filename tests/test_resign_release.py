@@ -442,6 +442,22 @@ def test_export_pubkeys(tmp_path, new_key):
     assert rr.find_release_dirs(str(tmp_path)) == []
 
 
+def test_pubkeys_on_card(tmp_path, new_key, old_key):
+    # an empty card holds nothing
+    assert rr.pubkeys_on_card(str(tmp_path), new_key, ED_SEED) is False
+    out = rr.export_pubkeys(str(tmp_path), new_key, ED_SEED, 3, 5)
+    # the exported halves match exactly (the re-key ceremony skips a redundant export)
+    assert rr.pubkeys_on_card(str(tmp_path), new_key, ED_SEED) is True
+    # any other key pair does not match, even as valid public files
+    assert rr.pubkeys_on_card(str(tmp_path), old_key, ED_SEED) is False
+    assert rr.pubkeys_on_card(str(tmp_path), new_key,
+                              hashlib.sha256(b"other-ed-seed").digest()) is False
+    # a corrupt file counts as absent and never raises
+    with open(os.path.join(out, "release-rsa.pub"), "wb") as f:
+        f.write(b"garbage")
+    assert rr.pubkeys_on_card(str(tmp_path), new_key, ED_SEED) is False
+
+
 def test_provision_copies_and_fixes(tmp_path):
     card = tmp_path
     folder = _full_release(card)

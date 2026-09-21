@@ -143,11 +143,12 @@ class TestMenuEntry(LuckfoxFlowTest):
                           ui_session=session)
         labels = [b.button_label for b in (
             rv.ToolsLuckfoxBuildToolsMenuView.CHECK, rv.ToolsLuckfoxBuildToolsMenuView.EXPORT,
-            rv.ToolsLuckfoxBuildToolsMenuView.RESIGN, rv.ToolsLuckfoxBuildToolsMenuView.SIGN_DIGEST,
+            rv.ToolsLuckfoxBuildToolsMenuView.RESIGN, rv.ToolsLuckfoxBuildToolsMenuView.REKEY,
+            rv.ToolsLuckfoxBuildToolsMenuView.SIGN_DIGEST,
             rv.ToolsLuckfoxBuildToolsMenuView.PROVISION, rv.ToolsLuckfoxBuildToolsMenuView.FORCE,
             rv.ToolsLuckfoxBuildToolsMenuView.DANGER)]
-        assert labels == ["Check Release", "Export Pubkeys", "Resign Release", "Sign Digest",
-                          "Provision MicroSD", "Force Rootfs Check", "Danger Zone"]
+        assert labels == ["Check Release", "Export Pubkeys", "Resign Release", "Air-Gap Re-Key",
+                          "Sign Digest", "Provision MicroSD", "Force Rootfs Check", "Danger Zone"]
 
     def test_no_microsd_warns_and_backs_out(self, monkeypatch):
         self.tools_available(monkeypatch)
@@ -227,6 +228,27 @@ class TestNavigation(LuckfoxFlowTest):
             FlowStep(rv.ToolsLuckfoxEd25519IndexView, real_screens=True),
             FlowStep(rv.ToolsLuckfoxExportRunView),
         ], ui_session=session)
+
+    def test_rekey_navigation(self, monkeypatch, tmp_path):
+        """Start -> key source -> seed/index; export is the first run view."""
+        self.tools_available(monkeypatch)
+        use_microsd(monkeypatch, tmp_path)
+        self.store_seed()
+        flow = {}
+        session = UISession(script=(select("Luckfox Build Tools", "Air-Gap Re-Key", "Continue",
+                                           "BIP85 Derive") + select(0)
+                                    + [TypeKeys("3"), TypeKeys("5")]))
+        self.run_sequence(self.to_submenu() + [
+            FlowStep(rv.ToolsRekeyStartView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxKeySourceView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxSelectSeedView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxRsaIndexView, real_screens=True),
+            # ed_index is set by this view's own run(), so capture one step earlier.
+            FlowStep(rv.ToolsLuckfoxEd25519IndexView, real_screens=True,
+                     before_run=captured_flow(flow)),
+            FlowStep(rv.ToolsRekeyExportView),
+        ], ui_session=session)
+        assert flow == dict(action="rekey", source="bip85", seed_num=0, rsa_index=3)
 
     def test_provision(self, monkeypatch, tmp_path):
         self.tools_available(monkeypatch)
@@ -426,6 +448,90 @@ class TestEndToEnd(LuckfoxFlowTest):
         ], initial_destination_view_args=dict(flow=dict(action="force", folder=folder)),
             ui_session=session)
         assert rr.force_rootfs_state(folder) is True
+
+    def test_rekey_ceremony(self, monkeypatch, tmp_path):
+        """Export pubkeys -> sign rootfs -> sign the rest; keys leave RAM at the end."""
+        from seedsigner.helpers import resign_release as rr
+        rk, fs, ms, lr = secure_boot_tools.load()
+
+        card = use_microsd(monkeypatch, tmp_path)
+        folder = self.release(card)
+        seed = self.store_seed()
+
+        # One page per paged screen: the ceremony logic is what is under test here.
+        monkeypatch.setattr(rv, "reflow_text_into_pages", lambda **kw: [kw["text"]])
+
+        d = card / rr.DIGEST_DIR
+        d.mkdir()
+        size = lr.signed_size(lr.initramfs_members(rk.read(os.path.join(folder, "boot.img"))))
+        (d / "rootfs.digest").write_bytes(lr.rootfs_prehash(folder, size))
+
+        def add_round2_digests(view):      # the PC's work between the round-trips
+            for name in ("download", "idblock"):
+                path = os.path.join(folder, name + (".bin" if name == "download" else ".img"))
+                buf = rk.read(path)
+                (d / (name + ".digest")).write_bytes(rk.signing_digest(buf, rk.layout(buf)))
+            for name in ("uboot", "boot"):
+                path = os.path.join(folder, name + ".img")
+                (d / (name + ".digest")).write_bytes(fs.signed_digest(rk.read(path)))
+
+        # One Select per paged screen (instruction x2, final report): a list-mul of
+        # one token would share its _clicked state across the three slots.
+        session = UISession(script=(select("Luckfox Build Tools", "Air-Gap Re-Key", "Continue",
+                                           "BIP85 Derive", 0)
+                                    + [TypeKeys("3"), TypeKeys("5")]
+                                    + select("Done", "Done", "Done")))
+        self.run_sequence(self.to_submenu() + [
+            FlowStep(rv.ToolsRekeyStartView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxKeySourceView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxSelectSeedView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxRsaIndexView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxEd25519IndexView, real_screens=True),
+            FlowStep(rv.ToolsRekeyExportView, real_screens=True),
+            FlowStep(rv.ToolsRekeyInstructionView, real_screens=True),   # after export
+            FlowStep(rv.ToolsRekeySignView, real_screens=True),          # round 1: rootfs only
+            FlowStep(rv.ToolsRekeyInstructionView, real_screens=True),   # after round 1
+            FlowStep(rv.ToolsRekeySignView, real_screens=True,
+                     before_run=add_round2_digests),                     # round 2: the rest
+            FlowStep(rv.ToolsLuckfoxResultView, real_screens=True),      # final report
+        ], ui_session=session)
+
+        rsa_key, ed_seed = self.bip85_keys(seed, 3, 5)
+        assert rr.pubkeys_on_card(str(card), rsa_key, ed_seed)
+
+        # every signature on the card verifies against this release's images
+        n = int(rsa_key.n)
+        for name in ("download", "idblock"):
+            path = os.path.join(folder, name + (".bin" if name == "download" else ".img"))
+            buf = rk.read(path)
+            sig = (d / (name + ".sig")).read_bytes()
+            assert rk.rsa_verify_digest(rk.signing_digest(buf, rk.layout(buf)),
+                                        int.from_bytes(sig, "little"), n)
+        for name in ("uboot", "boot"):
+            path = os.path.join(folder, name + ".img")
+            buf = bytearray(rk.read(path))
+            fs._write_value(buf, fs.signature_node(buf), (d / (name + ".sig")).read_bytes())
+            assert fs.verify_buf(buf, n)
+        pk = ms.ed25519_public(ed_seed)
+        msig = ms.load_sig(str(d / "rootfs.minisig"))
+        assert msig["key_id"] == rr.ed25519_key_id(ed_seed)
+        assert ms.ed25519_verify(pk, (d / "rootfs.digest").read_bytes(), msig["sig"])
+
+    def test_rekey_sign_refuses_without_a_card(self, monkeypatch):
+        """Round 1 with no card inserted is refused; the ceremony's keys stay put."""
+        self.mock_microsd.is_inserted = False
+        rsa_key, ed_seed = self.bip85_keys(self.store_seed(), 3, 5)
+        rv.stash_seedkeeper_keys(self.controller, rsa_key, ed_seed)
+        session = UISession(script=select("Done") + [Back()])   # instructions, then leave the refusal
+        self.run_sequence([
+            FlowStep(rv.ToolsRekeyInstructionView, real_screens=True),  # initial: not pushed to history
+            FlowStep(rv.ToolsRekeySignView, real_screens=True),         # refuses: no card
+            FlowStep(rv.ToolsLuckfoxResultView, real_screens=True),     # the refusal; Back() leaves it
+            FlowStep(MainMenuView),                                     # where Back lands; not run
+        ], initial_destination_view_args=dict(
+            title="Air-Gap Re-Key", text="x", next_view=rv.ToolsRekeySignView,
+            next_args=dict(flow=dict(action="rekey", rekey_round=1))), ui_session=session)
+        assert rv.peek_rekey_keys(self.controller) is not None
 
     def test_arm_refuses_a_dev_key_release_before_the_seed(self, monkeypatch, tmp_path):
         card = use_microsd(monkeypatch, tmp_path)
