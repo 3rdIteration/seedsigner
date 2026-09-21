@@ -456,6 +456,50 @@ class TestWipeTimeoutClearsSmartcardSecrets(BaseTest):
         assert controller.GPG_Admin_PIN is None
 
 
+class TestWipeTimerSurvivesAFailedWipe(BaseTest):
+    """The timer thread is the only thing that runs the inactivity wipe."""
+
+    def test_timer_keeps_running_after_the_wipe_raises(self, monkeypatch):
+        import sys
+        import threading
+        from types import SimpleNamespace
+        from seedsigner.controller import Controller, WipeTimerThread
+
+        timer = WipeTimerThread()
+        timer.keep_running = True
+        wipes = []
+
+        def handle_wipe_timeout():
+            wipes.append(len(wipes))
+            if len(wipes) == 1:
+                raise RuntimeError("boom")
+            timer.keep_running = False
+
+        # A controller and buttons of this test's own. The timer the app
+        # started holds the real ones, so it is left alone: stopping it and
+        # waiting for it could wait forever.
+        controller = SimpleNamespace(
+            settings=SimpleNamespace(get_value=lambda attr_name: 5),
+            wipe_timer_ms=None,
+            handle_wipe_timeout=handle_wipe_timeout,
+        )
+        buttons = SimpleNamespace(last_input_time=0, update_last_input_time=lambda: None)
+        monkeypatch.setattr(Controller, "get_instance", classmethod(lambda cls: controller))
+        # The module the timer imports its buttons from, whatever an earlier
+        # test left there.
+        monkeypatch.setitem(sys.modules, "seedsigner.hardware.buttons", SimpleNamespace(
+            HardwareButtons=SimpleNamespace(get_instance=lambda: buttons)
+        ))
+
+        runner = threading.Thread(target=timer.run, daemon=True)
+        runner.start()
+        runner.join(10)
+        timer.keep_running = False
+
+        assert not runner.is_alive()
+        assert wipes == [0, 1]
+
+
 class TestWifKeyWipe(BaseTest):
     """WIFKey holds a private key, so it needs the same wipe() as a Seed."""
 

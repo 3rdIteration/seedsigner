@@ -136,13 +136,23 @@ class WipeTimerThread(BaseThread):
         controller = Controller.get_instance()
         buttons = HardwareButtons.get_instance()
         while self.keep_running:
-            wipe_minutes = controller.settings.get_value(SettingsConstants.SETTING__WIPE_TIMER)
-            if wipe_minutes and wipe_minutes != SettingsConstants.WIPE_TIMER__DISABLED:
-                controller.wipe_timer_ms = wipe_minutes * 60 * 1000
-                cur = int(time.time() * 1000)
-                if controller.wipe_timer_ms and cur - buttons.last_input_time > controller.wipe_timer_ms:
-                    controller.handle_wipe_timeout()
-                    buttons.update_last_input_time()
+            # This thread is the only thing that runs the inactivity wipe. An
+            # exception that ended it would turn the wipe off, without a word,
+            # for the rest of the session.
+            try:
+                wipe_minutes = controller.settings.get_value(SettingsConstants.SETTING__WIPE_TIMER)
+                if wipe_minutes and wipe_minutes != SettingsConstants.WIPE_TIMER__DISABLED:
+                    controller.wipe_timer_ms = wipe_minutes * 60 * 1000
+                    cur = int(time.time() * 1000)
+                    if controller.wipe_timer_ms and cur - buttons.last_input_time > controller.wipe_timer_ms:
+                        try:
+                            controller.handle_wipe_timeout()
+                        finally:
+                            # A failed wipe is retried after the next full
+                            # interval, not every second.
+                            buttons.update_last_input_time()
+            except Exception:
+                logger.exception("Inactivity wipe failed; the timer keeps running")
             time.sleep(1)
 
 
