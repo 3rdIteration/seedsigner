@@ -3,6 +3,7 @@
 ****************************************************************************"""
 import logging
 import os
+import stat
 import sys
 from pathlib import Path
 from gettext import gettext as _
@@ -401,6 +402,54 @@ def run_dd(cmd):
     return run(cmd, capture_output=True, text=True, env={**os.environ, "LC_ALL": "C"})
 
 
+def is_the_card(device: str) -> bool:
+    """
+    True when device is still the card: the block device sysfs numbers it.
+
+    dd opens of= with O_CREAT, busybox's as well as GNU's, and busybox's has
+    no conv=nocreat to stop it. A card pulled after it was unmounted takes
+    its node with it, and dd then writes a regular file of that name instead
+    -- in RAM, on devtmpfs -- and exits 0. devtmpfs never replaces a file it
+    did not make, so that file would go on standing in for the card, even
+    once the card is back, and every later flash, wipe and Verify would find
+    it instead. So a regular file there is removed, and whatever went to it
+    or came from it did not reach the card.
+    """
+    from subprocess import run
+    try:
+        devnum = _read_sysfs(os.path.join(SYS_BLOCK, os.path.basename(device), "dev"))
+        node = os.stat(device)
+    except OSError as e:
+        logger.info("Cannot tell whether %s is the card: %s", device, e)
+    else:
+        if stat.S_ISBLK(node.st_mode) and f"{os.major(node.st_rdev)}:{os.minor(node.st_rdev)}" == devnum:
+            return True
+        logger.info("%s is not block device %s", device, devnum)
+
+    try:
+        stray = stat.S_ISREG(os.lstat(device).st_mode)
+    except OSError:
+        stray = False
+    if stray:
+        data = run(Settings.SU_COMMAND_PREFIX.split() + ["rm", "-f", device], capture_output=True, text=True)
+        logger.info(data)
+    return False
+
+
+def write_failure(data, device: str, wipe: bool = False) -> str | None:
+    """
+    Why a dd that wrote to device did not write the card, or None if it did.
+
+    The card is asked about first, whatever dd said: a dd that failed can
+    have left a file in the card's place as well, having filled RAM with it.
+    """
+    if not is_the_card(device):
+        return "The write did not reach the MicroSD card."
+    if not dd_succeeded(data, wipe):
+        return data.stderr
+    return None
+
+
 class ToolsMicroSDMenuView(View):
     FLASH_IMAGE = ButtonOption("Flash Image")
     VERIFY_IMAGE = ButtonOption("Verify MicroSD")
@@ -561,21 +610,23 @@ class ToolsMicroSDFlashView(View):
 
             data = run_dd(dd_cmd)
             logger.info(data)
+            failure = write_failure(data, microsd_dev)
 
-            # Then flash the image, unless zeroing failed: then it is that
-            # failure that is reported.
-            if dd_succeeded(data):
+            # Then flash the image, unless zeroing failed or missed the card:
+            # then it is that failure that is reported.
+            if failure is None:
                 data = run_dd(["dd", "if=/tmp/img.img", f"of={microsd_dev}"])
                 logger.info(data)
+                failure = write_failure(data, microsd_dev)
 
             self.loading_screen.stop()
 
-            if not dd_succeeded(data):
+            if failure is not None:
                 self.run_screen(
                     WarningScreen,
                     title="Error",
                     status_headline=None,
-                    text=data.stderr,
+                    text=failure,
                     show_back_button=False,
                     button_data=[ButtonOption("Continue")]
                 )
@@ -615,12 +666,13 @@ class ToolsMicroSDFlashView(View):
             data = run_dd(['sudo', 'dd', f'if=/tmp/img.img', f'of={microsd_dev}'])
             logger.info(data)
 
-            if not dd_succeeded(data):
+            failure = write_failure(data, microsd_dev)
+            if failure is not None:
                 self.run_screen(
                     WarningScreen,
                     title="Error",
                     status_headline=None,
-                    text=data.stderr,
+                    text=failure,
                     show_back_button=False,
                     button_data=[ButtonOption("Continue")]
                 )
@@ -685,10 +737,11 @@ class ToolsMicroSDVerifyView(View):
         read = run_dd(dd_cmd)
         logger.info(read)
 
-        if read.returncode != 0:
+        if not is_the_card(microsd_dev) or read.returncode != 0:
             # /tmp/img.img still holds whatever the last read or flash left
             # there, so hashing it now would report a checksum for that image
-            # instead of for this card.
+            # instead of for this card. A read of a file standing in for the
+            # card is no better.
             self.loading_screen.stop()
             self.run_screen(
                 WarningScreen,
@@ -793,12 +846,13 @@ class ToolsMicroSDWipeZeroView(View):
 
         self.loading_screen.stop()
 
-        if not dd_succeeded(data, wipe=True):
+        failure = write_failure(data, microsd_dev, wipe=True)
+        if failure is not None:
             self.run_screen(
                 WarningScreen,
                 title="Error",
                 status_headline=None,
-                text=data.stderr,
+                text=failure,
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")]
             )
@@ -875,12 +929,13 @@ class ToolsMicroSDWipeRandomView(View):
 
         self.loading_screen.stop()
 
-        if not dd_succeeded(data, wipe=True):
+        failure = write_failure(data, microsd_dev, wipe=True)
+        if failure is not None:
             self.run_screen(
                 WarningScreen,
                 title="Error",
                 status_headline=None,
-                text=data.stderr,
+                text=failure,
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")]
             )

@@ -3,6 +3,7 @@ import errno
 import itertools
 import os
 import pathlib
+import shutil
 import stat
 import subprocess
 import sys
@@ -140,7 +141,7 @@ FILE = "file"
 
 
 def fake_kernel(monkeypatch, tmp_path, mounts, loops=None, aliases=None, holders=None,
-                claimed=(), nodes=None):
+                claimed=(), nodes=None, pull_card=None, put_back=False):
     """
     Point the views at a mountinfo and a /sys/block made up under tmp_path.
 
@@ -159,7 +160,17 @@ def fake_kernel(monkeypatch, tmp_path, mounts, loops=None, aliases=None, holders
     /dev has a node for the card and for each partition, under the number
     sysfs gives it. nodes changes what stands at a path: a block device with
     another number, FILE, or None for nothing at all. The exclusive-open
-    check runs as written, against that /dev.
+    check runs as written, against that /dev, and os.stat and os.lstat see
+    it. dd opens of= with O_CREAT, as busybox and GNU dd both do, so it
+    makes a regular file at a path with nothing there; rm takes away what is
+    at a path.
+
+    The card is pulled out just before the first dd pull_card picks: its
+    nodes go, and its sysfs entry too, unless put_back says the card went
+    straight back in. Its node does not come back either way: devtmpfs does
+    not replace the file dd makes in its place.
+
+    Returns that /dev, as a dict.
     """
     devnums = dict(DEVNUMS)
     for alias, device in (aliases or {}).items():
@@ -214,6 +225,25 @@ def fake_kernel(monkeypatch, tmp_path, mounts, loops=None, aliases=None, holders
     dev.update(nodes or {})
     run = subprocess.run
 
+    def node_stat(node, path):
+        if node is None:
+            raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), path)
+        if node == FILE:
+            return SimpleNamespace(st_mode=stat.S_IFREG | 0o644, st_rdev=0)
+        major, minor = map(int, node.split(":"))
+        return SimpleNamespace(st_mode=stat.S_IFBLK | 0o660, st_rdev=os.makedev(major, minor))
+
+    def on_dev(stat_call):
+        def fake_stat(path, *args, **kwargs):
+            if isinstance(path, str) and path.startswith(SD_DEV):
+                return node_stat(dev.get(path), path)
+            return stat_call(path, *args, **kwargs)
+        return fake_stat
+
+    # No links in this /dev, so both give the same answer.
+    monkeypatch.setattr(os, "stat", on_dev(os.stat))
+    monkeypatch.setattr(os, "lstat", on_dev(os.lstat))
+
     def exclusive_open(script, argv):
         """Run script the way `python -c script *argv` would, on the fake /dev."""
         held = [device for _, device in up if device] + list(claimed)
@@ -240,11 +270,7 @@ def fake_kernel(monkeypatch, tmp_path, mounts, loops=None, aliases=None, holders
         def fake_fstat(fd, *args, **kwargs):
             if fd not in opened:
                 return real_fstat(fd, *args, **kwargs)
-            if opened[fd] == FILE:
-                return SimpleNamespace(st_mode=stat.S_IFREG | 0o644, st_rdev=0)
-            major, minor = map(int, opened[fd].split(":"))
-            return SimpleNamespace(st_mode=stat.S_IFBLK | 0o660,
-                                   st_rdev=os.makedev(major, minor))
+            return node_stat(opened[fd], fd)
 
         def fake_close(fd):
             if opened.pop(fd, None) is None:
@@ -265,6 +291,28 @@ def fake_kernel(monkeypatch, tmp_path, mounts, loops=None, aliases=None, holders
                                        returncode=1)
         return SimpleNamespace(stdout="", stderr="", returncode=0)
 
+    pulled = []
+
+    def dd(cmd, result):
+        if pull_card is not None and not pulled and pull_card(cmd):
+            pulled.append(cmd)
+            for device in blocks:
+                dev[device] = None
+            if not put_back:
+                shutil.rmtree(blocks[SD_DEV])
+        for part in cmd:
+            name, _, path = part.partition("=")
+            if not path.startswith(SD_DEV) or dev.get(path) is not None:
+                continue
+            if name == "if":
+                return SimpleNamespace(
+                    stdout="", stderr=f"dd: can't open '{path}': No such file or directory\n",
+                    returncode=1,
+                )
+            if name == "of":
+                dev[path] = FILE
+        return result
+
     def kernel_run(cmd, *args, **kwargs):
         result = run(cmd, *args, **kwargs)
         if "umount" in cmd:
@@ -272,9 +320,14 @@ def fake_kernel(monkeypatch, tmp_path, mounts, loops=None, aliases=None, holders
             del up[max(i for i, (mountpoint, _) in enumerate(up) if mountpoint == cmd[-1])]
         elif "-c" in cmd and "O_EXCL" in cmd[cmd.index("-c") + 1]:
             return exclusive_open(cmd[cmd.index("-c") + 1], cmd[cmd.index("-c") + 2:])
+        elif "rm" in cmd:
+            dev[cmd[-1]] = None
+        elif "dd" in cmd:
+            return dd(cmd, result)
         return result
 
     monkeypatch.setattr("subprocess.run", kernel_run)
+    return dev
 
 
 def build_view(monkeypatch, view_cls):
