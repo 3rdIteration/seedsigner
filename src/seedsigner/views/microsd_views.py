@@ -3,9 +3,10 @@
 ****************************************************************************"""
 import logging
 import os
-import platform
+import sys
 from pathlib import Path
 from gettext import gettext as _
+from typing import NamedTuple
 
 from seedsigner.gui.screens import (
     RET_CODE__BACK_BUTTON,
@@ -20,6 +21,32 @@ from seedsigner.models.settings import Settings
 from seedsigner.views.view import View, Destination, BackStackView, MainMenuView
 
 logger = logging.getLogger(__name__)
+
+# What the kernel says is mounted, and which block devices those are.
+# Tests point these at a made-up tree.
+PROC_MOUNTINFO = "/proc/self/mountinfo"
+SYS_BLOCK = "/sys/block"
+
+# Opens each device named on the command line for exclusive use, as mount and
+# swapon do. The kernel refuses that with EBUSY while a filesystem, swap,
+# device-mapper or md has the device -- or, for a whole disk, any partition of
+# it -- whether or not any mount this process can see says so. It does that
+# only for a block device, though: O_EXCL without O_CREAT is ignored for
+# anything else, so a regular file at the card's path opens without complaint.
+# So each device comes with the "major:minor" sysfs gives it, and what was
+# opened must be the block device with that number.
+EXCLUSIVE_OPEN = (
+    "import os, stat, sys\n"
+    "args = sys.argv[1:]\n"
+    "for device, devnum in zip(args[::2], args[1::2], strict=True):\n"
+    "    fd = os.open(device, os.O_RDONLY | os.O_EXCL)\n"
+    "    st = os.fstat(fd)\n"
+    "    os.close(fd)\n"
+    "    if not stat.S_ISBLK(st.st_mode):\n"
+    "        sys.exit(f'{device} is not a block device')\n"
+    "    if f'{os.major(st.st_rdev)}:{os.minor(st.st_rdev)}' != devnum:\n"
+    "        sys.exit(f'{device} is not block device {devnum}')\n"
+)
 
 
 def _mmc_device_type(device: str) -> str | None:
@@ -58,6 +85,255 @@ def find_sd_card_device():
         if blank is None:
             blank = f"/dev/{device}"
     return blank
+
+
+def _unescape(field: str) -> str:
+    """Undo the octal escapes mountinfo uses for spaces and the like: \\040"""
+    import re
+    return re.sub(r"\\([0-7]{3})", lambda m: chr(int(m.group(1), 8)), field)
+
+
+def _read_sysfs(path: str) -> str:
+    with open(path) as f:
+        return f.read().rstrip("\n")
+
+
+def _card_blocks(device: str) -> list[str]:
+    """The sysfs directories of device and of every partition on it."""
+    name = os.path.basename(device)
+    disk = os.path.join(SYS_BLOCK, name)
+    return [disk] + [
+        os.path.join(disk, entry)
+        for entry in sorted(os.listdir(disk))
+        if entry.startswith(name)
+    ]
+
+
+def _loop_backing_files() -> dict[str, str]:
+    """
+    The file each bound loop device reads, keyed by its "major:minor".
+
+    Raises OSError when one will not say: its mount may be on the card, and
+    guessing that it is not would write under it.
+    """
+    loops = {}
+    for name in os.listdir(SYS_BLOCK):
+        block = os.path.join(SYS_BLOCK, name)
+        # Only a loop device that is bound to a file has this directory.
+        if os.path.isdir(os.path.join(block, "loop")):
+            devnum = _read_sysfs(os.path.join(block, "dev"))
+            loops[devnum] = _read_sysfs(os.path.join(block, "loop", "backing_file"))
+    return loops
+
+
+class _Mount(NamedTuple):
+    id: str
+    parent: str
+    devnum: str
+    mountpoint: str
+    fstype: str
+    source: str
+    options: str
+
+
+def _parse_mountinfo(mountinfo: str) -> list[_Mount]:
+    """
+    Each line of /proc/self/mountinfo as a _Mount.
+
+    Raises ValueError on a line that is not mountinfo.
+    """
+    mounts = []
+    for line in mountinfo.splitlines():
+        # ID, parent ID, major:minor, root, mountpoint, options, any optional
+        # fields, "-", then filesystem type, source and superblock options.
+        # One space apart each, so an empty source is still a field.
+        fields = line.split(" ")
+        separator = fields.index("-", 6)
+        if len(fields) < separator + 4:
+            raise ValueError(f"not a mountinfo line: {line!r}")
+        mounts.append(_Mount(
+            *fields[:3],
+            mountpoint=_unescape(fields[4]),
+            fstype=fields[separator + 1],
+            source=_unescape(fields[separator + 2]),
+            options=fields[separator + 3],
+        ))
+    return mounts
+
+
+def _overlay_layers(options: str) -> list[str]:
+    """
+    The directories an overlay is made of, from its superblock options:
+    lowerdir (colon-separated), lowerdir+, datadir+, upperdir and workdir.
+    """
+    layers = []
+    for option in options.split(","):
+        name, _, value = option.partition("=")
+        if name == "lowerdir":
+            layers += value.split(":")
+        elif name in ("lowerdir+", "datadir+", "upperdir", "workdir"):
+            layers.append(value)
+    return [_unescape(layer) for layer in layers]
+
+
+def _mounts_holding(device: str, mounts: list[_Mount], card_devnums: set[str],
+                    loops: dict[str, str]) -> list[tuple[str, bool]]:
+    """
+    Every mount that holds device, as (mountpoint, is a loop mount), in
+    unmount order.
+
+    A mount is on the card when its device number is the card's or one of its
+    partitions'. The name it was mounted by does not say: a root the kernel
+    mounted itself is listed as /dev/root, whatever it is on. The name still
+    counts too, since btrfs gives its mounts a device number of their own. A
+    loop device reading the card or a partition of it is on the card as well.
+
+    A filesystem on the card is held by more than its own mount. SeedSigner OS
+    loop-mounts diy-tools.squashfs from the card at /mnt/diy, and while that is
+    up, /mnt/microsd will not come off. An overlay holds its layers through a
+    copy of their mounts of its own, so /mnt/microsd comes off under one and
+    the card stays in use all the same. So anything that sits on a listed
+    mount is listed too: mounted inside it or on top of it, or a loop device
+    or an overlay reading a path on it. Each mount is listed after everything
+    that sits on it, so nested ones come before their parents.
+    """
+    import re
+    card = re.compile(re.escape(device) + r"(p\d+)?")
+
+    def on_card(mount: _Mount) -> bool:
+        backing_file = loops.get(mount.devnum)
+        return bool(
+            mount.devnum in card_devnums
+            or card.fullmatch(mount.source)
+            or (backing_file is not None and card.fullmatch(backing_file))
+        )
+
+    def reads(mount: _Mount) -> list[str]:
+        """The paths outside its own mountpoint a mount is made from."""
+        if mount.devnum in loops:
+            return [loops[mount.devnum]]
+        if mount.fstype == "overlay":
+            return _overlay_layers(mount.options)
+        return []
+
+    def covers(mountpoint: str, path: str) -> bool:
+        return path == mountpoint or path.startswith(mountpoint.rstrip("/") + "/")
+
+    def sits_on(upper: _Mount, lower: _Mount) -> bool:
+        return upper.parent == lower.id or any(
+            covers(lower.mountpoint, path) for path in reads(upper)
+        )
+
+    order = []
+    seen = set()
+
+    def take_off(i: int):
+        seen.add(i)
+        for j in range(len(mounts)):
+            if j not in seen and sits_on(mounts[j], mounts[i]):
+                take_off(j)
+        order.append((mounts[i].mountpoint, mounts[i].devnum in loops))
+
+    for i, mount in enumerate(mounts):
+        if i not in seen and on_card(mount):
+            take_off(i)
+    return order
+
+
+def _unclaimed(devices: dict[str, str]) -> bool:
+    """
+    True when the kernel lets every one of devices be opened exclusively, and
+    each is the block device with the "major:minor" it maps to.
+    """
+    from subprocess import run
+    args = [arg for device, devnum in devices.items() for arg in (device, devnum)]
+    cmd = Settings.SU_COMMAND_PREFIX.split() + [sys.executable, "-c", EXCLUSIVE_OPEN] + args
+    data = run(cmd, capture_output=True, text=True)
+    logger.info(data)
+    return data.returncode == 0
+
+
+def unmount_card(device: str) -> bool:
+    """
+    Unmount everything that holds device; True only once all of it has gone.
+
+    The raw-write tools used to unmount two hard-coded paths, and only when the
+    hostname said SeedSigner OS. A Luckfox mounts its card at /mnt/sdcard, so a
+    flash went straight under a live filesystem, and Wipe (Random) unmounted
+    nothing at all. The kernel says what is mounted, and from which device, on
+    every board. When it cannot be asked the answer is False: a failed read is
+    not the same as nothing mounted.
+
+    The mounts are not the whole answer, though. The kernel can be using the
+    card with no mount here to show for it: swap, the lower layer of an
+    overlay root mounted before the root was switched, a btrfs root listed as
+    /dev/root under a device number of its own, a mount in another namespace.
+    And a filesystem can outlive the umount of its mount. So the kernel is
+    asked as well, by opening for exclusive use: before anything comes off,
+    each partition no mount shows, and once everything has, the whole card.
+    Each must turn out to be the block device sysfs numbers it, too, or the
+    answer is about whatever else stands at its path.
+    """
+    from subprocess import run
+    try:
+        with open(PROC_MOUNTINFO) as f:
+            mounts = _parse_mountinfo(f.read())
+        blocks = _card_blocks(device)
+        devnums = {
+            os.path.basename(block): _read_sysfs(os.path.join(block, "dev"))
+            for block in blocks
+        }
+        built_on = [
+            holder
+            for block in blocks
+            for holder in os.listdir(os.path.join(block, "holders"))
+        ]
+        holding = _mounts_holding(device, mounts, set(devnums.values()), _loop_backing_files())
+    except (OSError, ValueError) as e:
+        logger.info("Cannot tell what holds %s: %s", device, e)
+        return False
+
+    if built_on:
+        # device-mapper or md on the card: what is mounted is that device, and
+        # no umount frees the card underneath it.
+        logger.info("%s is in use by %s", device, built_on)
+        return False
+
+    if any(mountpoint == "/" for mountpoint, _ in holding):
+        # Every mount sits under "/", so this would take the running system's
+        # /proc, /dev and the rest down with it.
+        logger.info("%s holds the root filesystem", device)
+        return False
+
+    # A partition in use that no mount shows -- or the card itself, when it
+    # has none -- has nothing umount can take off. Asking before anything
+    # comes off leaves a card the system runs from exactly as it was.
+    disk = os.path.basename(device)
+    partitions = [name for name in devnums if name != disk] or [disk]
+    shown = {mount.devnum for mount in mounts} | {mount.source for mount in mounts}
+    unseen = {
+        f"/dev/{name}": devnums[name] for name in partitions
+        if devnums[name] not in shown and f"/dev/{name}" not in shown
+    }
+    if unseen and not _unclaimed(unseen):
+        logger.info("%s is in use by something no mount shows", device)
+        return False
+
+    for mountpoint, is_loop in holding:
+        cmd = Settings.SU_COMMAND_PREFIX.split() + ["umount", mountpoint]
+        if is_loop:
+            # Free the loop device as well: while it stays bound it keeps its
+            # file open, and that file is on the card.
+            cmd.insert(-1, "-d")
+        data = run(cmd, capture_output=True, text=True)
+        logger.info(data)
+        if data.returncode != 0:
+            return False
+
+    # umount can succeed and leave the filesystem up: an overlay keeps its own
+    # copy of each layer's mount, another mount namespace its own copy of the
+    # tree. Only the kernel can say the card is free.
+    return _unclaimed({device: devnums[disk]})
 
 
 def refuse_without_card(view: View, text: str) -> Destination:
@@ -197,7 +473,7 @@ class ToolsMicroSDFlashView(View):
         microsd_image = microsd_images[selected_file_num]
         logger.info("Selected: %s", microsd_image)
 
-        if platform.uname()[1] == "seedsigner-os":
+        if Settings.is_seedsigner_os():
             image_path = os.path.join(images_dir, microsd_image)
             data = run(['cp', image_path, '/tmp/img.img'], capture_output=True, text=True)
             logger.info(data)
@@ -227,21 +503,15 @@ class ToolsMicroSDFlashView(View):
             if microsd_dev is None:
                 return refuse_without_card(self, "No MicroSD card detected. Nothing was written.")
 
+            if not unmount_card(microsd_dev):
+                return refuse_without_card(self, "Could not unmount the MicroSD card. Nothing was written.")
+
             self.loading_screen = LoadingScreenThread(text="Flashing MicroSD\n\n\n\n\n\n")
             self.loading_screen.start()
 
-            # Unmount everything
-            if platform.uname()[1] == "seedsigner-os":
-                data = run(["umount", "/mnt/diy"], capture_output=True, text=True)
-                logger.info(data)
-
-            if platform.uname()[1] == "seedsigner-os":
-                data = run(["umount", "/mnt/microsd"], capture_output=True, text=True)
-                logger.info(data)
-
             # Zero the MicroSD first
             dd_cmd = ["dd", f"if=/dev/zero", f"of={microsd_dev}", "bs=1M", "count=26"]
-            if platform.uname()[1] != "seedsigner-os":
+            if not Settings.is_seedsigner_os():
                 dd_cmd = ["sudo"] + dd_cmd
 
             data = run(dd_cmd, capture_output=True, text=True)
@@ -290,12 +560,18 @@ class ToolsMicroSDFlashView(View):
                     return Destination(MainMenuView)
 
         else:
+            # Copy first: the images are on /boot, and /boot can be on the
+            # card that is about to be unmounted.
+            image_path = os.path.join(images_dir, microsd_image)
+            run(['cp', image_path, '/tmp/img.img'], check=False)
+
             microsd_dev = find_sd_card_device()
             if microsd_dev is None:
                 return refuse_without_card(self, "No MicroSD card detected. Nothing was written.")
 
-            image_path = os.path.join(images_dir, microsd_image)
-            run(['cp', image_path, '/tmp/img.img'], check=False)
+            if not unmount_card(microsd_dev):
+                return refuse_without_card(self, "Could not unmount the MicroSD card. Nothing was written.")
+
             run(['sudo', 'dd', f'if=/tmp/img.img', f'of={microsd_dev}'], check=False)
 
         return Destination(MainMenuView)
@@ -344,7 +620,7 @@ class ToolsMicroSDVerifyView(View):
         self.loading_screen.start()
 
         dd_cmd = ["dd", f"if={microsd_dev}", "of=/tmp/img.img", "bs=1M", "count=26"]
-        if platform.uname()[1] != "seedsigner-os":
+        if not Settings.is_seedsigner_os():
             dd_cmd = ["sudo"] + dd_cmd
         read = run(dd_cmd, capture_output=True, text=True)
         logger.info(read)
@@ -442,20 +718,14 @@ class ToolsMicroSDWipeZeroView(View):
         if microsd_dev is None:
             return refuse_without_card(self, "No MicroSD card detected. Nothing was wiped.")
 
+        if not unmount_card(microsd_dev):
+            return refuse_without_card(self, "Could not unmount the MicroSD card. Nothing was wiped.")
+
         self.loading_screen = LoadingScreenThread(text="Wiping MicroSD\n\n\n\n\n\n(This takes a while)")
         self.loading_screen.start()
 
-        # Unmount everything
-        if platform.uname()[1] == "seedsigner-os":
-            data = run(["umount", "/mnt/diy"], capture_output=True, text=True)
-            logger.info(data)
-
-        if platform.uname()[1] == "seedsigner-os":
-            data = run(["umount", "/mnt/microsd"], capture_output=True, text=True)
-            logger.info(data)
-
         dd_cmd = ["dd", f"if=/dev/zero", f"of={microsd_dev}", "bs=1M"] + wipesize_cmd_string.split()
-        if platform.uname()[1] != "seedsigner-os":
+        if not Settings.is_seedsigner_os():
             dd_cmd = ["sudo"] + dd_cmd
 
         data = run(dd_cmd, capture_output=True, text=True)
@@ -546,11 +816,14 @@ class ToolsMicroSDWipeRandomView(View):
         if microsd_dev is None:
             return refuse_without_card(self, "No MicroSD card detected. Nothing was wiped.")
 
+        if not unmount_card(microsd_dev):
+            return refuse_without_card(self, "Could not unmount the MicroSD card. Nothing was wiped.")
+
         self.loading_screen = LoadingScreenThread(text="Wiping MicroSD\n\n\n\n\n\n(This takes a while)")
         self.loading_screen.start()
 
         dd_cmd = ["dd", f"if=/dev/urandom", f"of={microsd_dev}", "bs=1M"] + wipesize_cmd_string.split()
-        if platform.uname()[1] != "seedsigner-os":
+        if not Settings.is_seedsigner_os():
             dd_cmd = ["sudo"] + dd_cmd
 
         data = run(dd_cmd, capture_output=True, text=True)
