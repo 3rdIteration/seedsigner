@@ -10,6 +10,7 @@ from embit import bip39
 
 from seedsigner.helpers.secure_delete import (
     _is_shared,
+    wipe_bytes,
     wipe_dict,
     wipe_list,
     wipe_string,
@@ -164,3 +165,19 @@ def test_wipe_value_ignores_what_it_cannot_zero():
     secret = "".join("hunter2")
     wipe_value(secret)
     assert secret == "\x00" * len("hunter2")
+
+
+def test_wipe_bytes_skips_a_shared_one_byte_object():
+    """CPython keeps one object per one-byte value. Zeroing it in place would
+    turn that byte into NUL for every bytes value that uses it."""
+    one_byte = bytes([7])
+
+    wipe_bytes(one_byte)
+
+    assert bytes([7])[0] == 7
+
+
+def test_one_character_str_is_shared():
+    """The same holds for one-character strings; before 3.11 their refcount
+    is ordinary, so only the length gives them away."""
+    assert _is_shared("".join(["q"]))

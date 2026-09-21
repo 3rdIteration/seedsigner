@@ -77,14 +77,19 @@ _WORDLIST_IDS: frozenset = _collect_wordlist_ids()
 def _is_shared(obj) -> bool:
     """Return True if *obj* appears to be shared or immortal.
 
-    Two detection mechanisms are used:
+    Three detection mechanisms are used:
 
     1. **Wordlist-ID check**: if ``id(obj)`` is in the pre-computed set of
        BIP-39 / SLIP-39 wordlist entry IDs the string is always considered
        shared.  This is reliable on all CPython versions because the wordlist
        objects are module-level singletons that live for the entire process.
 
-    2. **Refcount check**: if the reference count returned by
+    2. **Length check**: CPython keeps a single object for each one-byte
+       bytes value and each Latin-1 one-character str. Before 3.11 their
+       refcounts are ordinary, so the refcount check cannot tell them from
+       a private copy.
+
+    3. **Refcount check**: if the reference count returned by
        ``sys.getrefcount`` is at or above ``_SHARED_REFCOUNT_LIMIT`` the
        string is considered shared.  This catches immortal strings on
        CPython 3.12+ (where the sentinel refcount is ~4 billion) as well as
@@ -96,6 +101,8 @@ def _is_shared(obj) -> bool:
     getrefcount arg).  Shared strings have a higher count.
     """
     if isinstance(obj, str) and id(obj) in _WORDLIST_IDS:
+        return True
+    if isinstance(obj, (str, bytes)) and len(obj) == 1:
         return True
     return sys.getrefcount(obj) >= _SHARED_REFCOUNT_LIMIT
 
@@ -122,6 +129,15 @@ def wipe_bytes(b: bytes | bytearray | None) -> None:
             b[i] = 0
         return
     if isinstance(b, bytes) and len(b) > 0:
+        # Same guard as wipe_string(): a bytes object the interpreter shares
+        # would be zeroed for every other user of it.
+        if _is_shared(b):
+            logger.warning(
+                "wipe_bytes: refusing to wipe shared/immortal bytes "
+                "(refcount=%d)",
+                sys.getrefcount(b),
+            )
+            return
         _wipe_buffer(b, len(b))
 
 
