@@ -702,6 +702,23 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend
         SettingsConstants,
         SettingsDefinition,
     )
+    from seedsigner.helpers import satochip_signer
+
+    # A request that timed out may still be running on the card -- typically the
+    # signature "Retry (higher timeout)" is about to ask for again. Everything
+    # below talks to that same card, the old connector's disconnect included, so
+    # nothing may start until the request has ended.
+    try:
+        satochip_signer.wait_until_card_idle(satochip_signer.CARD_BUSY_WAIT_SECONDS)
+    except satochip_signer.CardBusyError:
+        parentObject.run_screen(
+            WarningScreen,
+            title="Card Busy",
+            status_headline=None,
+            text="Card is still busy with an earlier request.\n\nRemove and reinsert it, then try again.",
+            show_back_button=True,
+        )
+        return None
 
     # Check for existing card connector
     print("Checking existing card connector...")

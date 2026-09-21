@@ -96,6 +96,10 @@ class TestHardTimeoutsFailTheTest(BaseTest):
         assert "hard=1" in report, report
         assert "Status: FAIL" in report, report
         assert "HardTimeout" in report, report
+        # The fifth request never came back, so that worker may still be talking
+        # to the card; the verdict is already FAIL, and any further request would
+        # only queue behind it.
+        assert card.calls == 5, f"{card.calls - 5} requests went to a busy card"
 
 
 class TestKeycardHardTimeoutsFailTheTest(BaseTest):
@@ -133,3 +137,4 @@ class TestKeycardHardTimeoutsFailTheTest(BaseTest):
         assert "hard=1" in report, report
         assert "Status: FAIL" in report, report
         assert "HardTimeout" in report, report
+        assert card.calls == 5, f"{card.calls - 5} requests went to a busy card"

@@ -46,6 +46,7 @@ from seedsigner.gui.screens.screen import ButtonOption
 from seedsigner.hardware.microsd import MicroSD
 from seedsigner.helpers import embit_utils, ndef_helper, satodime_coins, seedkeeper_utils
 from seedsigner.helpers.satochip_signer import (
+    CARD_TIMEOUTS,
     _call_with_timeout,
     _get_extended_key,
     format_path_string,
@@ -3651,6 +3652,11 @@ class ToolsSatochipBenchmarkSignView(View):
                     None,
                 )
                 durations.append(time.monotonic() - start)
+            except CARD_TIMEOUTS as e:
+                # Every sample after this one would only wait a full timeout
+                # behind the request the card is still on.
+                logger.warning("Benchmark signing timed out: %s", e)
+                break
             except Exception as e:
                 logger.warning("Benchmark signing failed: %s", e)
         loading.stop()

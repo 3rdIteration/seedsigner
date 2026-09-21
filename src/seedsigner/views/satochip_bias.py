@@ -96,8 +96,10 @@ class ToolsSatochipBiasCheckView(View):
         max_attempts = self.NUM_SAMPLES * self.MAX_ATTEMPTS_FACTOR
         idx = 0
         consecutive_failures = 0
+        card_stalled = False
         while (
-            len(msb_bits) < self.NUM_SAMPLES
+            not card_stalled
+            and len(msb_bits) < self.NUM_SAMPLES
             and idx < max_attempts
             and consecutive_failures < self.MAX_CONSECUTIVE_FAILURES
         ):
@@ -126,6 +128,10 @@ class ToolsSatochipBiasCheckView(View):
                     dropped["hard_timeout"] += 1
                     idx += 1
                     consecutive_failures += 1
+                    # The request was abandoned, not stopped, so the card may
+                    # still be busy with it. The verdict is already FAIL, and
+                    # every further request would only queue behind that one.
+                    card_stalled = True
                     break
                 except Exception:
                     csv_rows.append({"index": idx, "r_hex": "", "s_hex": "", "msb_r": "", "lsb_r": "", "lsb4_bucket": "", "latency_ms": "", "dropped_reason": "exception"})
@@ -250,6 +256,14 @@ class ToolsSatochipBiasCheckView(View):
             fail_reasons.append(">1% soft timeouts")
         if dropped["parse"] > self.NUM_SAMPLES * 0.01:
             fail_reasons.append(">1% parse errors")
+
+        if card_stalled:
+            # Sampling stopped at the stall, so the run is short by design and
+            # the statistics on what came back are noise. The stall is the
+            # finding, and a failure on its own.
+            abort_reason = None
+            fail_reasons = ["hard timeout"]
+            warn_reasons = []
 
         if abort_reason:
             final_status = "abort"

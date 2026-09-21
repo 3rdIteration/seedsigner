@@ -97,8 +97,10 @@ class ToolsKeycardBiasCheckView(View):
         max_attempts = self.NUM_SAMPLES * self.MAX_ATTEMPTS_FACTOR
         idx = 0
         consecutive_failures = 0
+        card_stalled = False
         while (
-            len(msb_bits) < self.NUM_SAMPLES
+            not card_stalled
+            and len(msb_bits) < self.NUM_SAMPLES
             and idx < max_attempts
             and consecutive_failures < self.MAX_CONSECUTIVE_FAILURES
         ):
@@ -120,12 +122,15 @@ class ToolsKeycardBiasCheckView(View):
                 except (TimeoutError, FuturesTimeoutError):
                     # A signature that never arrived is the strongest timeout
                     # evidence there is; filed as a generic "exception" it fed no
-                    # verdict, so a Keycard that stalls could still pass.
+                    # verdict, so a Keycard that stalls could still pass. Stop
+                    # sampling as well: the request was abandoned, not stopped,
+                    # and anything sent now would only queue behind it.
                     latency_ms = int((time.monotonic() - start) * 1000)
                     csv_rows.append({"index": idx, "r_hex": "", "s_hex": "", "msb_r": "", "lsb_r": "", "lsb4_bucket": "", "latency_ms": latency_ms, "dropped_reason": "hard_timeout"})
                     dropped["hard_timeout"] += 1
                     idx += 1
                     consecutive_failures += 1
+                    card_stalled = True
                     break
                 except Exception:
                     csv_rows.append({"index": idx, "r_hex": "", "s_hex": "", "msb_r": "", "lsb_r": "", "lsb4_bucket": "", "latency_ms": "", "dropped_reason": "exception"})
@@ -250,6 +255,14 @@ class ToolsKeycardBiasCheckView(View):
             fail_reasons.append(">1% soft timeouts")
         if dropped["parse"] > self.NUM_SAMPLES * 0.01:
             fail_reasons.append(">1% parse errors")
+
+        if card_stalled:
+            # Sampling stopped at the stall, so the run is short by design and
+            # the statistics on what came back are noise. The stall is the
+            # finding, and a failure on its own.
+            abort_reason = None
+            fail_reasons = ["hard timeout"]
+            warn_reasons = []
 
         if abort_reason:
             final_status = "abort"

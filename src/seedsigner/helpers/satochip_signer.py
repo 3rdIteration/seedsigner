@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from binascii import b2a_base64
+import builtins
 import dataclasses
 import hashlib
 import logging
 import os
 import random
+import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from concurrent.futures import CancelledError, ThreadPoolExecutor, TimeoutError
 
 from embit import bip32
 from embit.ec import PublicKey, Signature
@@ -63,9 +65,16 @@ def _ensure_satochip_authentikey(connector) -> None:
         raise Exception(_MISSING_AUTHENTIKEY_ERROR)
 
 
-def _get_extended_key(connector, path):
-    """Retrieve the extended key for ``path`` with helpful error reporting."""
+def _get_extended_key(connector, path, busy_wait: float | None = None):
+    """Retrieve the extended key for ``path`` with helpful error reporting.
 
+    This talks to the card directly rather than through _call_with_timeout, so
+    it checks for a request still running on the card itself, waiting up to
+    ``busy_wait`` seconds (CARD_BUSY_WAIT_SECONDS when None) before raising
+    CardBusyError without sending anything.
+    """
+
+    wait_until_card_idle(CARD_BUSY_WAIT_SECONDS if busy_wait is None else busy_wait)
     _ensure_satochip_authentikey(connector)
     try:
         return connector.card_bip32_get_extendedkey(path)
@@ -192,16 +201,82 @@ def signature_matches_pubkey(sig_der: bytes, sighash: bytes, pubkey) -> bool:
         return False
 
 
+class CardBusyError(TimeoutError):
+    """Nothing was sent: the card is still busy with a request that timed out."""
+
+
+# A card timeout, whichever class raised it: concurrent.futures has a
+# TimeoutError of its own until Python 3.11, and the device runs 3.10.
+CARD_TIMEOUTS = (TimeoutError, builtins.TimeoutError)
+
+
+# How long init_satochip, and a key derivation given no wait of its own, waits
+# for an abandoned request before giving up.
+CARD_BUSY_WAIT_SECONDS = 2.0
+
+# A request that timed out while its worker was still running. A timeout
+# abandons a worker; it cannot stop one, so that worker may still be
+# mid-exchange with the card. The device talks to one card at a time, so this
+# is one slot rather than one per connector: "Retry (higher timeout)" builds a
+# new connector for the same card, and a slot per connector let it straight
+# past.
+_abandoned_request = None
+_abandoned_lock = threading.Lock()
+
+
+def wait_until_card_idle(timeout: float) -> None:
+    """Return once no request that timed out is still running on the card.
+
+    Raises CardBusyError, without touching the card, if one still is after
+    ``timeout`` seconds. _call_with_timeout calls this before every request it
+    sends; code that talks to the card directly after a request may have timed
+    out has to call it too.
+    """
+    global _abandoned_request
+    with _abandoned_lock:
+        abandoned = _abandoned_request
+    if abandoned is None:
+        return
+    try:
+        abandoned.exception(timeout=timeout)
+    except TimeoutError:
+        logger.info("Card still busy with a request that timed out; sending nothing")
+        raise CardBusyError("card is still busy with an earlier request") from None
+    except CancelledError:
+        # Timed out before its worker picked it up, so it never reached the
+        # card. Treating it as still running would block the card for good.
+        pass
+    with _abandoned_lock:
+        if _abandoned_request is abandoned:
+            _abandoned_request = None
+
+
 def _call_with_timeout(func, timeout: float, *args):
-    """Execute ``func`` with the provided timeout and log duration."""
+    """Execute ``func`` with the provided timeout and log duration.
+
+    Nothing is sent while a request that timed out may still be running on the
+    card, whichever connector asks: "Retry (higher timeout)" is one button away
+    from a timeout, and it reaches the same card through a new connector. The
+    request waits for the abandoned one out of its own timeout, and raises
+    CardBusyError without touching the card if that one is still running when
+    time is up.
+    """
+    global _abandoned_request
     start = time.monotonic()
+    wait_until_card_idle(timeout)
+    remaining = max(0.0, timeout - (time.monotonic() - start))
+
     # Not a context manager: leaving that block calls shutdown(wait=True), which
     # blocks until the worker returns -- so a card that never answers would hold
     # the caller for as long as it liked, timeout or no timeout.
     executor = ThreadPoolExecutor(max_workers=1)
     future = executor.submit(func, *args)
     try:
-        return future.result(timeout=timeout)
+        return future.result(timeout=remaining)
+    except TimeoutError:
+        with _abandoned_lock:
+            _abandoned_request = future
+        raise
     finally:
         elapsed = time.monotonic() - start
         logger.info("Satochip %s took %.3fs", func.__name__, elapsed)
@@ -299,6 +374,8 @@ def sign_psbt_with_satochip(psbt: PSBT, connector, timeout: float | None = None)
     pre_dummy_count = random.randint(0, pre_dummy_max)
     logger.info("Pre-signing dummy signatures: %d", pre_dummy_count)
     for _ in range(pre_dummy_count):
+        if timed_out:
+            break
         dummy_hash = os.urandom(32)
         extra = random.randint(1, in_tx_dummy_max) if random.random() < dummy_prob else 0
         for _ in range(1 + extra):
@@ -310,6 +387,11 @@ def sign_psbt_with_satochip(psbt: PSBT, connector, timeout: float | None = None)
                     list(dummy_hash),
                     None,
                 )
+            except CARD_TIMEOUTS:
+                # A dummy is a real request, and the card is still on it.
+                logger.warning("Satochip dummy signing timed out")
+                timed_out = True
+                break
             except Exception:
                 pass
 
@@ -320,6 +402,10 @@ def sign_psbt_with_satochip(psbt: PSBT, connector, timeout: float | None = None)
     indices = list(range(len(psbt.inputs)))
     random.shuffle(indices)
     for i in indices:
+        # Everything sent after a timeout only waits behind the request the
+        # card is still on, a full timeout each, before being refused.
+        if timed_out:
+            break
         inp = psbt.inputs[i]
         if len(inp.bip32_derivations) == 0:
             logger.debug("PSBT signer input %d: skipped (no bip32 derivations)", i)
@@ -335,10 +421,16 @@ def sign_psbt_with_satochip(psbt: PSBT, connector, timeout: float | None = None)
                 getattr(deriv, "fingerprint", b"").hex() if getattr(deriv, "fingerprint", None) is not None else "unknown",
             )
             try:
-                key, _chaincode = _get_extended_key(connector, path)
+                key, _chaincode = _get_extended_key(connector, path, timeout)
                 card_pub = PublicKey.parse(
                     key.get_public_key_bytes(compressed=True)
                 )
+            except CARD_TIMEOUTS:
+                # A request that timed out earlier is still running, so nothing
+                # was sent. Report the timeout: the remedy is the same retry.
+                logger.warning("PSBT signer input %d: card still busy; not deriving", i)
+                timed_out = True
+                break
             except Exception as e:
                 logger.info(
                     "PSBT signer input %d: derive failed path=%s error=%s",
@@ -395,10 +487,11 @@ def sign_psbt_with_satochip(psbt: PSBT, connector, timeout: float | None = None)
                             None,
                         )
                     )
-                except TimeoutError:
+                except CARD_TIMEOUTS:
                     logger.warning("Satochip signing timed out")
                     timed_out = True
                     results.append(None)
+                    break
                 except Exception:
                     results.append(None)
 
@@ -445,8 +538,12 @@ def sign_psbt_with_satochip(psbt: PSBT, connector, timeout: float | None = None)
     # the per-input dummy settings to potentially sign each dummy hash multiple
     # times before discarding all results.
     post_dummy_count = random.randint(0, post_dummy_max)
+    if timed_out:
+        post_dummy_count = 0
     logger.info("Post-signing dummy signatures: %d", post_dummy_count)
     for _ in range(post_dummy_count):
+        if timed_out:
+            break
         dummy_hash = os.urandom(32)
         extra = random.randint(1, in_tx_dummy_max) if random.random() < dummy_prob else 0
         for _ in range(1 + extra):
@@ -458,6 +555,11 @@ def sign_psbt_with_satochip(psbt: PSBT, connector, timeout: float | None = None)
                     list(dummy_hash),
                     None,
                 )
+            except CARD_TIMEOUTS:
+                # A dummy is a real request, and the card is still on it.
+                logger.warning("Satochip dummy signing timed out")
+                timed_out = True
+                break
             except Exception:
                 pass
     return SignResult(signed_count=signed, timed_out=timed_out)
@@ -482,7 +584,7 @@ def sign_message_with_satochip(derivation_path: str, message: str, connector, ti
     if timeout is None:
         timeout = settings.get_value(SettingsConstants.SETTING__SATOCHIP_MSG_SIGN_TIMEOUT)
     path = format_path_string(derivation_path)
-    key, _chaincode = _get_extended_key(connector, path)
+    key, _chaincode = _get_extended_key(connector, path, timeout)
 
     message_payload = message
     if getattr(connector, "requires_message_digest", False):
