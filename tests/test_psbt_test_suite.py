@@ -272,18 +272,20 @@ class TestChangeBinding:
         parser = parse_vector(vector)
 
         for change in parser.change_data:
-            for path_str in change["claimed_derivation_paths"]:
-                path = bip32.parse_path(path_str)
+            # change_data carries the derivation path the parse itself verified,
+            # not the coordinator's claim about it.
+            path = change["verified_derivation_path"]
+            assert path is not None, f"{vector.name}: change output has no verified path"
 
-                assert path[-2] in (0, 1), (
-                    f"{vector.name}: {path_str} uses branch {path[-2]}, "
-                    f"outside the receive/change branches {{0, 1}}"
-                )
-                assert tuple(path[:-2]) in parser.verified_input_prefixes, (
-                    f"{vector.name}: {path_str} sits under "
-                    f"{bip32.path_to_str(list(path[:-2]))}, but the inputs are all "
-                    f"under {[bip32.path_to_str(list(x)) for x in parser.verified_input_prefixes]}"
-                )
+            assert path[-2] in (0, 1), (
+                f"{vector.name}: {bip32.path_to_str(path)} uses branch {path[-2]}, "
+                f"outside the receive/change branches {{0, 1}}"
+            )
+            assert tuple(path[:-2]) in parser.verified_input_prefixes, (
+                f"{vector.name}: {bip32.path_to_str(path)} sits under "
+                f"{bip32.path_to_str(list(path[:-2]))}, but the inputs are all "
+                f"under {[bip32.path_to_str(list(x)) for x in parser.verified_input_prefixes]}"
+            )
 
 
 class TestEvidenceCannotBeForged:
@@ -443,11 +445,12 @@ class TestAdvisories:
             if parser.verified_max_input_index < 0:
                 continue
             for change in parser.change_data:
-                for path_str in change["claimed_derivation_paths"]:
-                    gap = (bip32.parse_path(path_str)[-1] & 0x7FFFFFFF) - parser.verified_max_input_index
-                    assert gap <= CHANGE_INDEX_LOOKAHEAD, (
-                        f"{vector.name}: {path_str} is {gap} past the highest input index"
-                    )
+                path = change["verified_derivation_path"]
+                gap = (path[-1] & 0x7FFFFFFF) - parser.verified_max_input_index
+                assert gap <= CHANGE_INDEX_LOOKAHEAD, (
+                    f"{vector.name}: {bip32.path_to_str(path)} is {gap} past the "
+                    f"highest input index"
+                )
 
     def test_change_index_refusal_is_adjustable(self):
         """
