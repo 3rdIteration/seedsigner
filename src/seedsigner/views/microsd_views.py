@@ -4,6 +4,7 @@
 import logging
 import os
 import platform
+from pathlib import Path
 from gettext import gettext as _
 
 from seedsigner.gui.screens import (
@@ -12,8 +13,10 @@ from seedsigner.gui.screens import (
     LargeIconStatusScreen,
     WarningScreen,
 )
+from seedsigner.gui.components import SeedSignerIconConstants
 from seedsigner.gui.screens.screen import ButtonOption, LoadingScreenThread
-from seedsigner.hardware.microsd import MicroSD
+from seedsigner.hardware.microsd import MicroSD, resolve_microsd_images_dir
+from seedsigner.models.settings import Settings
 from seedsigner.views.view import View, Destination, BackStackView, MainMenuView
 
 logger = logging.getLogger(__name__)
@@ -105,6 +108,22 @@ class ToolsMicroSDMenuView(View):
             return Destination(ToolsMicroSDWipeRandomView)
 
 
+def flash_images_dir() -> Path:
+    """
+    Where Flash Image finds images: one answer, for listing and for copying.
+
+    It listed one hard-coded folder and copied from another spelling of it, so
+    a board whose images live anywhere else -- a Luckfox with no card, writing
+    to /userdata; a card on an alternate mount -- listed images it could not
+    then find. SeedSigner OS resolves the data directory the way every other
+    file tool does; a manual Raspberry Pi OS build keeps the boot partition.
+    """
+    if Settings.is_seedsigner_os():
+        return resolve_microsd_images_dir()
+    return Path("/boot/microsd-images")
+
+
+
 class ToolsMicroSDFlashView(View):
     def run(self):
         from subprocess import run
@@ -123,10 +142,28 @@ class ToolsMicroSDFlashView(View):
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
 
-        if platform.uname()[1] == "seedsigner-os":
-            microsd_images = os.listdir('/mnt/microsd/microsd-images/')
-        else:
-            microsd_images = os.listdir('/boot/microsd-images/')
+        images_dir = flash_images_dir()
+        # A stock card has no images folder, and one that exists may be empty.
+        # Both used to leave the flow through the generic error screen -- a
+        # FileNotFoundError, then an IndexError from a button list with nothing
+        # in it -- which made the feature look broken rather than empty.
+        try:
+            microsd_images = os.listdir(images_dir)
+        except OSError as e:
+            logger.info("No images to flash in %s: %s", images_dir, e)
+            microsd_images = []
+
+        if not microsd_images:
+            self.run_screen(
+                WarningScreen,
+                title=_("Flash Image"),
+                status_icon_name=SeedSignerIconConstants.WARNING,
+                status_headline=None,
+                text=_("No images found on the MicroSD card."),
+                show_back_button=False,
+                button_data=[ButtonOption(_("OK"))],
+            )
+            return Destination(BackStackView)
 
         microsd_images_buttons = []
         for file in microsd_images:
@@ -146,7 +183,7 @@ class ToolsMicroSDFlashView(View):
         logger.info("Selected: %s", microsd_image)
 
         if platform.uname()[1] == "seedsigner-os":
-            image_path = os.path.join('/mnt/microsd/microsd-images', microsd_image)
+            image_path = os.path.join(images_dir, microsd_image)
             data = run(['cp', image_path, '/tmp/img.img'], capture_output=True, text=True)
             logger.info(data)
             if len(data.stderr) > 1:
@@ -242,7 +279,7 @@ class ToolsMicroSDFlashView(View):
             if microsd_dev is None:
                 return refuse_without_card(self, "No MicroSD card detected. Nothing was written.")
 
-            image_path = os.path.join('/boot/microsd-images', microsd_image)
+            image_path = os.path.join(images_dir, microsd_image)
             run(['cp', image_path, '/tmp/img.img'], check=False)
             run(['sudo', 'dd', f'if=/tmp/img.img', f'of={microsd_dev}'], check=False)
 

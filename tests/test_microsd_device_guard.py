@@ -1,5 +1,6 @@
 # pylint: disable=missing-function-docstring
 import os
+import pathlib
 from types import SimpleNamespace
 
 import pytest
@@ -63,6 +64,9 @@ def patch_environment(monkeypatch, commands, on_seedsigner_os=True, dd_returncod
         "platform.uname", lambda: ("Linux", hostname, "", "", "", "")
     )
     monkeypatch.setattr(microsd_views, "LoadingScreenThread", DummyLoadingScreenThread)
+    # Flash Image resolves where its images live; keep that off the host's disk.
+    monkeypatch.setattr(microsd_views, "flash_images_dir",
+                        lambda: pathlib.Path("/test/microsd-images"))
 
     real_listdir = os.listdir
 
