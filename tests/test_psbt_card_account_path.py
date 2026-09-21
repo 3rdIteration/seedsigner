@@ -126,7 +126,7 @@ class MockCard:
         return key.to_public().to_base58()
 
 
-def spend_from(owners):
+def spend_from(owners, locktime=0, sequence=0xFFFFFFFF):
     """A PSBT spending one p2wpkh coin per (root, path, fingerprint) in `owners`."""
     coins = []
     for i, (root, path, fingerprint) in enumerate(owners):
@@ -137,8 +137,9 @@ def spend_from(owners):
 
     payee = script.p2wpkh(PrivateKey(b"\x07" * 32).get_public_key())
     tx = Transaction(
-        vin=[TransactionInput(prev.txid(), 0) for prev, _, _ in coins],
+        vin=[TransactionInput(prev.txid(), 0, sequence=sequence) for prev, _, _ in coins],
         vout=[TransactionOutput(100_000 * len(coins) - 1_000, payee)],
+        locktime=locktime,
     )
     psbt = PSBT(tx)
     for inp, (prev, public_key, derivation) in zip(psbt.inputs, coins):
@@ -199,3 +200,38 @@ class TestCardFlowReadsTheCardsAccount(BaseTest):
         assert warnings == []
         assert destination.View_cls is psbt_views.PSBTOverviewView
         assert self.controller.psbt_sign_with_satochip is True
+
+
+class TestCardParserKnowsTheClock(BaseTest):
+    """
+    A psbt loaded from microSD is dated by its file, and the review uses that
+    date to flag a locktime years away. The card's parser is built in the
+    signer menu and the overview keeps it, so it needs the same clock the
+    overview would have given it: without it, a lock the seed flow warns about
+    went unmentioned when a card signed.
+    """
+
+    choose_the_card = TestCardFlowReadsTheCardsAccount.choose_the_card
+
+    def test_a_far_future_locktime_is_flagged_for_the_card(self, monkeypatch):
+        from seedsigner.controller import Controller
+        from seedsigner.models.psbt_parser import RiskWarning
+
+        card_root = Seed(mnemonic=CARD_MNEMONIC).get_root(SettingsConstants.MAINNET)
+        # About 2.9 years of blocks past the release anchor, in a file written then.
+        psbt = spend_from(
+            [(card_root, "m/84h/0h/0h/0/0", card_root.my_fingerprint)],
+            locktime=Controller.RELEASE_BLOCK_HEIGHT + 150_000,
+            sequence=0xFFFFFFFE,
+        )
+        self.controller.psbt_source_time = Controller.RELEASE_BLOCK_TIME
+
+        destination, warnings = self.choose_the_card(monkeypatch, MockCard(card_root), psbt)
+        assert warnings == []
+        assert destination.View_cls is psbt_views.PSBTOverviewView
+
+        psbt_views.PSBTOverviewView()
+        parser = self.controller.psbt_parser
+
+        assert RiskWarning.LOCKTIME_FAR_FUTURE in parser.risk_warnings
+        assert psbt_views.post_overview_destination(parser).View_cls is psbt_views.PSBTRiskWarningView
