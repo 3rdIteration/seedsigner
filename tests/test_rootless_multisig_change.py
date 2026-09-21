@@ -2,10 +2,17 @@
 # Must import base before any seedsigner modules
 from base import BaseTest, FlowStep, FlowTest
 
-from test_psbt_mixed_account_paths import NETWORK, mixed_account_psbt
-from psbt_testing_util import PSBTTestData
+import pytest
 
-from seedsigner.models.psbt_parser import PSBTParser
+from embit import bip32
+from embit.descriptor import Descriptor
+from embit.ec import PrivateKey
+from embit.psbt import DerivationPath
+
+from test_psbt_mixed_account_paths import NETWORK, OUR_ACCOUNT, THEIR_ACCOUNT, mixed_account_psbt
+from psbt_testing_util import PSBTTestData, root_for_seed
+
+from seedsigner.models.psbt_parser import InvalidPSBTError, PSBTParser
 
 
 class TestRootlessMultisigNeedsADescriptor(BaseTest):
@@ -143,3 +150,96 @@ class TestCardMultisigReviewsWithTheLoadedDescriptor(FlowTest):
         assert self.controller.psbt_sign_with_satochip is True
         assert parser.unidentified_change_outputs == []
         assert parser.change_amount == 2_807
+
+
+
+def mixed_account_descriptor():
+    """The known-good descriptor for mixed_account_psbt's 2-of-2."""
+    keys = []
+    for seed, account in ((PSBTTestData.seed, OUR_ACCOUNT),
+                          (PSBTTestData.multisig_key_2, THEIR_ACCOUNT)):
+        root = root_for_seed(seed)
+        xpub = root.derive(account).to_public().to_base58()
+        keys.append(f"[{root.my_fingerprint.hex()}{account[1:]}]{xpub}/{{0,1}}/*")
+    return Descriptor.from_string(f"wsh(multi(2,{','.join(keys)}))")
+
+
+class TestRootlessChangeShowsTheDescriptorsPath(BaseTest):
+    """
+    With no BIP32 tree, the path on the change screen is all the user has to
+    judge a change output by: its branch picks "Your Change" or "Self-Transfer"
+    and its last level is the index shown. The descriptor skips any entry whose
+    fingerprint names none of its keys, so an entry listed first for a key it
+    never checked chose that path, and the index the user saw was not the one
+    the funds went to.
+    """
+
+    # Real change, but at receive index 50000: past any wallet's gap limit.
+    CHANGE_BRANCH_INDEX = "0/50000"
+
+    @staticmethod
+    def with_decoy_first(psbt, path, replacing_the_cosigner=False):
+        """List an entry for a key the descriptor has never seen ahead of the real ones."""
+        real = list(psbt.outputs[0].bip32_derivations.items())
+        if replacing_the_cosigner:
+            real = real[:1]
+        decoy = PrivateKey(b"\x0d" * 32).get_public_key()
+        psbt.outputs[0].bip32_derivations = {
+            decoy: DerivationPath(bytes.fromhex("deadbeef"), bip32.parse_path(path)),
+            **dict(real),
+        }
+        return psbt
+
+    def parse(self, psbt):
+        parser = PSBTParser(psbt, network=NETWORK, multisig_descriptor=mixed_account_descriptor())
+        parser.parse()
+        return parser
+
+    def test_the_path_shown_is_one_the_descriptor_matched(self):
+        # The decoy agrees on branch and index, so only its prefix is false.
+        psbt = self.with_decoy_first(
+            mixed_account_psbt(change_branch_index=self.CHANGE_BRANCH_INDEX),
+            f"m/84h/1h/0h/{self.CHANGE_BRANCH_INDEX}",
+            replacing_the_cosigner=True,
+        )
+
+        parser = self.parse(psbt)
+
+        assert parser.change_amount == 90_000
+        assert parser.change_data[0]["verified_derivation_path"] == bip32.parse_path(
+            f"{OUR_ACCOUNT}/{self.CHANGE_BRANCH_INDEX}"
+        )
+
+    def test_an_entry_beyond_the_scripts_keys_is_refused(self):
+        """The seeded parse's refusal: the script has two keys and three are listed."""
+        psbt = self.with_decoy_first(
+            mixed_account_psbt(change_branch_index=self.CHANGE_BRANCH_INDEX),
+            f"{OUR_ACCOUNT}/1/0",
+        )
+
+        with pytest.raises(InvalidPSBTError) as excinfo:
+            self.parse(psbt)
+
+        assert excinfo.value.code == "SURPLUS_DERIVATIONS"
+
+    def test_an_entry_on_another_branch_and_index_is_refused(self):
+        """
+        The seeded parse's other refusal: shown at 1/0, "Your Change" at index 0,
+        while the script pays receive index 50000.
+        """
+        psbt = self.with_decoy_first(
+            mixed_account_psbt(change_branch_index=self.CHANGE_BRANCH_INDEX),
+            f"{OUR_ACCOUNT}/1/0",
+            replacing_the_cosigner=True,
+        )
+
+        with pytest.raises(InvalidPSBTError) as excinfo:
+            self.parse(psbt)
+
+        assert excinfo.value.code == "UNREACHABLE_CHANGE_PATH"
+
+    def test_honest_change_keeps_its_path(self):
+        parser = self.parse(mixed_account_psbt(change_branch_index="1/3"))
+
+        assert parser.change_amount == 90_000
+        assert parser.change_data[0]["verified_derivation_path"] == bip32.parse_path(f"{OUR_ACCOUNT}/1/3")

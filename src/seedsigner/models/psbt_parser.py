@@ -325,6 +325,12 @@ class PSBTParser():
         self.verified_input_derivation_paths: List[List[int] | None] = []
         self.verified_output_derivation_paths: List[List[int] | None] = []
 
+        # With no BIP32 tree, the derivation the loaded descriptor matched on each
+        # output it identified as change, keyed by output index. It stands in for
+        # the seed's verified path: the change screen reads it, and every other
+        # entry on the output is held to it. See _parse_outputs.
+        self.descriptor_output_derivation_paths: dict[int, List[int]] = {}
+
         # Whether a successful parse has run. Constructing without key material
         # leaves every total at zero, which reads exactly like a transaction that
         # moves nothing -- see PSBTOverviewView, which has to finish the job.
@@ -1113,19 +1119,23 @@ class PSBTParser():
 
         So this narrows what is checked, never what is required: our own path is
         still measured against the inputs, and every other path on the output is
-        still held to ours. Where the seed's own path could not be established --
-        no BIP32 tree, or no verified claim on this output -- every derivation is
-        checked against the inputs, exactly as before.
+        still held to ours. With no BIP32 tree, ours is the path the loaded
+        descriptor matched. Where neither could be established, every derivation
+        is checked against the inputs, exactly as before.
         """
         derivations = self._scope_derivations(out)
-        if not (self.can_verify_derivations and index < len(self.verified_output_derivation_paths)):
+        if self.can_verify_derivations:
+            own_derivation = (
+                self.verified_output_derivation_paths[index]
+                if index < len(self.verified_output_derivation_paths)
+                else None
+            )
+        else:
+            own_derivation = self.descriptor_output_derivation_paths.get(index)
+        if not own_derivation:
             return derivations
 
-        seed_derivation = self.verified_output_derivation_paths[index]
-        if not seed_derivation:
-            return derivations
-
-        suffix = list(seed_derivation[-2:])
+        suffix = list(own_derivation[-2:])
         for derivation in derivations:
             if list(derivation[-2:]) != suffix:
                 raise InvalidPSBTError(
@@ -1134,7 +1144,7 @@ class PSBTParser():
                     code=RejectCode.UNREACHABLE_CHANGE_PATH,
                 )
 
-        return [seed_derivation]
+        return [own_derivation]
 
 
     @staticmethod
@@ -1143,23 +1153,6 @@ class PSBTParser():
         derivations = [d.derivation for d in scope.bip32_derivations.values()]
         derivations += [d.derivation for _, d in scope.taproot_bip32_derivations.values()]
         return derivations
-
-
-    @staticmethod
-    def _first_claimed_derivation_path(scope: InputScope | OutputScope) -> list[int] | None:
-        """
-        The first coordinator-claimed derivation path on a scope, or None.
-
-        Only used when there is no BIP32 tree to verify against (the seedless
-        multisig pre-parse), where the change_data has to carry some path for the
-        view to display and the descriptor check is what ultimately verifies the
-        output.
-        """
-        for derivation_path_obj in scope.bip32_derivations.values():
-            return list(derivation_path_obj.derivation)
-        for _leaf_hashes, derivation_path_obj in scope.taproot_bip32_derivations.values():
-            return list(derivation_path_obj.derivation)
-        return None
 
 
     @staticmethod
@@ -1493,9 +1486,30 @@ class PSBTParser():
                                 # descriptor the user loaded identifies it, which is the
                                 # whole point of the card's multisig flow;
                                 # PSBTIdentifyChangeView offers to load one.
-                                if self.multisig_descriptor is None or not self._descriptor_owns_output(self.multisig_descriptor, i):
+                                descriptor_paths = (
+                                    self._descriptor_derivations(self.multisig_descriptor, i)
+                                    if self.multisig_descriptor is not None
+                                    else []
+                                )
+                                if not descriptor_paths:
                                     is_presumed_change = False
                                     self.unidentified_change_outputs.append(i)
+                                else:
+                                    # The descriptor stands in for the seed, so the
+                                    # output answers to what a seeded parse asks once
+                                    # it finds our key: no more entries than the
+                                    # script has keys, and every entry on the branch
+                                    # and index of the path the descriptor matched
+                                    # (see _change_derivations_to_check). That path
+                                    # is also the one shown. The first entry listed
+                                    # may name none of the descriptor's keys, and so
+                                    # was never checked.
+                                    if len(out.bip32_derivations) > self.policy["n"]:
+                                        raise InvalidPSBTError(
+                                            f"Output {i} claims more keys than its script uses.",
+                                            code=RejectCode.SURPLUS_DERIVATIONS,
+                                        )
+                                    self.descriptor_output_derivation_paths[i] = descriptor_paths[0]
 
                         elif verified_derivation_path is None:
                             # No entry claimed this seed's fingerprint, but we already
@@ -1674,12 +1688,11 @@ class PSBTParser():
                 # receive.
                 addr = vout[i].script_pubkey.address(NETWORKS[SettingsConstants.map_network_to_embit(self.network)])
                 # With no BIP32 tree to verify against (the seedless multisig
-                # pre-parse), fall back to the coordinator's claimed path so the
-                # view has something to display; the descriptor check verifies it.
+                # flow, WIF/BIP38), the path the loaded descriptor matched.
                 verified_path = (
                     self.verified_output_derivation_paths[i]
                     if self.can_verify_derivations
-                    else PSBTParser._first_claimed_derivation_path(out)
+                    else self.descriptor_output_derivation_paths.get(i)
                 )
                 self.change_data.append({
                     "output_index": i,
@@ -2719,16 +2732,30 @@ class PSBTParser():
     def _descriptor_owns_output(self, descriptor: Descriptor, i: int) -> bool:
         """See verify_multisig_output; takes an output index rather than a change number."""
         output = self.psbt.outputs[i]
-        script_pubkey = self.psbt.tx.vout[i].script_pubkey
 
         if not output.bip32_derivations:
             # Taproot descriptors carry their claims in the taproot map instead.
             return descriptor.owns(output)
 
-        if script_pubkey.script_type() != descriptor.scriptpubkey_type():
-            return False
+        return bool(self._descriptor_derivations(descriptor, i))
 
-        matched = False
+
+    def _descriptor_derivations(self, descriptor: Descriptor, i: int) -> list[list[int]]:
+        """
+        The derivations on output i that the descriptor checked, or [] unless it owns
+        the output.
+
+        Only entries naming one of the descriptor's keys are checked, and every one of
+        them has to hold up (see verify_multisig_output). An entry naming none of its
+        keys is skipped, and so is not returned: nothing vouches for its path.
+        """
+        output = self.psbt.outputs[i]
+        script_pubkey = self.psbt.tx.vout[i].script_pubkey
+
+        if script_pubkey.script_type() != descriptor.scriptpubkey_type():
+            return []
+
+        matched = []
         for public_key, derivation_path_obj in output.bip32_derivations.items():
             res = descriptor.check_derivation(derivation_path_obj)
             if res is None:
@@ -2736,16 +2763,16 @@ class PSBTParser():
             idx, branch_idx = res
             derived = descriptor.derive(idx, branch_index=branch_idx)
             if derived.script_pubkey().data != script_pubkey.data:
-                return False
+                return []
             committed = derived.witness_script() or derived.redeem_script()
             if committed is not None:
                 if committed.script_type() == "p2wpkh":
                     # sh(wpkh): the script holds the key's hash, not the key.
                     if script.p2wpkh(public_key).data != committed.data:
-                        return False
+                        return []
                 elif public_key.sec() not in committed.data:
-                    return False
-            matched = True
+                    return []
+            matched.append(list(derivation_path_obj.derivation))
         return matched
 
 
