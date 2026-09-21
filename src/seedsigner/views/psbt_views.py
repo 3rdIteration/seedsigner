@@ -725,10 +725,11 @@ class PSBTOverviewView(View):
         """
             change_data = [
                 {
-                    'address': 'bc1q............', 
-                    'amount': 397621401, 
-                    'claimed_fingerprints': ['22bde1a9', '73c5da0a'], 
-                    'claimed_derivation_paths': ['m/48h/1h/0h/2h/1/0', 'm/48h/1h/0h/2h/1/0']
+                    'output_index': 0,
+                    'address': 'bc1q............',
+                    'amount': 397621401,
+                    'verified_derivation_path':
+                        [2147483696, 2147483649, 2147483648, 2147483650, 1, 0],
                 }, {},
             ]
         """
@@ -737,8 +738,7 @@ class PSBTOverviewView(View):
         for change_output in change_data:
             # PSBTParser has already rejected any derivation a wallet could not
             # scan for, so all that's left here is which branch it sits on.
-            path_ints = bip32.parse_path(change_output["claimed_derivation_paths"][0])
-            if PSBTParser.is_change_branch(path_ints):
+            if PSBTParser.is_change_branch(change_output["verified_derivation_path"]):
                 num_change_outputs += 1
             else:
                 num_self_transfer_outputs += 1
@@ -1063,17 +1063,19 @@ class PSBTChangeDetailsView(View):
         """
             change_data:
             {
-                'address': 'bc1q............', 
-                'amount': 397621401, 
-                'claimed_fingerprints': ['22bde1a9', '73c5da0a'], 
-                'claimed_derivation_paths': ['m/48h/1h/0h/2h/1/0', 'm/48h/1h/0h/2h/1/0']
+                'output_index': 0,
+                'address': 'bc1q............',
+                'amount': 397621401,
+                'verified_derivation_path':
+                    [2147483696, 2147483649, 2147483648, 2147483650, 1, 0],
             }
         """
 
-        # Single-sig verification is easy. We expect to find a single fingerprint
-        # and derivation path.
-        claimed_fingerprints = change_data.get("claimed_fingerprints") or []
-        claimed_derivation_paths = change_data.get("claimed_derivation_paths") or []
+        # The parser proved this derivation path belongs to this seed before recording
+        # the output as change, so the view reads the verified path rather than the
+        # coordinator's claimed fingerprint/derivation strings.
+        verified_derivation_path = change_data.get("verified_derivation_path")
+        path_ints = list(verified_derivation_path) if verified_derivation_path else []
 
         if self.controller.psbt_seed:
             seed_fingerprint = self.controller.psbt_seed.get_fingerprint(
@@ -1083,28 +1085,10 @@ class PSBTChangeDetailsView(View):
             master_fp = getattr(psbt_parser, "master_fingerprint", None)
             seed_fingerprint = hexlify(master_fp).decode() if master_fp else None
 
-        if seed_fingerprint:
-            if seed_fingerprint not in claimed_fingerprints:
-                # TODO: Something is wrong with this psbt(?). Reroute to warning?
-                return Destination(NotYetImplementedView)
-            index = claimed_fingerprints.index(seed_fingerprint)
-        else:
-            index = 0 if claimed_fingerprints else None
-            if index is not None:
-                seed_fingerprint = claimed_fingerprints[index]
-
-        claimed_derivation_path = ""
-        if index is not None and index < len(claimed_derivation_paths):
-            claimed_derivation_path = claimed_derivation_paths[index]
-
         # 'm/84h/1h/0h/1/0' would be a change addr while 'm/84h/1h/0h/0/0' is a self-receive.
-        # Safe to read from the claim here: PSBTParser has already refused any path whose
-        # prefix does not match one the inputs demonstrate, so an output that reaches this
-        # point sits where this wallet actually keeps its keys.
-        if claimed_derivation_path:
-            path_ints = bip32.parse_path(claimed_derivation_path)
-        else:
-            path_ints = []
+        # Safe to read from the verified path here: PSBTParser has already refused any
+        # path whose prefix does not match one the inputs demonstrate, so an output that
+        # reaches this point sits where this wallet actually keeps its keys.
         is_change_derivation_path = PSBTParser.is_change_branch(path_ints)
         derivation_path_addr_index = path_ints[-1] & 0x7FFFFFFF if path_ints else 0
 
@@ -1119,7 +1103,6 @@ class PSBTChangeDetailsView(View):
 
         is_change_addr_verified = False
         if psbt_parser.is_multisig:
-            print("isMultisig")
             # if the known-good multisig descriptor is already onboard:
             if self.controller.multisig_wallet_descriptor:
                 is_change_addr_verified = psbt_parser.verify_multisig_output(
@@ -1154,7 +1137,6 @@ class PSBTChangeDetailsView(View):
 
         else:
             # Single sig
-            print("isSinglesig")
             try:
                 from embit import script
                 from embit.networks import NETWORKS
@@ -1227,7 +1209,7 @@ class PSBTChangeDetailsView(View):
             amount=change_data.get("amount"),
             is_multisig=psbt_parser.is_multisig,
             fingerprint=seed_fingerprint or "",
-            derivation_path=claimed_derivation_path or "",
+            derivation_path=bip32.path_to_str(path_ints) if path_ints else "",
             is_change_derivation_path=is_change_derivation_path,
             derivation_path_addr_index=derivation_path_addr_index,
             is_change_addr_verified=is_change_addr_verified,
