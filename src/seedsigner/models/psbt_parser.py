@@ -1533,7 +1533,15 @@ class PSBTParser():
                             # as well. Only a known-good descriptor can identify the
                             # output as change; until then it is a payment, and
                             # PSBTIdentifyChangeView offers to load one.
-                            if (self.multisig_descriptor is not None
+                            if self.root is not None and not PSBTParser._multisig_script_contains_key(multisig_script, self.root.get_public_key()):
+                                # WIF / BIP38 has no tree, but it does hold one key, and
+                                # that key either is a cosigner of this script or is
+                                # not. Nothing has to be derived to answer it, so it is
+                                # answered: a multisig this key cannot sign for is a
+                                # payment, however standard its shape, and no
+                                # descriptor is offered to call it change.
+                                is_presumed_change = False
+                            elif (self.multisig_descriptor is not None
                                     and self._descriptor_owns_output(self.multisig_descriptor, i)):
                                 is_presumed_change = True
                             else:
@@ -2065,10 +2073,20 @@ class PSBTParser():
         that output's cosigners fail to resolve, and the output then stops matching the
         inputs' policy. Shape comes from the scriptPubKey and the supplied script, and the
         caller proves ownership rather than assuming it.
+
+        A script-hash policy with no m-of-n has no shape to compare: its script was not
+        supplied, or is not a multisig, and _get_policy recorded only the type. Two such
+        policies would match however different their scripts, and the caller can only
+        prove ownership of an m-of-n. A key's bytes appearing in the script is no proof:
+        `<our key> OP_DROP <their key> OP_CHECKSIG` pushes our key only to throw it away.
+        So such a policy matches nothing, and the output is an external spend.
         """
         for field in ("type", "m", "n"):
             if policy_a.get(field) != policy_b.get(field):
                 return False
+
+        if policy_a.get("type") in ("p2wsh", "p2sh-p2wsh", "p2sh") and "m" not in policy_a:
+            return False
 
         return True
 
