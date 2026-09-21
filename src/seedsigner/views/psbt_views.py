@@ -98,6 +98,28 @@ def account_path_for_inputs(psbt, master_fingerprint: bytes = None) -> list[int]
     return unnamed
 
 
+def build_psbt_parser(controller, settings, **key_material) -> PSBTParser:
+    """The parser for the controller's psbt, given the key material to parse with.
+
+    Everything else comes from the controller and the settings: the network,
+    the loaded multisig descriptor, and the clock the far-future locktime check
+    dates a psbt by. The card parsers are built in the signer menu and the
+    overview keeps them, and they were built there with the network alone: a
+    lock the seed flow warned about went unmentioned when a card signed. One
+    builder for every parse, so the argument lists cannot drift apart again.
+    """
+    from seedsigner.controller import Controller
+
+    return PSBTParser(
+        controller.psbt,
+        network=settings.get_value(SettingsConstants.SETTING__NETWORK),
+        reference_time=getattr(controller, "psbt_source_time", None),
+        block_anchor=(Controller.RELEASE_BLOCK_HEIGHT, Controller.RELEASE_BLOCK_TIME),
+        multisig_descriptor=controller.multisig_wallet_descriptor,
+        **key_material,
+    )
+
+
 class PSBTSelectSeedView(View):
     SCAN_SEED = ButtonOption("Scan a seed", SeedSignerIconConstants.QRCODE)
     SATOCHIP = ButtonOption("Use Satochip card", SeedSignerIconConstants.FINGERPRINT)
@@ -388,13 +410,12 @@ class PSBTSelectSeedView(View):
                 root_key = HDKey.from_base58(account_xpub)
 
                 try:
-                    self.controller.psbt_parser = PSBTParser(
-                        self.controller.psbt,
+                    self.controller.psbt_parser = build_psbt_parser(
+                        self.controller, self.settings,
                         seed=None,
                         root=root_key,
                         root_path=account_path,
                         master_fingerprint=master_fp,
-                        network=network,
                     )
                 except InvalidPSBTError as e:
                     # A deliberate refusal. Card signing gets the same screens as
@@ -828,11 +849,7 @@ def seedless_multisig_parser(controller, settings) -> PSBTParser:
     the card holds the key, so there is no BIP32 tree here. Change can then only be
     identified by the loaded descriptor, if any. Raises InvalidPSBTError on refusal.
     """
-    parser = PSBTParser(
-        controller.psbt,
-        network=settings.get_value(SettingsConstants.SETTING__NETWORK),
-        multisig_descriptor=controller.multisig_wallet_descriptor,
-    )
+    parser = build_psbt_parser(controller, settings)
     parser.parse()
     return parser
 
@@ -865,14 +882,9 @@ class PSBTOverviewView(View):
                 return
 
             try:
-                from seedsigner.controller import Controller as _Controller
-                self.controller.psbt_parser = PSBTParser(
-                    self.controller.psbt,
+                self.controller.psbt_parser = build_psbt_parser(
+                    self.controller, self.settings,
                     seed=self.controller.psbt_seed,
-                    network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
-                    reference_time=getattr(self.controller, "psbt_source_time", None),
-                    block_anchor=(_Controller.RELEASE_BLOCK_HEIGHT, _Controller.RELEASE_BLOCK_TIME),
-                    multisig_descriptor=self.controller.multisig_wallet_descriptor,
                     **(card_keys or {}),
                 )
                 if not self.controller.psbt_parser.parsed:
