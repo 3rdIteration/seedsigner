@@ -91,6 +91,14 @@ def patch_environment(monkeypatch, commands, on_seedsigner_os=True, dd_returncod
 
     monkeypatch.setattr(os, "listdir", fake_listdir)
 
+    # What the views tell Settings about the card goes on the same list, so a
+    # test can see when it happened.
+    monkeypatch.setattr(Settings, "flush_save",
+                        lambda self: commands.append(["Settings.flush_save"]))
+    monkeypatch.setattr(Settings, "handle_microsd_state_change", staticmethod(
+        lambda action: commands.append(["Settings.handle_microsd_state_change", action])
+    ))
+
     def fake_run(cmd, *args, **kwargs):
         commands.append(cmd)
         if cmd[0] == "cp":

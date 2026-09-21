@@ -9,6 +9,7 @@ import sys
 
 import pytest
 
+from seedsigner.hardware.microsd import MicroSD
 from seedsigner.views import microsd_views
 
 from test_microsd_device_guard import (
@@ -484,3 +485,47 @@ class TestNothingIsWrittenUnderAMountedCard(BaseTest):
         copy = next(i for i, cmd in enumerate(commands) if cmd[0] == "cp")
         first_umount = next(i for i, cmd in enumerate(commands) if "umount" in cmd)
         assert copy < first_umount, commands
+
+
+class TestSettingsFollowTheCard(BaseTest):
+    """
+    Settings hears from mdev when a card is pulled out, and from nobody when
+    the app unmounts one itself. Persistent Settings then stayed on offer with
+    nowhere to save to, and a save still waiting landed after the card had
+    gone.
+    """
+
+    @staticmethod
+    def told_removed(commands):
+        return [
+            i for i, cmd in enumerate(commands)
+            if cmd == ["Settings.handle_microsd_state_change", MicroSD.ACTION__REMOVED]
+        ]
+
+    @pytest.mark.parametrize("view_cls,on_seedsigner_os", RAW_WRITERS)
+    def test_settings_are_saved_before_and_told_after(self, monkeypatch, tmp_path, view_cls, on_seedsigner_os):
+        commands = []
+        patch_environment(monkeypatch, commands, on_seedsigner_os=on_seedsigner_os)
+        fake_kernel(monkeypatch, tmp_path, SEEDSIGNER_OS_MOUNTS, SEEDSIGNER_OS_LOOPS)
+        monkeypatch.setattr(microsd_views, "find_sd_card_device", lambda: SD_DEV)
+        view, _ = build_view(monkeypatch, view_cls)
+
+        view.run()
+
+        umounts = [i for i, cmd in enumerate(commands) if "umount" in cmd]
+        flushed = commands.index(["Settings.flush_save"])
+        assert flushed < umounts[0], commands
+        assert [i for i in self.told_removed(commands) if i > umounts[-1]], commands
+        assert max(self.told_removed(commands)) < writes(commands)[0], commands
+
+    def test_settings_are_told_when_the_card_came_off_and_is_still_refused(self, monkeypatch, tmp_path):
+        # /mnt/microsd is no longer a mountpoint, whatever the kernel still
+        # holds, so Settings has no card to save to either way.
+        commands = []
+        patch_environment(monkeypatch, commands)
+        fake_kernel(monkeypatch, tmp_path, SEEDSIGNER_OS_MOUNTS, SEEDSIGNER_OS_LOOPS,
+                    claimed={f"{SD_DEV}p1"})
+
+        assert microsd_views.unmount_card(SD_DEV) is False
+        assert unmounted(commands) == ["/mnt/diy", "/mnt/microsd"], commands
+        assert self.told_removed(commands), commands

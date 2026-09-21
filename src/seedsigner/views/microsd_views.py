@@ -319,16 +319,24 @@ def unmount_card(device: str) -> bool:
         logger.info("%s is in use by something no mount shows", device)
         return False
 
-    for mountpoint, is_loop in holding:
-        cmd = Settings.SU_COMMAND_PREFIX.split() + ["umount", mountpoint]
-        if is_loop:
-            # Free the loop device as well: while it stays bound it keeps its
-            # file open, and that file is on the card.
-            cmd.insert(-1, "-d")
-        data = run(cmd, capture_output=True, text=True)
-        logger.info(data)
-        if data.returncode != 0:
-            return False
+    # mdev tells Settings when a card is pulled out, and nobody tells it when
+    # the card is unmounted here. So a save still waiting goes to the card
+    # first, and Settings then hears what it would have heard from mdev,
+    # whether or not everything came off.
+    Settings.get_instance().flush_save()
+    try:
+        for mountpoint, is_loop in holding:
+            cmd = Settings.SU_COMMAND_PREFIX.split() + ["umount", mountpoint]
+            if is_loop:
+                # Free the loop device as well: while it stays bound it keeps
+                # its file open, and that file is on the card.
+                cmd.insert(-1, "-d")
+            data = run(cmd, capture_output=True, text=True)
+            logger.info(data)
+            if data.returncode != 0:
+                return False
+    finally:
+        Settings.handle_microsd_state_change(MicroSD.ACTION__REMOVED)
 
     # umount can succeed and leave the filesystem up: an overlay keeps its own
     # copy of each layer's mount, another mount namespace its own copy of the
