@@ -21,6 +21,7 @@ from seedsigner.models.settings import Settings
 from seedsigner.models.settings import SettingsConstants
 from seedsigner.models.singleton import Singleton
 from seedsigner.models.threads import BaseThread
+from seedsigner.models.wif import WIFKey
 from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.views.screensaver import ScreensaverScreen
 from seedsigner.views.view import Destination, View
@@ -584,6 +585,10 @@ class Controller(Singleton):
                 if next_destination.View_cls == MainMenuView:
                     # Home always wipes the back_stack
                     self.clear_back_stack()
+
+                    # A WIF or BIP38 key never enters SeedStorage: once the
+                    # psbt state below drops it, nothing else can zero it.
+                    self.wipe_psbt_wif_keys()
                     
                     # Home always wipes the back_stack/state of temp vars
                     self.resume_main_flow = None
@@ -933,6 +938,22 @@ class Controller(Singleton):
             wipe_value(secret)
         if connector is not None:
             connector.pin = None
+
+
+    def wipe_psbt_wif_keys(self):
+        """Zero any WIF key the psbt flow holds, in psbt_seed or in the parser.
+
+        Back from the overview and a signature that did not verify clear
+        psbt_seed alone, so the parser can be the last holder. A stored seed
+        is left alone: it outlives the flow, and an XprvSeed shares its root
+        key with the parser.
+        """
+        for signer in (self.psbt_seed, getattr(self.psbt_parser, "seed", None)):
+            if isinstance(signer, WIFKey):
+                try:
+                    signer.wipe()
+                except Exception:
+                    logger.debug("Error wiping a WIF key", exc_info=True)
 
 
     def handle_exception(self, e) -> Destination:

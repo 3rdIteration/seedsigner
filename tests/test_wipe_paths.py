@@ -1,6 +1,6 @@
 # pylint: disable=missing-function-docstring
 # Must import base before any seedsigner modules
-from base import BaseTest
+from base import BaseTest, FlowStep, FlowTest
 
 from seedsigner.models.seed import Slip39Seed, XprvSeed
 from seedsigner.models.seed_storage import SeedStorage
@@ -498,6 +498,61 @@ class TestWipeTimerSurvivesAFailedWipe(BaseTest):
 
         assert not runner.is_alive()
         assert wipes == [0, 1]
+
+
+class TestHomeZeroesWifSigningKeys(FlowTest):
+    """A WIF key never enters SeedStorage. Home ends its flow and drops it."""
+
+    def test_home_zeroes_a_wif_psbt_seed(self):
+        from seedsigner.models.wif import WIFKey
+        from seedsigner.views.view import MainMenuView
+
+        key = WIFKey(fresh(WIF))
+        secret = key.privkey._secret
+        self.controller.psbt_seed = key
+
+        self.run_sequence([FlowStep(MainMenuView)])
+
+        assert self.controller.psbt_seed is None
+        assert key.wif == ""
+        assert secret == bytes(len(secret))
+
+    def test_home_zeroes_a_wif_key_only_the_parser_holds(self):
+        from seedsigner.models.psbt_parser import PSBTParser
+        from seedsigner.models.wif import WIFKey
+        from seedsigner.views.view import MainMenuView
+
+        key = WIFKey(fresh(WIF))
+        secret = key.privkey._secret
+        parser = PSBTParser(None, seed=key)
+        parser._set_root()
+        self.controller.psbt_seed = None
+        self.controller.psbt_parser = parser
+
+        self.run_sequence([FlowStep(MainMenuView)])
+
+        assert key.wif == ""
+        assert secret == bytes(len(secret))
+
+    def test_home_leaves_a_stored_seed_intact(self):
+        # A stored seed outlives the psbt flow. An XprvSeed hands the parser
+        # its own root, so zeroing the parser's root here would break it.
+        from seedsigner.models.psbt_parser import PSBTParser
+        from seedsigner.views.view import MainMenuView
+
+        seed = XprvSeed(fresh(XPRV))
+        secret = seed._root.key._secret
+        original = bytes(bytearray(secret))
+        parser = PSBTParser(None, seed=seed)
+        parser._set_root()
+        self.controller.storage.seeds.append(seed)
+        self.controller.psbt_seed = seed
+        self.controller.psbt_parser = parser
+
+        self.run_sequence([FlowStep(MainMenuView)])
+
+        assert seed._xprv == XPRV
+        assert secret == original
 
 
 class TestWifKeyWipe(BaseTest):
