@@ -329,8 +329,14 @@ def release_modulus(folder):
 # --- shared finishing steps ---------------------------------------------------
 
 def _write(path, buf):
+    # fsync before the view reports success: without it the data can still be in
+    # the page cache when the user pulls the card (the result screen is the cue),
+    # and FAT then keeps a directory entry whose clusters never reached flash -
+    # Windows reads such files back as "Invalid argument".
     with open(path, "wb") as f:
         f.write(bytes(buf))
+        f.flush()
+        os.fsync(f.fileno())
 
 
 def _fix_update_scripts(folder, report):
@@ -653,9 +659,14 @@ def sign_digests(card_root, rsa_key=None, ed25519_seed=None, stored_key_id=None)
     needed when the card carries a digest for its tiers. RSA signatures use the
     deterministic salt, so signing the same digest twice is byte-identical.
 
+    The public halves of whatever keys were used are written into the folder as
+    release-rsa.pub / release-rootfs.pub (same names and formats as Export
+    Pubkeys), so the card carries everything `airgap-sign.py splice` needs to
+    verify and splice - no separate key export or copy step.
+
     Returns a ResignReport: one entry per file signed; a wrong-sized digest is
     reported as skipped with its size, and nothing on the card is touched except
-    the .sig / .minisig files written here.
+    the .sig / .minisig files and public keys written here.
     """
     rk, _fs, ms, _lr = _tools()
     digest_dir = find_digest_dir(card_root)
@@ -675,6 +686,7 @@ def sign_digests(card_root, rsa_key=None, ed25519_seed=None, stored_key_id=None)
     report = ResignReport()
     n, d = rsa_numbers(rsa_key) if rsa_key is not None else (None, None)
     key_id = ed25519_key_id(ed25519_seed, stored_key_id) if ed25519_seed is not None else None
+    signed_tiers = set()
 
     for name in sorted(names):
         path = names[name]
@@ -708,11 +720,27 @@ def sign_digests(card_root, rsa_key=None, ed25519_seed=None, stored_key_id=None)
             report.skip(name + ".digest", str(e))
             continue
         _write(out_path, value)
+        signed_tiers.add(tier)
         if tier == "minisign":
             report.add(name + ".minisig", "Ed25519 over the 64-byte prehash (key %s)"
                        % ed25519_key_id_text(ed25519_seed, stored_key_id))
         else:
             report.add(name + ".sig", "RSA-2048 PSS over the 32-byte digest")
+
+    # The public halves go back on the card too, so `airgap-sign.py splice` can
+    # verify everything from the folder alone. Same names/formats as Export
+    # Pubkeys; only written for tiers that actually produced a signature.
+    if {"ldr", "fit"} & signed_tiers:
+        pem = rsa_key.publickey().export_key(format="PEM")
+        _write(os.path.join(digest_dir, "release-rsa.pub"), pem + b"\n")
+        report.add("release-rsa.pub", "RSA public key (fingerprint %s)"
+                   % rsa_modulus_fingerprint(n)[:16])
+    if "minisign" in signed_tiers:
+        pk = ms.ed25519_public(ed25519_seed)
+        _write(os.path.join(digest_dir, "release-rootfs.pub"),
+               ms.format_pubkey(key_id, pk))
+        report.add("release-rootfs.pub", "Ed25519 public key (id %s)"
+                   % ed25519_key_id_text(ed25519_seed, stored_key_id))
     return report
 
 

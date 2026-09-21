@@ -644,7 +644,10 @@ def test_sign_digests_roundtrip_all_tiers(tmp_path, new_key):
 
     report = rr.sign_digests(str(tmp_path), new_key, ED_SEED)
     assert report.ok
-    assert set(dict(report.signed)) == {"download.sig", "boot.sig", "rootfs.minisig"}
+    # the public halves come back on the card too (see below); nothing else is written
+    assert set(dict(report.signed)) == {
+        "download.sig", "boot.sig", "rootfs.minisig",
+        "release-rsa.pub", "release-rootfs.pub"}
 
     # tier A verifies little-endian against the loader digest
     sig = (digests / "download.sig").read_bytes()
@@ -667,6 +670,42 @@ def test_sign_digests_roundtrip_all_tiers(tmp_path, new_key):
     assert ms.ed25519_verify(pk, digest, msig["sig"])
     assert ms.ed25519_verify(pk, msig["sig"] + msig["trusted_comment"].encode(),
                              msig["global_sig"])
+
+    # the public halves come back on the card too, so the PC can verify from the
+    # folder alone: same names/formats as Export Pubkeys
+    from Cryptodome.PublicKey import RSA
+    rsa_pub = RSA.import_key((digests / "release-rsa.pub").read_bytes())
+    assert int(rsa_pub.n) == n
+    rootfs_pub = lr.parse_pubkey_bytes((digests / "release-rootfs.pub").read_bytes())
+    assert rootfs_pub["pk"] == pk and rootfs_pub["key_id"] == msig["key_id"]
+
+
+def test_sign_digests_writes_only_the_keys_it_used(tmp_path, new_key):
+    """Each public key is written only when its tier actually produced a signature."""
+    def card(name):
+        root = tmp_path / name
+        d = _digest_dir(root)
+        return root, d
+
+    # tier C only -> only the Ed25519 half goes back on the card
+    root, digests = card("c-rootfs")
+    (digests / "rootfs.digest").write_bytes(b"\x22" * 64)
+    rr.sign_digests(str(root), new_key, ED_SEED)
+    assert (digests / "release-rootfs.pub").exists()
+    assert not (digests / "release-rsa.pub").exists()
+
+    # tier A only -> only the RSA half
+    root, digests = card("c-ldr")
+    (digests / "download.digest").write_bytes(b"\x11" * 32)
+    rr.sign_digests(str(root), new_key, ED_SEED)
+    assert (digests / "release-rsa.pub").exists()
+    assert not (digests / "release-rootfs.pub").exists()
+
+    # a digest that is refused does not count as signed: no key for it either
+    root, digests = card("c-bad")
+    (digests / "download.digest").write_bytes(b"\x11" * 64)     # wrong size -> skipped
+    rr.sign_digests(str(root), new_key, ED_SEED)
+    assert not (digests / "release-rsa.pub").exists()
 
 
 def test_sign_digests_is_deterministic(tmp_path, new_key):

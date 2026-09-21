@@ -83,15 +83,22 @@ def _low_memory_line(hint=""):
 
     Reads the kernel's own /proc/meminfo via helpers.system_memory, which never
     raises and degrades to None on a desktop/CI host without /proc - there the
-    check is simply skipped. `hint` is one action-specific sentence."""
+    check is simply skipped. `hint` is one action-specific sentence. The app's
+    own RSS (current + high-water mark) goes in too: on a 64 MB board that says
+    how much of "free" the app itself will keep, and it is what to compare
+    against after a hardware run when tuning RESIGN_MIN_AVAILABLE_KB."""
     from seedsigner.helpers import system_memory
 
     stats = system_memory.get_memory_stats()
     if stats.available_kb is None or stats.available_kb >= RESIGN_MIN_AVAILABLE_KB:
         return ""
-    line = _("Low memory: {free} free of {total}.").format(
+    line = _("Low memory: {free} free of {total}, app using {rss}.").format(
                  free=system_memory.format_kb(stats.available_kb),
-                 total=system_memory.format_kb(stats.total_kb))
+                 total=system_memory.format_kb(stats.total_kb),
+                 rss=system_memory.format_kb(stats.app_rss_kb))
+    if stats.app_peak_rss_kb is not None and stats.app_peak_rss_kb > (stats.app_rss_kb or 0):
+        line += " " + _("Peak so far: {peak}.").format(
+            peak=system_memory.format_kb(stats.app_peak_rss_kb))
     if hint:
         line += " " + hint
     return line
@@ -810,7 +817,10 @@ class ToolsSignDigestRunView(_FlowView):
             _("Take the card back to the PC and run `airgap-sign.py splice`.")
         if not report.ok:
             return self.refuse(text)
-        return self.result(text, finish="back")
+        # finish="main", NOT "back": popping back would land on this view again,
+        # re-derive the keys and sign the same digests in a loop. The card goes
+        # to the PC next anyway, so the main menu is where the user belongs.
+        return self.result(text)
 
 
 """****************************************************************************
