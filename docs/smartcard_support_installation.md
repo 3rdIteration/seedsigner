@@ -16,7 +16,7 @@ This SeedSigner fork now supports the SEC1210 Serial Smart Card reader, connecte
 
 ![](img/smartcard_hats.jpg)
 
-[The schematics and design files for these can be found in this repository](../electronics/SmartcardHat/)
+[The schematics and design files for these can be found in this repository](https://github.com/3rdIteration/seedsigner/tree/dev/electronics/SmartcardHat)
 
 [You can also buy these ready-made from my store](https://cryptoguide.tips/shop/)
 
@@ -49,7 +49,7 @@ You can simply download any of the releases from this repository and flash them 
 ### Manual Build
 Alternatively, if you want to do a manual build...
 
-The following guide assumes that you have completed the [Manual Installation guide...](./manual_installation.md)
+The following guide assumes that you have completed the [Raspberry Pi OS build instructions](./raspberry_pi_os_build_instructions.md) (or the [development device setup](./dev_device_setup_instructions.md)).
 
 ### SeedSigner with SeedKeeper Support
 You will need to clone this repository in the place of the existing seedsigner folder in `/home/pi/seedsigner`
@@ -172,6 +172,9 @@ You will notice that there is a menu option to `Start PN532(PN532)` under the to
 
 Applet management operations (Installing, uninstalling, etc) often terminate the `idfnfc` process after completing, so if you can no longer do SeedKeeper operations like change PIN, load or save secrets, immediatly after flashing the applet, then this is likely why. (Just re-run the `ifdnfc-activate` process I mention above, restart the app and it should work fine)
 
+> The current menus no longer contain a **Start PN532** item: SeedSigner restarts the
+> PN532 stack itself after applet-management operations.
+
 ### Python Bindings for LibNFC (Optional: Useful for Debugging the PN532 NFC)
 
 Install some additional build packages
@@ -198,7 +201,9 @@ You just need to install openjdk-8-jdk and Apache Ant
 
 Follow the guide here: https://github.com/3rdIteration/Satochip-DIY
 
-_The applet management (install/uninstall) in the SeedSigner menu assume that the Satochip-DIY repository was cloned into /home/pi/Satochip-DIY and built as per the guide in the repository._
+_Applet management (install/uninstall) uses the bundled `pygp` module and does not need `gp.jar`. Building applets from source expects a `Satochip-DIY` checkout at `/mnt/diy/Satochip-DIY` (SeedSigner OS), `/home/pi/Satochip-DIY` (development boards), or `~/Satochip-DIY`, built as per the guide in that repository._
+
+> See [Bundled JavaCard Applets](./javacard_applets.md) for the full list of applets, what each does, and which to install._
 
 ### Javacard Build Environment (Optional: Needed to build SeedKeeper from Source)
 
@@ -285,11 +290,9 @@ It's possible that when you run `Start OpenCT(SIM)` that this command will fail 
 _Adapted from https://timesinker.blogspot.com/2016/04/using-cheap-sim-card-readers.html_
 
 ### Seedkeeper Capacity
-The commands that the menu items run prompt you to choose how much storage to allocate (4KB, 8KB, 16KB, 32KB, or 64KB). The default selection remains 8KB, which corresponds to the `--params 1FFF` flag that will be passed to the installer:
+The **Install Applet** flow prompts you to choose how much storage to allocate (4KB, 8KB, 16KB, 32KB, or 64KB). The default selection is 8KB. On the wire these are the applet install parameters `0FFF`, `1FFF`, `3FFF`, `7FFF` and `FFFF` respectively; the bundled applets are installed by `pygp`, so there is no `gp.jar` command to run by hand.
 
-    java -jar /home/pi/Satochip-DIY/gp.jar --install /home/pi/Satochip-DIY/build/SeedKeeper-official-3.0.4.cap --params 1FFF
-
-    java -jar /home/pi/Satochip-DIY/gp.jar --uninstall /home/pi/Satochip-DIY/build/SeedKeeper-official-3.0.4.cap
+> **SeedKeeper v0.1 ignores these parameters.** It hard-codes a 4 KB object memory regardless of the size chosen. See [Bundled JavaCard Applets](./javacard_applets.md#seedkeeper-v01-legacy) and [`tests/javacard-cap-legacy/README.md`](https://github.com/3rdIteration/seedsigner/blob/dev/tests/javacard-cap-legacy/README.md).
 
 #### Applet v0.1 ignores `--params`
 

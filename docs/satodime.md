@@ -6,6 +6,8 @@ slot's deposit address and send funds to it, and the key only becomes visible wh
 *unseal* the slot, which is a one-way operation the card records. Whoever holds the card
 holds the coins.
 
+Official Satochip documentation: [satochip.io/quick-start](https://satochip.io/quick-start/).
+
 SeedSigner reads slots, seals and unseals them, and can sign a Bitcoin transaction with
 an unsealed key. Everything here is designed to agree byte-for-byte with the official
 [Satodime apps](https://github.com/Toporin/Satodime-Android), so a card set up on one

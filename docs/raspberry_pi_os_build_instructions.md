@@ -262,4 +262,4 @@ Please remember that it can take up to a minute for the GUI to appear when power
 
 
 ### Optional: Run the tests
-see: [tests/README.md](../tests/README.md)
+see: [tests/README.md](https://github.com/3rdIteration/seedsigner/blob/dev/tests/README.md)
