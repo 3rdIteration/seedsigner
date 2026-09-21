@@ -356,6 +356,43 @@ def refuse_without_card(view: View, text: str) -> Destination:
     return Destination(MainMenuView)
 
 
+def dd_succeeded(data, wipe: bool = False) -> bool:
+    """
+    True when a dd that wrote to the card did everything it was asked to.
+
+    It must exit cleanly: the record counts alone do not say, since dd
+    reports every record it wrote even when it then fails.
+    A wipe is the exception. It writes what it was asked to or until the
+    card is full, and a full card makes dd fail with "No space left on
+    device" once the job is done. Every record read must also have been
+    written.
+    """
+    filled = wipe and "No space left on device" in data.stderr
+    if data.returncode != 0 and not filled:
+        return False
+
+    records_in, records_out = 1, 0
+    for line in data.stderr.split("\n"):
+        if "records in" in line:
+            records_in = line.split("+")[0]
+        elif "records out" in line:
+            records_out = line.split("+")[0]
+    # A full card stops dd partway through a record
+    return filled or records_in == records_out
+
+
+def run_dd(cmd):
+    """
+    Run a dd whose report dd_succeeded() reads, in English whatever the locale.
+
+    GNU dd translates its record counts and errors, and sudo passes the
+    caller's locale through, so on a host set to any other language a good
+    write read as a failed one.
+    """
+    from subprocess import run
+    return run(cmd, capture_output=True, text=True, env={**os.environ, "LC_ALL": "C"})
+
+
 class ToolsMicroSDMenuView(View):
     FLASH_IMAGE = ButtonOption("Flash Image")
     VERIFY_IMAGE = ButtonOption("Verify MicroSD")
@@ -477,7 +514,7 @@ class ToolsMicroSDFlashView(View):
             image_path = os.path.join(images_dir, microsd_image)
             data = run(['cp', image_path, '/tmp/img.img'], capture_output=True, text=True)
             logger.info(data)
-            if len(data.stderr) > 1:
+            if data.returncode != 0 or len(data.stderr) > 1:
                 self.run_screen(
                     WarningScreen,
                     title="Error",
@@ -514,28 +551,18 @@ class ToolsMicroSDFlashView(View):
             if not Settings.is_seedsigner_os():
                 dd_cmd = ["sudo"] + dd_cmd
 
-            data = run(dd_cmd, capture_output=True, text=True)
+            data = run_dd(dd_cmd)
             logger.info(data)
 
-            # Then flash the image
-            data = run(["dd", "if=/tmp/img.img", f"of={microsd_dev}"], capture_output=True, text=True)
-            logger.info(data)
+            # Then flash the image, unless zeroing failed: then it is that
+            # failure that is reported.
+            if dd_succeeded(data):
+                data = run_dd(["dd", "if=/tmp/img.img", f"of={microsd_dev}"])
+                logger.info(data)
 
             self.loading_screen.stop()
 
-            data_stderr_split = data.stderr.split('\n')
-
-            inNum = 1
-            outNum = 0
-            for errorLine in data_stderr_split:
-                if "records in" in errorLine:
-                    inNum = errorLine.split("+")[0]
-                    continue
-                elif "records out" in errorLine:
-                    outNum = errorLine.split("+")[0]
-                    continue
-
-            if inNum != outNum:
+            if not dd_succeeded(data):
                 self.run_screen(
                     WarningScreen,
                     title="Error",
@@ -563,7 +590,12 @@ class ToolsMicroSDFlashView(View):
             # Copy first: the images are on /boot, and /boot can be on the
             # card that is about to be unmounted.
             image_path = os.path.join(images_dir, microsd_image)
-            run(['cp', image_path, '/tmp/img.img'], check=False)
+            data = run(['cp', image_path, '/tmp/img.img'], capture_output=True, text=True)
+            logger.info(data)
+            if data.returncode != 0:
+                # /tmp/img.img still holds whatever an earlier flash or Verify
+                # left there, and dd would write that to the card instead.
+                return refuse_without_card(self, "Could not copy the image. Nothing was written.")
 
             microsd_dev = find_sd_card_device()
             if microsd_dev is None:
@@ -572,7 +604,27 @@ class ToolsMicroSDFlashView(View):
             if not unmount_card(microsd_dev):
                 return refuse_without_card(self, "Could not unmount the MicroSD card. Nothing was written.")
 
-            run(['sudo', 'dd', f'if=/tmp/img.img', f'of={microsd_dev}'], check=False)
+            data = run_dd(['sudo', 'dd', f'if=/tmp/img.img', f'of={microsd_dev}'])
+            logger.info(data)
+
+            if not dd_succeeded(data):
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text=data.stderr,
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")]
+                )
+            else:
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Success",
+                    status_headline=None,
+                    text="MicroSD Flashed",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")]
+                )
 
         return Destination(MainMenuView)
 
@@ -622,7 +674,7 @@ class ToolsMicroSDVerifyView(View):
         dd_cmd = ["dd", f"if={microsd_dev}", "of=/tmp/img.img", "bs=1M", "count=26"]
         if not Settings.is_seedsigner_os():
             dd_cmd = ["sudo"] + dd_cmd
-        read = run(dd_cmd, capture_output=True, text=True)
+        read = run_dd(dd_cmd)
         logger.info(read)
 
         if read.returncode != 0:
@@ -728,28 +780,12 @@ class ToolsMicroSDWipeZeroView(View):
         if not Settings.is_seedsigner_os():
             dd_cmd = ["sudo"] + dd_cmd
 
-        data = run(dd_cmd, capture_output=True, text=True)
+        data = run_dd(dd_cmd)
         logger.info(data)
 
         self.loading_screen.stop()
 
-        data_stderr_split = data.stderr.split('\n')
-
-        inNum = 1
-        outNum = 0
-        for errorLine in data_stderr_split:
-            if "records in" in errorLine:
-                inNum = errorLine.split("+")[0]
-                continue
-            elif "records out" in errorLine:
-                outNum = errorLine.split("+")[0]
-                continue
-
-        # The number of in/out records won't match we just keep writing until the disk is full...
-        if "No space left on device" in data.stderr:
-            outNum = inNum
-
-        if inNum != outNum:
+        if not dd_succeeded(data, wipe=True):
             self.run_screen(
                 WarningScreen,
                 title="Error",
@@ -826,29 +862,12 @@ class ToolsMicroSDWipeRandomView(View):
         if not Settings.is_seedsigner_os():
             dd_cmd = ["sudo"] + dd_cmd
 
-        data = run(dd_cmd, capture_output=True, text=True)
+        data = run_dd(dd_cmd)
         logger.info(data)
 
         self.loading_screen.stop()
 
-        data_stderr_split = data.stderr.split('\n')
-
-        inNum = 1
-        outNum = 0
-        for errorLine in data_stderr_split:
-            if "records in" in errorLine:
-                inNum = errorLine.split("+")[0]
-                continue
-
-            if "records out" in errorLine:
-                outNum = errorLine.split("+")[0]
-                continue
-
-        # The number of in/out records won't match we just keep writing until the disk is full...
-        if "No space left on device" in data.stderr:
-            outNum = inNum
-
-        if inNum != outNum:
+        if not dd_succeeded(data, wipe=True):
             self.run_screen(
                 WarningScreen,
                 title="Error",

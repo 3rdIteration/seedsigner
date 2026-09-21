@@ -63,7 +63,8 @@ class DummyLoadingScreenThread:
         pass
 
 
-def patch_environment(monkeypatch, commands, on_seedsigner_os=True, dd_returncode=0):
+def patch_environment(monkeypatch, commands, on_seedsigner_os=True, dd_returncode=0,
+                      cp_returncode=0):
     """Make a MicroSD View runnable headlessly and record the commands it runs."""
     hostname = "seedsigner-os" if on_seedsigner_os else "testhost"
     monkeypatch.setattr(
@@ -94,6 +95,11 @@ def patch_environment(monkeypatch, commands, on_seedsigner_os=True, dd_returncod
         commands.append(cmd)
         if cmd[0] == "cp":
             # `cp` output is checked for errors; anything on stderr aborts a flash.
+            if cp_returncode != 0:
+                return SimpleNamespace(
+                    stdout="", stderr=f"cp: can't stat '{cmd[1]}': No such file or directory\n",
+                    returncode=cp_returncode,
+                )
             return SimpleNamespace(stdout="", stderr="", returncode=0)
         if cmd[0] == "sha256sum":
             return SimpleNamespace(stdout="0" * 64 + "  /tmp/img.img\n", stderr="", returncode=0)
@@ -389,7 +395,168 @@ class TestFlashOnADevHost(BaseTest):
         destination = view.run()
 
         assert_dd_targets(commands, SD_DEV)
+        assert screens.showed("MicroSD Flashed")
         assert destination.View_cls is MainMenuView
+
+    def test_a_failed_flash_is_reported(self, monkeypatch, tmp_path):
+        commands = []
+        patch_environment(monkeypatch, commands, on_seedsigner_os=False, dd_returncode=1)
+        fake_kernel(monkeypatch, tmp_path, mounts=[])
+        monkeypatch.setattr(microsd_views, "find_sd_card_device", lambda: SD_DEV)
+
+        view, screens = build_view(monkeypatch, microsd_views.ToolsMicroSDFlashView)
+
+        destination = view.run()
+
+        assert not screens.showed("MicroSD Flashed")
+        assert screens.showed("Input/output error")
+        assert destination.View_cls is MainMenuView
+
+    @pytest.mark.parametrize("on_seedsigner_os", [True, False])
+    def test_a_failed_copy_writes_nothing(self, monkeypatch, tmp_path, on_seedsigner_os):
+        # /tmp/img.img still holds whatever an earlier flash or Verify left
+        # there, and dd would write that to the card instead.
+        commands = []
+        patch_environment(monkeypatch, commands, on_seedsigner_os=on_seedsigner_os,
+                          cp_returncode=1)
+        fake_kernel(monkeypatch, tmp_path, mounts=[])
+        monkeypatch.setattr(microsd_views, "find_sd_card_device", lambda: SD_DEV)
+
+        view, screens = build_view(monkeypatch, microsd_views.ToolsMicroSDFlashView)
+
+        destination = view.run()
+
+        assert_no_dd(commands)
+        assert not screens.showed("MicroSD Flashed")
+        assert destination.View_cls is MainMenuView
+
+
+def fail_dd(monkeypatch, commands, which, stderr):
+    """Make each dd which(cmd) picks exit 1 with stderr; the rest run as before."""
+    run = subprocess.run
+
+    def failing_run(cmd, *args, **kwargs):
+        if "dd" in cmd and which(cmd):
+            commands.append(cmd)
+            return SimpleNamespace(stdout="", stderr=stderr, returncode=1)
+        return run(cmd, *args, **kwargs)
+
+    monkeypatch.setattr("subprocess.run", failing_run)
+
+
+# GNU dd when closing the card fails: every record went out, and it failed.
+DD_CLOSE_FAILED = (
+    f"dd: closing output file '{SD_DEV}': Input/output error\n" + DD_OK
+)
+
+
+# GNU dd on a host with a German locale: the same success, in other words.
+DD_OK_GERMAN = "64+0 Datensätze ein\n64+0 Datensätze aus\n"
+
+
+def localized_dd(monkeypatch):
+    """Make every dd report in German unless it runs with LC_ALL=C."""
+    run = subprocess.run
+
+    def localized_run(cmd, *args, **kwargs):
+        data = run(cmd, *args, **kwargs)
+        if "dd" in cmd and (kwargs.get("env") or {}).get("LC_ALL") != "C":
+            return SimpleNamespace(stdout=data.stdout, stderr=DD_OK_GERMAN, returncode=data.returncode)
+        return data
+
+    monkeypatch.setattr("subprocess.run", localized_run)
+
+
+class TestEveryStepIsChecked(BaseTest):
+    """
+    A flash or wipe succeeded only if every dd in it did. The zero pass that
+    starts a SeedSigner OS flash was never looked at, and the rest went by
+    dd's record counts alone.
+    """
+
+    def run_view(self, monkeypatch, tmp_path, view_cls, which, stderr, on_seedsigner_os=True):
+        commands = []
+        patch_environment(monkeypatch, commands, on_seedsigner_os=on_seedsigner_os)
+        fake_kernel(monkeypatch, tmp_path, mounts=[])
+        fail_dd(monkeypatch, commands, which, stderr)
+        monkeypatch.setattr(microsd_views, "find_sd_card_device", lambda: SD_DEV)
+        view, screens = build_view(monkeypatch, view_cls)
+        return view.run(), screens, commands
+
+    def test_a_failed_zero_pass_stops_the_flash(self, monkeypatch, tmp_path):
+        destination, screens, commands = self.run_view(
+            monkeypatch, tmp_path, microsd_views.ToolsMicroSDFlashView,
+            which=lambda cmd: "if=/dev/zero" in cmd,
+            stderr=f"dd: error writing '{SD_DEV}': Input/output error\n3+0 records in\n2+0 records out\n",
+        )
+
+        assert not any("if=/tmp/img.img" in cmd for cmd in commands), commands
+        assert not screens.showed("MicroSD Flashed")
+        assert screens.showed("Input/output error")
+        assert destination.View_cls is MainMenuView
+
+    @pytest.mark.parametrize("on_seedsigner_os", [True, False])
+    def test_a_flash_whose_dd_failed_is_not_flashed(self, monkeypatch, tmp_path, on_seedsigner_os):
+        destination, screens, _ = self.run_view(
+            monkeypatch, tmp_path, microsd_views.ToolsMicroSDFlashView,
+            which=lambda cmd: "if=/tmp/img.img" in cmd, stderr=DD_CLOSE_FAILED,
+            on_seedsigner_os=on_seedsigner_os,
+        )
+
+        assert not screens.showed("MicroSD Flashed")
+        assert screens.showed("Input/output error")
+        assert destination.View_cls is MainMenuView
+
+    @pytest.mark.parametrize("on_seedsigner_os", [True, False])
+    @pytest.mark.parametrize(
+        "view_cls",
+        [microsd_views.ToolsMicroSDWipeZeroView, microsd_views.ToolsMicroSDWipeRandomView],
+    )
+    def test_a_wipe_whose_dd_failed_is_not_wiped(self, monkeypatch, tmp_path, view_cls, on_seedsigner_os):
+        destination, screens, _ = self.run_view(
+            monkeypatch, tmp_path, view_cls,
+            which=lambda cmd: True, stderr=DD_CLOSE_FAILED, on_seedsigner_os=on_seedsigner_os,
+        )
+
+        assert not screens.showed("MicroSD Wiped")
+        assert screens.showed("Input/output error")
+        assert destination.View_cls is MainMenuView
+
+    @pytest.mark.parametrize(
+        "view_cls",
+        [microsd_views.ToolsMicroSDWipeZeroView, microsd_views.ToolsMicroSDWipeRandomView],
+    )
+    def test_a_wipe_that_fills_the_card_is_wiped(self, monkeypatch, tmp_path, view_cls):
+        # Writing until the card is full ends the only way it can: dd fails
+        # with no space left.
+        _, screens, _ = self.run_view(
+            monkeypatch, tmp_path, view_cls, which=lambda cmd: True,
+            stderr=f"dd: error writing '{SD_DEV}': No space left on device\n"
+                   "15193+0 records in\n15192+1 records out\n",
+        )
+
+        assert screens.showed("MicroSD Wiped")
+
+
+    @pytest.mark.parametrize("view_cls, on_seedsigner_os, done", [
+        (microsd_views.ToolsMicroSDFlashView, True, "MicroSD Flashed"),
+        (microsd_views.ToolsMicroSDFlashView, False, "MicroSD Flashed"),
+        (microsd_views.ToolsMicroSDWipeZeroView, True, "MicroSD Wiped"),
+        (microsd_views.ToolsMicroSDWipeRandomView, True, "MicroSD Wiped"),
+    ])
+    def test_dd_is_read_whatever_the_locale(self, monkeypatch, tmp_path, view_cls, on_seedsigner_os, done):
+        # GNU dd translates its report, and sudo keeps the caller's locale:
+        # read in any other language, a good write looked like a failed one.
+        commands = []
+        patch_environment(monkeypatch, commands, on_seedsigner_os=on_seedsigner_os)
+        fake_kernel(monkeypatch, tmp_path, mounts=[])
+        localized_dd(monkeypatch)
+        monkeypatch.setattr(microsd_views, "find_sd_card_device", lambda: SD_DEV)
+        view, screens = build_view(monkeypatch, view_cls)
+
+        view.run()
+
+        assert screens.showed(done)
 
 
 class TestBlankCardIsStillACard(BaseTest):
