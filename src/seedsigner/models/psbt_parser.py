@@ -1470,10 +1470,8 @@ class PSBTParser():
                             # Seedless pre-parse (the smartcard multisig flow) or
                             # WIF/BIP38 signing: there is no BIP32 tree to prove this
                             # seed's participation with. The rebuilt script already
-                            # matched the output's scriptPubKey, so the output is taken
-                            # as change provisionally, exactly as the fork classified it
-                            # before ownership proofs were added. The descriptor check in
-                            # PSBTChangeDetailsView is what verifies it.
+                            # matched the output's scriptPubKey, so the output is a
+                            # candidate for change, and no more than that.
                             is_presumed_change = True
 
                             if self.root is not None and not PSBTParser._multisig_script_contains_key(multisig_script, self.root.get_public_key()):
@@ -1483,6 +1481,21 @@ class PSBTParser():
                                 # answered: a multisig this key cannot sign for is a
                                 # payment, however standard its shape.
                                 is_presumed_change = False
+
+                            if is_presumed_change:
+                                # Nothing derivable ties the script's other keys to the
+                                # inputs' wallet. Any cosigners the psbt's global xpubs
+                                # resolve are the word of whoever wrote the psbt, and a
+                                # different wallet sharing our key -- the same m-of-n
+                                # with one cosigner swapped for an attacker's -- looks
+                                # identical; in a 1-of-2 it is one the attacker alone
+                                # can spend. So it stays a payment unless the known-good
+                                # descriptor the user loaded identifies it, which is the
+                                # whole point of the card's multisig flow;
+                                # PSBTIdentifyChangeView offers to load one.
+                                if self.multisig_descriptor is None or not self._descriptor_owns_output(self.multisig_descriptor, i):
+                                    is_presumed_change = False
+                                    self.unidentified_change_outputs.append(i)
 
                         elif verified_derivation_path is None:
                             # No entry claimed this seed's fingerprint, but we already

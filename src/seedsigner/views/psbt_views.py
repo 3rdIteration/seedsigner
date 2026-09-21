@@ -286,29 +286,18 @@ class PSBTSelectSeedView(View):
                 logger.debug("Unable to determine PSBT policy", exc_info=exc)
 
             if is_multisig_psbt:
-                try:
-                    parser = PSBTParser(
-                        psbt,
-                        network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
-                    )
-                    parser.parse()
-                except Exception as e:
-                    logger.exception("Failed to parse PSBT with %s data", card_label)
-                    self.run_screen(
-                        WarningScreen,
-                        title="Failed",
-                        status_headline=None,
-                        text=str(e),
-                    )
-                    return Destination(PSBTSelectSeedView, clear_history=True)
-
-                self.controller.psbt_parser = parser
+                # Leave the parser to PSBTOverviewView, the one place that builds
+                # it with the loaded descriptor, the network and the clock. With
+                # no key to derive from, the descriptor is all that can identify
+                # change, and a copy built here without it was kept by the
+                # overview: a descriptor loaded earlier then identified nothing.
+                self.controller.psbt_parser = None
                 self.controller.psbt_seed = None
                 self.controller.psbt_sign_with_satochip = True
-                # Built with no key material on purpose: a multisig is reviewed
-                # against its descriptor, not against one cosigner's xpub. Say so
-                # rather than leaving it unset, so a later rebuild reproduces this
-                # parser instead of refusing for want of a card key.
+                # No key material on purpose: a multisig is reviewed against its
+                # descriptor, not against one cosigner's xpub. Say so rather than
+                # leaving it unset, so the overview parses without a card key
+                # instead of refusing for want of one.
                 self.controller.psbt_card_keys = {}
                 return Destination(PSBTOverviewView)
 
@@ -958,7 +947,10 @@ class PSBTIdentifyChangeView(View):
         if self.controller.multisig_wallet_descriptor:
             # TRANSLATOR_NOTE: A loaded multisig descriptor did not match an output that looked like change
             text = _("The loaded descriptor doesn't identify it. Shown as a payment.")
-            button_data = [self.CONTINUE]
+            # Loading the wrong descriptor is the ordinary way to arrive here, and
+            # offering only "Continue" left the right one unreachable: the user
+            # had to abandon the transaction to try again.
+            button_data = [self.LOAD_DESCRIPTOR, self.CONTINUE]
         else:
             # TRANSLATOR_NOTE: Multisig change can't be told apart from a payment without the wallet descriptor
             text = _("Load descriptor to identify change.")
@@ -1222,6 +1214,27 @@ class PSBTChangeDetailsView(View):
                     [2147483696, 2147483649, 2147483648, 2147483650, 1, 0],
             }
         """
+
+        if change_data is None:
+            # This output is no longer counted as change: the descriptor that
+            # identified it has been replaced by one that does not, which a
+            # rootless multisig parse depends on entirely. Reading on would crash
+            # on the missing dict.
+            if self.controller.multisig_wallet_descriptor:
+                self.controller.multisig_wallet_descriptor = None
+                self.run_screen(
+                    WarningScreen,
+                    title=_("Descriptor mismatch"),
+                    status_icon_name=SeedSignerIconConstants.WARNING,
+                    status_headline=_("Descriptor cleared"),
+                    text=_(
+                        "Loaded multisig wallet descriptor does not match this PSBT. "
+                        "Load the correct descriptor or skip verification to continue."
+                    ),
+                    show_back_button=False,
+                    button_data=[ButtonOption(_("OK"))],
+                )
+            return Destination(PSBTOverviewView)
 
         # The parser proved this derivation path belongs to this seed before recording
         # the output as change, so the view reads the verified path rather than the

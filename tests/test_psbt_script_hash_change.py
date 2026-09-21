@@ -140,7 +140,14 @@ class TestWIFMultisigChange(BaseTest):
         assert parser.change_amount == 0
         assert parser.spend_amount == 99_500
 
-    def test_a_wif_that_is_a_cosigner_is_change(self):
+    def test_a_wif_that_is_a_cosigner_still_needs_a_descriptor(self):
+        """
+        Being a cosigner makes the output a candidate, not change: nothing here
+        can derive the other keys, so only a descriptor the user loaded ties
+        them to this wallet. Unlike a payment to strangers, it is listed for
+        that descriptor to identify.
+        """
         parser = self._parse(self._wif_psbt([WIF_KEY.get_public_key(), STRANGER]))
 
-        assert parser.change_amount == 90_000
+        assert parser.change_amount == 0
+        assert parser.unidentified_change_outputs == [0]
