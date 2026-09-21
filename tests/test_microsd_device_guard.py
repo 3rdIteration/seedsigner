@@ -250,12 +250,15 @@ class TestBlankCardIsStillACard(BaseTest):
     )
     def test_detection(self, monkeypatch, layout, expected):
         monkeypatch.setattr(os, "listdir", self.fake_sysfs(layout))
+        # These are all SD cards; telling one from eMMC is covered separately.
+        monkeypatch.setattr(microsd_views, "_mmc_device_type", lambda d: "SD")
 
         assert microsd_views.find_sd_card_device() == expected
 
     def test_a_partitioned_card_wins_over_a_blank_one(self, monkeypatch):
         layout = {"mmcblk0": ["size"], "mmcblk1": ["mmcblk1p1", "size"]}
         monkeypatch.setattr(os, "listdir", self.fake_sysfs(layout))
+        monkeypatch.setattr(microsd_views, "_mmc_device_type", lambda d: "SD")
 
         assert microsd_views.find_sd_card_device() == "/dev/mmcblk1"
 

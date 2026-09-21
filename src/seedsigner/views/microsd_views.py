@@ -22,6 +22,15 @@ from seedsigner.views.view import View, Destination, BackStackView, MainMenuView
 logger = logging.getLogger(__name__)
 
 
+def _mmc_device_type(device: str) -> str | None:
+    """The MMC card type the kernel reports: "SD", "MMC" (eMMC) or "SDIO"."""
+    try:
+        with open(f"/sys/block/{device}/device/type") as f:
+            return f.read().strip()
+    except OSError:
+        return None
+
+
 def find_sd_card_device():
     """Return the device node of the inserted MicroSD card, or None.
 
@@ -36,6 +45,12 @@ def find_sd_card_device():
     blank = None
     for device in sorted(os.listdir("/sys/block")):
         if not re.fullmatch(r'mmcblk\d+', device):
+            continue
+        # eMMC is an mmcblk device too, and on a board that has it, it is the
+        # board's own storage -- partitioned, so it used to win. Only a device
+        # the kernel calls an SD card is ever a candidate, and one that will not
+        # say what it is is not.
+        if _mmc_device_type(device) != "SD":
             continue
         partitions = os.listdir(f"/sys/block/{device}")
         if any(p.startswith(device + "p") for p in partitions):
