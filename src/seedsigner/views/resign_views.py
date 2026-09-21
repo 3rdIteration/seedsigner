@@ -30,6 +30,7 @@ from seedsigner.gui.screens.screen import ButtonOption, LoadingScreenThread, Pag
 from seedsigner.gui.components import SeedSignerIconConstants
 from seedsigner.hardware.microsd import MicroSD
 from seedsigner.helpers.l10n import mark_for_translation as _mft
+from seedsigner.models.settings import Settings
 from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.views.view import View, Destination, BackStackView, MainMenuView
 
@@ -271,6 +272,14 @@ def clear_rekey_keys(controller):
     setattr(controller, _SEEDKEEPER_KEYS_ATTR, None)
 
 
+# The Pico Mini (RV1103) cannot run the two heaviest actions: Resign Release runs
+# out of memory re-signing the rootfs, and Force Rootfs Check has crashed on it.
+# Both are refused with a warning instead; Sign Digest is unaffected and remains
+# the air-gapped signing path (Force Rootfs Check's PC-side counterpart,
+# `airgap-sign.py force`, only needs a digest signed here).
+LUCKFOX_MINI_PROFILE = "luckfox_22"
+
+
 """****************************************************************************
     The submenu
 ****************************************************************************"""
@@ -308,6 +317,22 @@ class ToolsLuckfoxBuildToolsMenuView(View):
         if selected == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
         choice = button_data[selected]
+        if Settings.RUNTIME_PROFILE == LUCKFOX_MINI_PROFILE:
+            # The Mini's DRAM cannot stage these; refuse before any picker runs.
+            if choice == self.RESIGN:
+                return Destination(ToolsLuckfoxResultView, view_args=dict(
+                    title=_("Not supported here"), finish="back",
+                    text=_(
+                        "Resign Release needs more memory than this board has and crashes it. Use the "
+                        "Sign Digest workflow instead: your PC lays digests on the card (airgap-sign.py), "
+                        "you sign them here, and the PC splices the signatures back into the release.")))
+            if choice == self.FORCE:
+                return Destination(ToolsLuckfoxResultView, view_args=dict(
+                    title=_("Not supported here"), finish="back",
+                    text=_(
+                        "Force Rootfs Check is too heavy for this board and crashes it. Do it from your "
+                        "PC instead: airgap-sign.py force <bundle> --card <mount> reworks boot.img there "
+                        "and leaves its digest on the card - sign it with Sign Digest, then splice.")))
         if choice == self.CHECK:
             return next_step(dict(action=ACTION__CHECK))
         if choice == self.EXPORT:

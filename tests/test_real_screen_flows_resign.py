@@ -353,6 +353,41 @@ class TestNavigation(LuckfoxFlowTest):
             ui_session=session)
 
 
+class TestMiniRefusals(LuckfoxFlowTest):
+    """The Pico Mini (luckfox_22) cannot stage the two heaviest actions - they must
+    be refused with a warning before any picker runs, not crash mid-flow."""
+
+    @pytest.mark.parametrize("label", ["Resign Release", "Force Rootfs Check"])
+    def test_heavy_actions_refused_on_the_mini(self, monkeypatch, tmp_path, label):
+        self.tools_available(monkeypatch)
+        use_microsd(monkeypatch, tmp_path)
+        from seedsigner.models.settings import Settings
+        monkeypatch.setattr(Settings, "RUNTIME_PROFILE", "luckfox_22")
+        session = UISession(script=select(label) + [Back()])
+        self.run_sequence([
+            FlowStep(rv.ToolsLuckfoxBuildToolsMenuView, real_screens=True),
+            # the refusal is a paged text screen; leave it by the back arrow
+            FlowStep(rv.ToolsLuckfoxResultView, real_screens=True),
+        ], ui_session=session)
+        assert session.renderer.frames
+
+    @pytest.mark.parametrize("label", ["Resign Release", "Force Rootfs Check"])
+    def test_heavy_actions_still_routed_off_the_mini(self, monkeypatch, tmp_path, label):
+        """The same selection on another profile enters the flow as before."""
+        self.tools_available(monkeypatch)
+        use_microsd(monkeypatch, tmp_path)
+        from seedsigner.models.settings import Settings
+        monkeypatch.setattr(Settings, "RUNTIME_PROFILE", "luckfox_pi")
+        session = UISession(script=select(label))
+        if label == "Resign Release":
+            steps = [FlowStep(rv.ToolsLuckfoxBuildToolsMenuView, real_screens=True),
+                     FlowStep(rv.ToolsResignReleaseStartView)]
+        else:
+            steps = [FlowStep(rv.ToolsLuckfoxBuildToolsMenuView, real_screens=True),
+                     FlowStep(rv.ToolsLuckfoxForceInfoView)]
+        self.run_sequence(steps, ui_session=session)
+
+
 @needs_tools
 class TestEndToEnd(LuckfoxFlowTest):
     """Whole flows on a synthetic release, including the signing, checked after."""
