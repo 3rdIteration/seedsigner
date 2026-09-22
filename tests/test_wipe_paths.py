@@ -569,3 +569,19 @@ class TestWifKeyWipe(BaseTest):
         assert key.wif == ""
         assert key.privkey is None
         assert secret == bytes(len(secret))
+
+
+class TestTheDeviceWorksAfterAWipe(BaseTest):
+    """
+    The wipe leaves the main menu on the back stack for the loop to run next.
+    Until it has run it has no view, and the screensaver's check read one:
+    every device with the Wipe Timer on showed a System Error after a wipe.
+    """
+
+    def test_the_screensaver_check_works_after_a_wipe(self):
+        from seedsigner.controller import Controller
+
+        controller = Controller.get_instance()
+        controller.handle_wipe_timeout()
+
+        assert controller.is_screensaver_start_allowed in (True, False)

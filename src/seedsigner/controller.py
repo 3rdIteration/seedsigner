@@ -1010,6 +1010,9 @@ class Controller(Singleton):
             - The current active view allows screensaver activity.
         """
         from seedsigner.views import MainMenuView
-        # Confusingly, the top item in the `BackStack` is actually the *current* View
-        active_view = self.back_stack[-1].view if self.back_stack else MainMenuView()
+        # Confusingly, the top item in the `BackStack` is actually the *current* View.
+        # A Destination has no view until it has run, and the inactivity wipe
+        # leaves one for the main menu that the loop has yet to run.
+        top = self.back_stack[-1] if self.back_stack else None
+        active_view = getattr(top, "view", None) or MainMenuView()
         return not self.is_screensaver_running and active_view.is_screensaver_allowed
