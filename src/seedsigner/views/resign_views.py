@@ -42,7 +42,7 @@ RSA_KEY_BITS = 2048
 
 ACTION__CHECK = "check"
 ACTION__RESIGN = "resign"
-# Air-Gap Re-Key is a submenu, one action per round: each round re-derives its
+# Air-Gap Signing is a submenu, one action per round: each round re-derives its
 # keys from the seed and indexes, so nothing has to survive in RAM between card
 # round-trips and an interrupted ceremony resumes at whatever round is pending.
 ACTION__REKEY_EXPORT = "rekey_export"
@@ -77,7 +77,7 @@ TITLES = {
     ACTION__REKEY_EXPORT: _mft("Re-Key: Export Pubkeys"),
     ACTION__REKEY_SIGN_ROOTFS: _mft("Re-Key: Sign Rootfs Digest"),
     ACTION__REKEY_SIGN_BOOT: _mft("Re-Key: Sign Boot Chain"),
-    ACTION__SIGN_DIGEST: _mft("Sign Digest"),
+    ACTION__SIGN_DIGEST: _mft("Sign Digests on Card"),
     ACTION__PROVISION: _mft("Provision MicroSD"),
     ACTION__FORCE: _mft("Force Rootfs Check"),
     ACTION__ARM: _mft("Arm eFuse Burn"),
@@ -264,7 +264,7 @@ class _FlowView(View):
 
 # Release signing keys are held here, in RAM only, between collection and use (a
 # flow dict is logged, so it carries labels, never keys). Resign Release takes
-# them at its run step; Air-Gap Re-Key keeps them across the card round-trips
+# them at its run step; Air-Gap Signing keeps them across the card round-trips
 # and clears them when the ceremony ends. Opening the submenu discards any left
 # behind either way.
 _SEEDKEEPER_KEYS_ATTR = "luckfox_release_keys"
@@ -325,8 +325,7 @@ LUCKFOX_MINI_PROFILE = "luckfox_22"
 class ToolsLuckfoxBuildToolsMenuView(View):
     CHECK = ButtonOption("Check Release")
     RESIGN = ButtonOption("Resign Release")
-    REKEY = ButtonOption("Air-Gap Re-Key")
-    SIGN_DIGEST = ButtonOption("Sign Digest")
+    AIRGAP = ButtonOption("Air-Gap Signing")
     PROVISION = ButtonOption("Provision MicroSD")
     FORCE = ButtonOption("Force Rootfs Check")
     DANGER = ButtonOption("Danger Zone", button_label_color="red")
@@ -344,7 +343,7 @@ class ToolsLuckfoxBuildToolsMenuView(View):
             )
             return Destination(BackStackView)
 
-        button_data = [self.CHECK, self.RESIGN, self.REKEY, self.SIGN_DIGEST,
+        button_data = [self.CHECK, self.RESIGN, self.AIRGAP,
                        self.PROVISION, self.FORCE, self.DANGER]
         selected = self.run_screen(
             ButtonListScreen,
@@ -361,8 +360,8 @@ class ToolsLuckfoxBuildToolsMenuView(View):
                 return Destination(ToolsLuckfoxResultView, view_args=dict(
                     title=_("Not supported here"), finish="back",
                     text=_(
-                        "Resign Release needs more memory than this board has and crashes it. Use the "
-                        "Sign Digest workflow instead: your PC lays digests on the card (airgap-sign.py), "
+                        "Resign Release needs more memory than this board has and crashes it. Use "
+                        "Air-Gap Signing instead: your PC lays digests on the card (airgap-sign.py), "
                         "you sign them here, and the PC splices the signatures back into the release.")))
             if choice == self.FORCE:
                 return Destination(ToolsLuckfoxResultView, view_args=dict(
@@ -370,15 +369,14 @@ class ToolsLuckfoxBuildToolsMenuView(View):
                     text=_(
                         "Force Rootfs Check is too heavy for this board and crashes it. Do it from your "
                         "PC instead: airgap-sign.py force <bundle> --card <mount> reworks boot.img there "
-                        "and leaves its digest on the card - sign it with Sign Digest, then splice.")))
+                        "and leaves its digest on the card - sign it there with Air-Gap Signing -> "
+                        "Sign Digests on Card, then splice.")))
         if choice == self.CHECK:
             return next_step(dict(action=ACTION__CHECK))
         if choice == self.RESIGN:
             return Destination(ToolsResignReleaseStartView)
-        if choice == self.REKEY:
+        if choice == self.AIRGAP:
             return Destination(ToolsRekeyMenuView)
-        if choice == self.SIGN_DIGEST:
-            return Destination(ToolsSignDigestStartView)
         if choice == self.PROVISION:
             return next_step(dict(action=ACTION__PROVISION))
         if choice == self.FORCE:
@@ -392,7 +390,7 @@ class ToolsLuckfoxResultView(View):
     `finish` says where the last page leads:
       "main"  - Home (after changes that end a session);
       "back"  - the view before the first page;
-      "rekey" - the Air-Gap Re-Key menu;
+      "rekey" - the Air-Gap Signing menu;
       "tools" - the Luckfox Build Tools menu.
     The last two do NOT pass through Home, so the cached BIP85 derivations
     (cleared by MainMenuView) survive into the next round of a ceremony. The
@@ -758,7 +756,7 @@ class ToolsResignConfirmView(_FlowView):
             n=len(names), keys=self.key_summary())
         if info["update_img"]:
             text += " " + _("update.img is deleted.")
-        low_memory = _low_memory_line(_("This may run out; Sign Digest needs far less."))
+        low_memory = _low_memory_line(_("This may run out; Air-Gap Signing needs far less."))
         if low_memory:
             text += "\n\n" + low_memory
 
@@ -841,7 +839,7 @@ class ToolsLuckfoxUpdateImgDeletedView(View):
 
 
 """****************************************************************************
-    2b. Sign Digest (air-gap: no bundle on the device)
+    2b. Sign Digests on Card (air-gap: no bundle on the device)
 ****************************************************************************"""
 class ToolsSignDigestStartView(View):
     """Explain the digest-signer role before asking for anything."""
@@ -851,7 +849,7 @@ class ToolsSignDigestStartView(View):
     def run(self):
         selected = self.run_screen(
             WarningScreen,
-            title=_("Sign Digest"),
+            title=_("Sign Digests on Card"),
             status_headline=_("No bundle needed"),
             text=_("Signs bare digests from the card's seedsigner-release-sign/ "
                    "folder: a few dozen bytes in, one signature out. The PC lays "
@@ -873,7 +871,7 @@ class ToolsSignDigestRunView(_FlowView):
             rsa_key, (ed_seed, stored_key_id) = self.load_keys(want_ed=True)
         except Exception as e:
             logger.exception("loading the signing keys failed")
-            return self.result(_("Could not load the keys: {}").format(e), finish="tools")
+            return self.result(_("Could not load the keys: {}").format(e), finish="rekey")
 
         loading = LoadingScreenThread(text=_("Signing..."))
         loading.start()
@@ -884,7 +882,7 @@ class ToolsSignDigestRunView(_FlowView):
         except Exception as e:
             logger.exception("signing the digests failed")
             return self.result(_("Signing failed, nothing was written: {}").format(e),
-                               finish="tools")
+                               finish="rekey")
         finally:
             loading.stop()
 
@@ -892,15 +890,15 @@ class ToolsSignDigestRunView(_FlowView):
             _("Take the card back to the PC and run `airgap-sign.py splice`.")
         if not report.ok:
             return self.refuse(text)
-        # finish="tools", NOT "back": popping back would land on this view again,
+        # finish="rekey", NOT "back": popping back would land on this view again,
         # re-derive the keys and sign the same digests in a loop. Not "main"
         # either: Home clears the cached BIP85 keys, and an air-gap session
         # usually signs again once the PC has laid the next digests.
-        return self.result(text, finish="tools")
+        return self.result(text, finish="rekey")
 
 
 """****************************************************************************
-    2c. Air-Gap Re-Key (guided two-round-trip ceremony)
+    2c. Air-Gap Signing menu (the guided re-key rounds + the signer above)
 
     Moves a release from its current boot key to the user's own keys with the
     private halves never leaving this device. The PC does round 0 (`rekey`,
@@ -916,17 +914,24 @@ class ToolsSignDigestRunView(_FlowView):
     early is refused rather than harmful.
 ****************************************************************************"""
 class ToolsRekeyMenuView(View):
-    """One item per round; each can be entered - and re-entered - on its own."""
+    """Everything the device does for an air-gapped PC: the guided re-key rounds,
+    then the general signer they are built on.
+
+    Rounds 0-2 pace a move to new keys and validate the card before signing.
+    Sign Digests on Card signs whatever the PC left there, which is the same
+    engine without the round checks - used for arming, for re-signing under a key
+    the release already carries, and for the forced-rootfs-check round-trip."""
 
     EXPORT = ButtonOption("Round 0 - Export Pubkeys")
     SIGN_ROOTFS = ButtonOption("Round 1 - Sign Rootfs Digest")
     SIGN_BOOT = ButtonOption("Round 2 - Sign Boot Chain")
+    SIGN_DIGEST = ButtonOption("Sign Digests on Card")
 
     def run(self):
-        button_data = [self.EXPORT, self.SIGN_ROOTFS, self.SIGN_BOOT]
+        button_data = [self.EXPORT, self.SIGN_ROOTFS, self.SIGN_BOOT, self.SIGN_DIGEST]
         selected = self.run_screen(
             ButtonListScreen,
-            title=_("Air-Gap Re-Key"),
+            title=_("Air-Gap Signing"),
             is_button_text_centered=False,
             button_data=button_data,
         )
@@ -937,7 +942,9 @@ class ToolsRekeyMenuView(View):
             return next_step(dict(action=ACTION__REKEY_EXPORT))
         if choice == self.SIGN_ROOTFS:
             return next_step(dict(action=ACTION__REKEY_SIGN_ROOTFS))
-        return next_step(dict(action=ACTION__REKEY_SIGN_BOOT))
+        if choice == self.SIGN_BOOT:
+            return next_step(dict(action=ACTION__REKEY_SIGN_BOOT))
+        return Destination(ToolsSignDigestStartView)
 
 
 class ToolsRekeyExportRunView(_FlowView):
