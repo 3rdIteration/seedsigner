@@ -142,13 +142,15 @@ class TestMenuEntry(LuckfoxFlowTest):
         self.run_sequence(self.to_submenu() + [FlowStep(rv.ToolsLuckfoxDangerZoneView)],
                           ui_session=session)
         labels = [b.button_label for b in (
-            rv.ToolsLuckfoxBuildToolsMenuView.CHECK, rv.ToolsLuckfoxBuildToolsMenuView.EXPORT,
-            rv.ToolsLuckfoxBuildToolsMenuView.RESIGN, rv.ToolsLuckfoxBuildToolsMenuView.REKEY,
-            rv.ToolsLuckfoxBuildToolsMenuView.SIGN_DIGEST,
+            rv.ToolsLuckfoxBuildToolsMenuView.CHECK,
+            rv.ToolsLuckfoxBuildToolsMenuView.RESIGN, rv.ToolsLuckfoxBuildToolsMenuView.AIRGAP,
             rv.ToolsLuckfoxBuildToolsMenuView.PROVISION, rv.ToolsLuckfoxBuildToolsMenuView.FORCE,
             rv.ToolsLuckfoxBuildToolsMenuView.DANGER)]
-        assert labels == ["Check Release", "Export Pubkeys", "Resign Release", "Air-Gap Re-Key",
-                          "Sign Digest", "Provision MicroSD", "Force Rootfs Check", "Danger Zone"]
+        # exporting pubkeys and signing digests both live under Air-Gap Signing
+        assert labels == ["Check Release", "Resign Release", "Air-Gap Signing",
+                          "Provision MicroSD", "Force Rootfs Check", "Danger Zone"]
+        for gone in ("EXPORT", "SIGN_DIGEST"):
+            assert not hasattr(rv.ToolsLuckfoxBuildToolsMenuView, gone), gone
 
     def test_no_microsd_warns_and_backs_out(self, monkeypatch):
         self.tools_available(monkeypatch)
@@ -216,26 +218,13 @@ class TestNavigation(LuckfoxFlowTest):
         ], ui_session=session)
         assert flow == dict(action="check")
 
-    def test_export_pubkeys(self, monkeypatch, tmp_path):
-        self.tools_available(monkeypatch)
-        use_microsd(monkeypatch, tmp_path)
-        self.store_seed()
-        session = UISession(script=(select("Luckfox Build Tools", "Export Pubkeys") + select(0)
-                                    + [TypeKeys("3"), TypeKeys("5")]))
-        self.run_sequence(self.to_submenu() + [
-            FlowStep(rv.ToolsLuckfoxSelectSeedView, real_screens=True),
-            FlowStep(rv.ToolsLuckfoxRsaIndexView, real_screens=True),
-            FlowStep(rv.ToolsLuckfoxEd25519IndexView, real_screens=True),
-            FlowStep(rv.ToolsLuckfoxExportRunView),
-        ], ui_session=session)
-
     def test_rekey_navigation(self, monkeypatch, tmp_path):
         """Menu -> round item -> key source -> seed/index; export is the run view."""
         self.tools_available(monkeypatch)
         use_microsd(monkeypatch, tmp_path)
         self.store_seed()
         flow = {}
-        session = UISession(script=(select("Luckfox Build Tools", "Air-Gap Re-Key",
+        session = UISession(script=(select("Luckfox Build Tools", "Air-Gap Signing",
                                            "Round 0 - Export Pubkeys", "BIP85 Derive") + select(0)
                                     + [TypeKeys("3"), TypeKeys("5")]))
         self.run_sequence(self.to_submenu() + [
@@ -254,9 +243,12 @@ class TestNavigation(LuckfoxFlowTest):
         # Class-level ButtonOptions: no card or tools needed to read them.
         labels = [b.button_label for b in (rv.ToolsRekeyMenuView.EXPORT,
                                            rv.ToolsRekeyMenuView.SIGN_ROOTFS,
-                                           rv.ToolsRekeyMenuView.SIGN_BOOT)]
+                                           rv.ToolsRekeyMenuView.SIGN_BOOT,
+                                           rv.ToolsRekeyMenuView.SIGN_DIGEST)]
+        # The rounds, then the plain signer they are built on (arming, forced
+        # rootfs check, re-signing under a key the release already carries).
         assert labels == ["Round 0 - Export Pubkeys", "Round 1 - Sign Rootfs Digest",
-                          "Round 2 - Sign Boot Chain"]
+                          "Round 2 - Sign Boot Chain", "Sign Digests on Card"]
 
     def test_provision(self, monkeypatch, tmp_path):
         self.tools_available(monkeypatch)
@@ -332,7 +324,9 @@ class TestNavigation(LuckfoxFlowTest):
         self.run_sequence([
             FlowStep(rv.ToolsLuckfoxSelectSeedView, real_screens=True),
             FlowStep(LoadSeedView),
-        ], initial_destination_view_args=dict(flow=dict(action="export")), ui_session=session)
+        ], initial_destination_view_args=dict(
+            flow=dict(action=rv.ACTION__REKEY_EXPORT, source=rv.KEY_SOURCE__BIP85)),
+            ui_session=session)
 
     def test_card_without_a_release_folder_warns(self, monkeypatch, tmp_path):
         self.tools_available(monkeypatch)
@@ -523,7 +517,7 @@ class TestEndToEnd(LuckfoxFlowTest):
         (d / "rootfs.digest").write_bytes(lr.rootfs_prehash(folder, size))
 
         # Round 0: export the public halves.
-        session = UISession(script=select("Luckfox Build Tools", "Air-Gap Re-Key")
+        session = UISession(script=select("Luckfox Build Tools", "Air-Gap Signing")
                             + self._round_script("Round 0 - Export Pubkeys"))
         self.run_sequence(self.to_submenu() + self._round_steps(rv.ToolsRekeyExportRunView),
                           ui_session=session)
@@ -532,7 +526,7 @@ class TestEndToEnd(LuckfoxFlowTest):
         (d / "rootfs.digest").write_bytes(lr.rootfs_prehash(folder, size))
 
         # Round 1: sign the rootfs digest - entered fresh, keys re-derived from cache.
-        session = UISession(script=select("Luckfox Build Tools", "Air-Gap Re-Key")
+        session = UISession(script=select("Luckfox Build Tools", "Air-Gap Signing")
                             + self._round_script("Round 1 - Sign Rootfs Digest"))
         self.run_sequence(self.to_submenu() + self._round_steps(rv.ToolsRekeySignRootfsView),
                           ui_session=session)
@@ -549,7 +543,7 @@ class TestEndToEnd(LuckfoxFlowTest):
 
         # Round 2: sign the boot chain - a third independent entry. The stale
         # rootfs.digest from round 1 is still on the card; re-signing it is a no-op.
-        session = UISession(script=select("Luckfox Build Tools", "Air-Gap Re-Key")
+        session = UISession(script=select("Luckfox Build Tools", "Air-Gap Signing")
                             + self._round_script("Round 2 - Sign Boot Chain"))
         self.run_sequence(self.to_submenu() + [
             FlowStep(rv.ToolsRekeyMenuView, real_screens=True),
@@ -583,6 +577,26 @@ class TestEndToEnd(LuckfoxFlowTest):
         assert msig["key_id"] == rr.ed25519_key_id(ed_seed)
         assert ms.ed25519_verify(pk, (d / "rootfs.digest").read_bytes(), msig["sig"])
 
+    def test_a_round_returns_to_the_rekey_menu_and_keeps_the_keys(self, monkeypatch, tmp_path):
+        """Finishing a round lands back on the Air-Gap Signing menu, not Home.
+        Home clears the cached BIP85 derivations, and the next round needs the
+        same keys, so passing through it would re-derive RSA-2048 each round."""
+        from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+        card = use_microsd(monkeypatch, tmp_path)
+        self.release(card)
+        self.store_seed()
+        session = UISession(script=select("Luckfox Build Tools", "Air-Gap Signing")
+                            + self._round_script("Round 0 - Export Pubkeys"))
+        steps = self._round_steps(rv.ToolsRekeyExportRunView)[:-1] + [
+            # one page, so its last-page routing is what runs next
+            FlowStep(rv.ToolsLuckfoxResultView,
+                     before_run=lambda view: setattr(view, "paged_info", ["done"])),
+            FlowStep(rv.ToolsRekeyMenuView, screen_return_value=RET_CODE__BACK_BUTTON),
+        ]
+        self.run_sequence(self.to_submenu() + steps, ui_session=session)
+        assert rv._bip85_cache(self.controller), \
+            "the BIP85 cache was cleared - the round went through Home"
+
     def test_rekey_rounds_refuse_the_wrong_card_state(self, monkeypatch, tmp_path):
         """Round 1 with boot-chain digests already present points at round 2; round 2
         with no digests at all says what the PC must run first."""
@@ -599,7 +613,7 @@ class TestEndToEnd(LuckfoxFlowTest):
             buf = rk.read(path)
             (d / (name + ".digest")).write_bytes(rk.signing_digest(buf, rk.layout(buf)))
 
-        session = UISession(script=(select("Luckfox Build Tools", "Air-Gap Re-Key",
+        session = UISession(script=(select("Luckfox Build Tools", "Air-Gap Signing",
                                            "Round 1 - Sign Rootfs Digest", "BIP85 Derive")
                                     + select(0) + [TypeKeys("3"), TypeKeys("5")]))
         self.run_sequence(self.to_submenu() + self._round_steps(rv.ToolsRekeySignRootfsView),
@@ -607,7 +621,7 @@ class TestEndToEnd(LuckfoxFlowTest):
 
         for name in ("download", "idblock"):
             (d / (name + ".digest")).unlink()
-        session = UISession(script=(select("Luckfox Build Tools", "Air-Gap Re-Key",
+        session = UISession(script=(select("Luckfox Build Tools", "Air-Gap Signing",
                                            "Round 2 - Sign Boot Chain", "BIP85 Derive")
                                     + select(0) + [TypeKeys("3"), TypeKeys("5")]))
         self.run_sequence(self.to_submenu() + self._round_steps(rv.ToolsRekeySignBootView),

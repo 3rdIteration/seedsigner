@@ -576,6 +576,12 @@ def resign_release(folder, rsa_key, ed25519_seed, progress=None, stored_key_id=N
     step("Writing")
     for p, data in pending:
         _write(p, data)
+    # A MicroSD/eMMC release also ships a copy of the rootfs signature beside the
+    # rootfs. The device verifies against boot.img and never reads it, but leaving
+    # the old signature there would mislead anyone checking the folder by hand.
+    note = lr.refresh_rootfs_sidecar(folder)
+    if note:
+        report.add(lr.ROOTFS_SIDECAR, "refreshed from boot.img")
     _delete_update_img(folder, report)
     _fix_update_scripts(folder, report)
     return report
@@ -945,6 +951,14 @@ def arm_burn(folder, rsa_key):
     rk.sign_buf(buf, lay, n, d)
     if not rk.is_burn_armed(buf) or not rk.components_ok(buf, lay):
         raise ResignError("arming did not verify; nothing was written")
+    # The last gate before an irreversible burn: the hash the armed SPL will
+    # write to OTP must equal what the BootROM will compute from this header.
+    # If they differ, the board burns and then drops to maskrom on the next
+    # boot, and no loader can be flashed until the header is fixed (2026-09-21).
+    problems = rk.fused_boot_problems(buf)
+    if problems:
+        raise ResignError("armed image would not boot once fused (%s); nothing was written"
+                          % "; ".join(problems))
     _write(path, buf)
     report = ResignReport()
     report.add("idblock.img", "ARMED: burns the secure-boot fuse on its next boot")

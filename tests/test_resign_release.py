@@ -62,7 +62,10 @@ def _rk_container(n, hdr_off=0x0):
     buf = bytearray(b"\xa5" * (hdr_off + rk.HDR_LEN + rk.SIG_LEN + 0x40))
     buf[hdr_off:hdr_off + 4] = rk.MAGIC_UNSIGNED
     struct.pack_into("<I", buf, hdr_off + 0x0c, 0x01)
-    buf[hdr_off + rk.MOD_OFF:hdr_off + rk.MOD_OFF + rk.SIG_LEN] = n.to_bytes(rk.SIG_LEN, "little")
+    # The whole header key block (N, E and the PKA constant C), as the vendor
+    # tools write it. check_release fails a header whose C does not match its
+    # modulus, because a fused BootROM rejects exactly that image.
+    rk.write_key_block(buf, hdr_off, n)
     return buf
 
 
@@ -204,6 +207,24 @@ def test_resign_then_verify(release, new_key):
     assert checks
     for name, ok, detail in checks:
         assert ok, "%s (%s) failed to verify" % (name, detail)
+
+
+def test_resign_refreshes_the_rootfs_sidecar(tmp_path, new_key):
+    """A MicroSD/eMMC release ships rootfs.img.minisig beside the rootfs: a copy of
+    the signature inside boot.img. Resign Release must not leave the old one there."""
+    folder = _full_release(tmp_path, kind="squashfs")
+    sidecar = os.path.join(folder, lr.ROOTFS_SIDECAR)
+    before = lr.initramfs_members(rk.read(os.path.join(folder, "boot.img")))["rootfs.sig"]
+    with open(sidecar, "wb") as f:
+        f.write(before)
+
+    report = rr.resign_release(folder, new_key, ED_SEED)
+    assert report.ok
+    after = lr.initramfs_members(rk.read(os.path.join(folder, "boot.img")))["rootfs.sig"]
+    assert after != before, "the rootfs signature should have changed"
+    with open(sidecar, "rb") as f:
+        assert f.read() == after, "sidecar still holds the old signature"
+    assert lr.rootfs_sidecar_state(folder) == (True, True)
 
 
 def test_old_key_no_longer_verifies(release, old_key, new_key):
