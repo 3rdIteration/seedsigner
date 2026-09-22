@@ -209,6 +209,24 @@ def test_resign_then_verify(release, new_key):
         assert ok, "%s (%s) failed to verify" % (name, detail)
 
 
+def test_resign_refreshes_the_rootfs_sidecar(tmp_path, new_key):
+    """A MicroSD/eMMC release ships rootfs.img.minisig beside the rootfs: a copy of
+    the signature inside boot.img. Resign Release must not leave the old one there."""
+    folder = _full_release(tmp_path, kind="squashfs")
+    sidecar = os.path.join(folder, lr.ROOTFS_SIDECAR)
+    before = lr.initramfs_members(rk.read(os.path.join(folder, "boot.img")))["rootfs.sig"]
+    with open(sidecar, "wb") as f:
+        f.write(before)
+
+    report = rr.resign_release(folder, new_key, ED_SEED)
+    assert report.ok
+    after = lr.initramfs_members(rk.read(os.path.join(folder, "boot.img")))["rootfs.sig"]
+    assert after != before, "the rootfs signature should have changed"
+    with open(sidecar, "rb") as f:
+        assert f.read() == after, "sidecar still holds the old signature"
+    assert lr.rootfs_sidecar_state(folder) == (True, True)
+
+
 def test_old_key_no_longer_verifies(release, old_key, new_key):
     rr.resign_release(release, new_key, ED_SEED)
     checks = rr.verify_release(release, int(old_key.n), ED_SEED)
