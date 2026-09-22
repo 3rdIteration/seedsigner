@@ -10,6 +10,7 @@ any one of them still shows up:
 * Sparrow's drongo seed tests (testnet address);
 * kiss-signer's (keys, addresses and the sp(...) scan export for abandon...about).
 """
+import logging
 import subprocess
 import tempfile
 import time
@@ -17,14 +18,18 @@ from unittest.mock import MagicMock
 
 import pytest
 import qrcode
-from embit import ec
+from embit import bip32, bip39, ec
+from embit.psbt import PSBT
 
-from base import BaseTest
+from base import BaseTest, FlowStep, FlowTest
 from ui_driver import DeferredInput, UISession
 
 from seedsigner.helpers import silent_payments
+from seedsigner.models.psbt_parser import RejectCode
 from seedsigner.models.seed import AezeedSeed, ElectrumSeed, Seed, Slip39Seed, XprvSeed
 from seedsigner.models.settings_definition import SettingsConstants
+from seedsigner.views import psbt_views, scan_views, seed_views
+from seedsigner.views.view import MainMenuView
 
 
 MAINNET = SettingsConstants.MAINNET
@@ -95,6 +100,47 @@ KISS_MASTER_TPRV = "tprv8ZgxMBicQKsPe5YMU9gHen4Ez3ApihUfykaqUorj9t6FDqy3nP6eoXiA
 # SLIP-39's first official vector (tests/data/shamir_vectors.json), passphrase "TREZOR"
 SLIP39_SHARE = "duckling enlarge academic academic agency result length solution fridge kidney coal piece deal husband erode duke ajar critical decision keyboard"
 SLIP39_XPRV = "xprv9s21ZrQH143K4QViKpwKCpS2zVbz8GrZgpEchMDg6KME9HZtjfL7iThE9w5muQA4YPHKN1u5VM1w8D4pvnjxa2BmpGMfXr7hnRrRHZ93awZ"
+
+# kiss-bdk's BIP-376 spend PSBTs (PSBTv2, testnet) for abandon...about. Their inputs
+# carry only the Silent Payments spend fields (PSBT_IN_SP_SPEND_BIP32_DERIVATION and
+# PSBT_IN_SP_TWEAK), which this version cannot sign for.
+SP_SPEND_PSBTS = {
+    "01-sp-spend-1in": (
+        "cHNidP8B+wQCAAAAAQIEAgAAAAEDBNAHAAABBAEBAQUBAgEGAQAAAQ4gzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3N"
+        "zc0BDwQAAAAAARAE/f///wEBK6CGAQAAAAAAIlEggy6sZuy8/AB1immxfyXUgubE/0pVtKz8gxwVj5DleiUiHwKDMIXJpxbT"
+        "a0Z1UsANaqi9QuOa2+mLBbwgMRAXcZL3AhhzxdoKYAEAgAEAAIAAAACAAAAAgAAAAAABICACAgICAgICAgICAgICAgICAgIC"
+        "AgICAgICAgICAgICAgABAwhQwwAAAAAAAAEEFgAU0MSj7wnpl7bpnjl+UY/j5BoRjKEiAgLnqyU3tdSelwMJquBunknzbOHJ"
+        "/rvUTsjg0cygtPnDGRhzxdoKVAAAgAEAAIAAAACAAAAAAAAAAAAAAQMIS8IAAAAAAAABBBYAFC80qhzwClOwVaKRoDp9RfCm"
+        "mItSIgIDXUnszVTQCZ5DZ2J3x6bUYl1hHaiKXfSb+VF6d5Gnd6UYc8XaClQAAIABAACAAAAAgAEAAAAAAAAAAA=="
+    ),
+    "02-sp-spend-2in": (
+        "cHNidP8B+wQCAAAAAQIEAgAAAAEDBNAHAAABBAECAQUBAgEGAQAAAQ4gzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3N"
+        "zc0BDwQBAAAAARAE/f///wEBK6CGAQAAAAAAIlEgvVeeFVtWreDEm9bGKsehICJNuvw++UUFWWPE4iAW0o8iHwKDMIXJpxbT"
+        "a0Z1UsANaqi9QuOa2+mLBbwgMRAXcZL3AhhzxdoKYAEAgAEAAIAAAACAAAAAgAAAAAABICABAQEBAQEBAQEBAQEBAQEBAQEB"
+        "AQEBAQEBAQEBAQEBAQABDiDNzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3NzQEPBAAAAAABEAT9////AQEroIYBAAAA"
+        "AAAiUSCDLqxm7Lz8AHWKabF/JdSC5sT/SlW0rPyDHBWPkOV6JSIfAoMwhcmnFtNrRnVSwA1qqL1C45rb6YsFvCAxEBdxkvcC"
+        "GHPF2gpgAQCAAQAAgAAAAIAAAACAAAAAAAEgIAICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAAEDCNfBAAAAAAAA"
+        "AQQWABQvNKoc8ApTsFWikaA6fUXwppiLUiICA11J7M1U0AmeQ2did8em1GJdYR2oil30m/lReneRp3elGHPF2gpUAACAAQAA"
+        "gAAAAIABAAAAAAAAAAABAwjwSQIAAAAAAAEEFgAU0MSj7wnpl7bpnjl+UY/j5BoRjKEiAgLnqyU3tdSelwMJquBunknzbOHJ"
+        "/rvUTsjg0cygtPnDGRhzxdoKVAAAgAEAAIAAAACAAAAAAAAAAAAA"
+    ),
+    "03-sp-spend-odd": (
+        "cHNidP8B+wQCAAAAAQIEAgAAAAEDBNAHAAABBAEBAQUBAgEGAQAAAQ4gzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3N"
+        "zc0BDwQBAAAAARAE/f///wEBK6CGAQAAAAAAIlEgvVeeFVtWreDEm9bGKsehICJNuvw++UUFWWPE4iAW0o8iHwKDMIXJpxbT"
+        "a0Z1UsANaqi9QuOa2+mLBbwgMRAXcZL3AhhzxdoKYAEAgAEAAIAAAACAAAAAgAAAAAABICABAQEBAQEBAQEBAQEBAQEBAQEB"
+        "AQEBAQEBAQEBAQEBAQABAwhQwwAAAAAAAAEEFgAU0MSj7wnpl7bpnjl+UY/j5BoRjKEiAgLnqyU3tdSelwMJquBunknzbOHJ"
+        "/rvUTsjg0cygtPnDGRhzxdoKVAAAgAEAAIAAAACAAAAAAAAAAAAAAQMIS8IAAAAAAAABBBYAFC80qhzwClOwVaKRoDp9RfCm"
+        "mItSIgIDXUnszVTQCZ5DZ2J3x6bUYl1hHaiKXfSb+VF6d5Gnd6UYc8XaClQAAIABAACAAAAAgAEAAAAAAAAAAA=="
+    ),
+    "04-sp-spend-foreign-tweak": (
+        "cHNidP8B+wQCAAAAAQIEAgAAAAEDBNAHAAABBAEBAQUBAgEGAQAAAQ4gzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3N"
+        "zc0BDwQAAAAAARAE/f///wEBK6CGAQAAAAAAIlEggy6sZuy8/AB1immxfyXUgubE/0pVtKz8gxwVj5DleiUiHwKDMIXJpxbT"
+        "a0Z1UsANaqi9QuOa2+mLBbwgMRAXcZL3AhhzxdoKYAEAgAEAAIAAAACAAAAAgAAAAAABICB3d3d3d3d3d3d3d3d3d3d3d3d3"
+        "d3d3d3d3d3d3d3d3dwABAwhQwwAAAAAAAAEEFgAU0MSj7wnpl7bpnjl+UY/j5BoRjKEiAgLnqyU3tdSelwMJquBunknzbOHJ"
+        "/rvUTsjg0cygtPnDGRhzxdoKVAAAgAEAAIAAAACAAAAAAAAAAAAAAQMIS8IAAAAAAAABBBYAFC80qhzwClOwVaKRoDp9RfCm"
+        "mItSIgIDXUnszVTQCZ5DZ2J3x6bUYl1hHaiKXfSb+VF6d5Gnd6UYc8XaClQAAIABAACAAAAAgAEAAAAAAAAAAA=="
+    ),
+}
 
 ELECTRUM_MNEMONIC = "regular reject rare profit once math fringe chase until ketchup century escape"
 AEZEED_MNEMONIC = (
@@ -290,3 +336,99 @@ class TestScanKeyQR(BaseTest):
             for col, dark in enumerate(modules):
                 pixel = frame.getpixel((int((col + 2.5) * module), int((row + 2.5) * module)))
                 assert (pixel == 0) == dark, (row, col)
+
+
+
+class TestScanKeyStaysInTheQRView(FlowTest):
+    def test_scan_key_reaches_no_log_destination_or_back_stack(self, caplog, monkeypatch):
+        from seedsigner.models import encode_qr
+
+        caplog.set_level(logging.DEBUG)
+        self.settings.set_value(SettingsConstants.SETTING__SILENT_PAYMENTS, SettingsConstants.OPTION__ENABLED)
+        seed = abandon_seed()
+        root = bip32.HDKey.from_seed(bip39.mnemonic_to_seed(" ".join(ABANDON)))
+        secrets = [
+            ABANDON_MAINNET_EXPORT,
+            key_part(ABANDON_MAINNET_EXPORT),
+            root.derive("m/352h/0h/0h/1h/0").key.secret.hex(),
+        ]
+
+        drawn = []
+        class RecordingEncoder(encode_qr.InMemoryStaticQrEncoder):
+            def __post_init__(self):
+                super().__post_init__()
+                drawn.append(self.data)
+        monkeypatch.setattr(encode_qr, "InMemoryStaticQrEncoder", RecordingEncoder)
+
+        seen = []
+        def record(view):
+            """What this View was given, and every Destination on the back stack."""
+            seen.append(repr(vars(view)))
+            seen.append(repr([(d.View_cls.__name__, d.view_args) for d in view.controller.back_stack]))
+
+        qr_views = []
+        self.run_sequence([
+            FlowStep(seed_views.SeedOptionsView, before_run=record, button_data_selection=seed_views.SeedOptionsView.SILENT_PAYMENTS),
+            FlowStep(seed_views.SeedSilentPaymentsNoticeView, before_run=record, screen_return_value=0),
+            FlowStep(seed_views.SeedSilentPaymentsWarningView, before_run=record, screen_return_value=0),
+            FlowStep(seed_views.SeedSilentPaymentsDetailsView, before_run=record, screen_return_value=0),
+            FlowStep(seed_views.SeedSilentPaymentsScanKeyQRView, before_run=qr_views.append),
+            FlowStep(seed_views.SeedSilentPaymentsNextStepsView, before_run=record, screen_return_value=0),
+            FlowStep(seed_views.SeedOptionsView),
+        ], initial_destination_view_args=dict(seed=seed))
+        seen.append(repr([(d.View_cls.__name__, d.view_args) for d in self.controller.back_stack]))
+        # The QR View lets go of its Screen, and with it the encoder, once the QR closes.
+        assert qr_views[0].screen is None
+        seen.append(repr(vars(qr_views[0])))
+
+        assert drawn == [ABANDON_MAINNET_EXPORT]
+        logs = [r.getMessage() for r in caplog.records]
+        assert any("SeedSilentPaymentsScanKeyQRView" in line for line in logs)
+        for secret in secrets:
+            assert not [line for line in logs if secret in line]
+            assert not [entry for entry in seen if secret in entry]
+
+
+
+class TestScanKeyQRBlocksTheScreensaver(FlowTest):
+    def test_screensaver_cannot_start_on_the_scan_key_qr(self):
+        """The screensaver keeps a copy of the last screen, so it must never copy this one."""
+        self.settings.set_value(SettingsConstants.SETTING__SILENT_PAYMENTS, SettingsConstants.OPTION__ENABLED)
+        self.run_sequence([
+            FlowStep(seed_views.SeedSilentPaymentsDetailsView, screen_return_value=0),
+            FlowStep(seed_views.SeedSilentPaymentsScanKeyQRView),
+        ], initial_destination_view_args=dict(seed=abandon_seed()))
+
+        assert self.controller.is_screensaver_start_allowed is False
+
+
+
+class TestSilentPaymentSpendRefused(FlowTest):
+    @pytest.mark.parametrize("name", sorted(SP_SPEND_PSBTS))
+    def test_refused_before_signing(self, name, monkeypatch):
+        signed = []
+        def sign_with(*args, **kwargs):
+            signed.append(name)
+            raise AssertionError("sign_with() reached for a Silent Payments spend")
+        monkeypatch.setattr(PSBT, "sign_with", sign_with)
+
+        self.settings.set_value(SettingsConstants.SETTING__NETWORK, TESTNET)
+        self.controller.storage.seeds = [abandon_seed()]
+
+        def scan(view):
+            view.decoder.add_data(SP_SPEND_PSBTS[name])
+
+        def assert_refused(view):
+            assert view.code == RejectCode.SEED_CANNOT_SIGN
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(scan_views.ScanView, before_run=scan),
+            FlowStep(psbt_views.PSBTSelectSeedView, screen_return_value=0),
+            # The parser refuses it before any review screen, so nothing reaches signing.
+            FlowStep(psbt_views.PSBTOverviewView, is_redirect=True),
+            FlowStep(psbt_views.PSBTSeedCannotSignView, before_run=assert_refused, screen_return_value=0),
+            FlowStep(psbt_views.PSBTSelectSeedView),
+        ])
+        assert signed == []
+        assert self.controller.psbt_parser is None
