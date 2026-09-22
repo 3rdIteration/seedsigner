@@ -10,10 +10,17 @@ any one of them still shows up:
 * Sparrow's drongo seed tests (testnet address);
 * kiss-signer's (keys, addresses and the sp(...) scan export for abandon...about).
 """
+import subprocess
+import tempfile
+import time
 from unittest.mock import MagicMock
 
 import pytest
+import qrcode
 from embit import ec
+
+from base import BaseTest
+from ui_driver import DeferredInput, UISession
 
 from seedsigner.helpers import silent_payments
 from seedsigner.models.seed import AezeedSeed, ElectrumSeed, Seed, Slip39Seed, XprvSeed
@@ -215,3 +222,71 @@ def test_helper_refuses_unsupported_seeds_and_networks(seed_factory, network):
         silent_payments.address(seed, network)
     with pytest.raises(ValueError):
         silent_payments.scan_key_export(seed, network)
+
+
+
+class PressOnceTheQRIsDrawn(DeferredInput):
+    """Leave the QR screen, but only after its display thread has drawn a frame."""
+    frames = None
+
+    def _next_key(self, screen, watched_keys):
+        from seedsigner.hardware.buttons import HardwareButtonsConstants
+        if getattr(self, "pressed", False):
+            return None
+        # frames[0] is the blank canvas display() shows before the thread starts.
+        deadline = time.time() + 10
+        while len(self.frames) < 2 and time.time() < deadline:
+            time.sleep(0.01)
+        self.pressed = True
+        return HardwareButtonsConstants.KEY_PRESS
+
+
+
+class TestScanKeyQR(BaseTest):
+    def test_real_qr_screen_draws_it_in_memory(self, monkeypatch):
+        """
+        The scan key never reaches a file: the real QRDisplayScreen draws its QR while
+        every temp file and subprocess fails the test. (The other encoders go through
+        QR.qrimage_io(), which writes the data to a temp file for the qrencode binary.)
+        """
+        from seedsigner.gui.screens.screen import QRDisplayScreen
+        from seedsigner.models.encode_qr import InMemoryStaticQrEncoder
+
+        # No brightness tip over the bottom rows, so every module can be checked.
+        self.settings.set_value(SettingsConstants.SETTING__QR_BRIGHTNESS_TIPS, SettingsConstants.OPTION__DISABLED)
+        export = silent_payments.scan_key_export(abandon_seed(), MAINNET)
+
+        forbidden = []
+        def refuse(name):
+            def refused(*args, **kwargs):
+                # Raised on the display thread, where it would go unseen: record it too.
+                forbidden.append(name)
+                raise AssertionError(name + " used while drawing the scan key")
+            return refused
+        for name in ("NamedTemporaryFile", "TemporaryFile", "SpooledTemporaryFile", "mkstemp", "mkdtemp"):
+            monkeypatch.setattr(tempfile, name, refuse("tempfile." + name))
+        monkeypatch.setattr(subprocess, "Popen", refuse("subprocess.Popen"))
+
+        press = PressOnceTheQRIsDrawn()
+        with UISession(script=[press]) as session:
+            press.frames = session.renderer.frames
+            screen = QRDisplayScreen(qr_encoder=InMemoryStaticQrEncoder(data=export))
+            screen.display()
+        monkeypatch.undo()
+
+        assert forbidden == []
+        assert key_part(export) not in repr(screen)
+        assert len(session.renderer.frames) >= 2
+
+        # The frame on screen is exactly this export's QR: version 7, error correction L.
+        qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_L, border=0)
+        qr.add_data(export)
+        qr.make(fit=True)
+        assert qr.version == 7
+        matrix = qr.get_matrix()
+        frame = session.renderer.frames[-1].convert("L")
+        module = frame.width / (len(matrix) + 2 * 2)  # QRDisplayScreen draws a 2-module border
+        for row, modules in enumerate(matrix):
+            for col, dark in enumerate(modules):
+                pixel = frame.getpixel((int((col + 2.5) * module), int((row + 2.5) * module)))
+                assert (pixel == 0) == dark, (row, col)
