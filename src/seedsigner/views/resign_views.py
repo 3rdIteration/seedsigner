@@ -394,7 +394,18 @@ class ToolsLuckfoxBuildToolsMenuView(View):
 
 
 class ToolsLuckfoxResultView(View):
-    """Read-only text, paged. `finish`: "main" (after changes) or "back"."""
+    """Read-only text, paged.
+
+    `finish` says where the last page leads:
+      "main"  - Home (after changes that end a session);
+      "back"  - the view before the first page;
+      "rekey" - the Air-Gap Re-Key menu;
+      "tools" - the Luckfox Build Tools menu.
+    The last two do NOT pass through Home, so the cached BIP85 derivations
+    (cleared by MainMenuView) survive into the next round of a ceremony. The
+    controller truncates the back stack at the menu's existing entry, so Back
+    from there still leads where it did before the round.
+    """
 
     def __init__(self, title: str, text: str, finish: str = "main",
                  page_num: int = 0, paged_info: list = None):
@@ -423,6 +434,10 @@ class ToolsLuckfoxResultView(View):
                 page_num=self.page_num + 1, paged_info=self.paged_info))
         if self.finish == "main":
             return Destination(MainMenuView, clear_history=True)
+        if self.finish == "rekey":
+            return Destination(ToolsRekeyMenuView)
+        if self.finish == "tools":
+            return Destination(ToolsLuckfoxBuildToolsMenuView)
         # Pop every page of this text, back to the view before the first one.
         for _i in range(self.page_num):
             self.controller.back_stack.pop()
@@ -889,7 +904,7 @@ class ToolsSignDigestRunView(_FlowView):
             rsa_key, (ed_seed, stored_key_id) = self.load_keys(want_ed=True)
         except Exception as e:
             logger.exception("loading the signing keys failed")
-            return self.result(_("Could not load the keys: {}").format(e))
+            return self.result(_("Could not load the keys: {}").format(e), finish="tools")
 
         loading = LoadingScreenThread(text=_("Signing..."))
         loading.start()
@@ -899,7 +914,8 @@ class ToolsSignDigestRunView(_FlowView):
                                                   stored_key_id=stored_key_id)
         except Exception as e:
             logger.exception("signing the digests failed")
-            return self.result(_("Signing failed, nothing was written: {}").format(e))
+            return self.result(_("Signing failed, nothing was written: {}").format(e),
+                               finish="tools")
         finally:
             loading.stop()
 
@@ -907,10 +923,11 @@ class ToolsSignDigestRunView(_FlowView):
             _("Take the card back to the PC and run `airgap-sign.py splice`.")
         if not report.ok:
             return self.refuse(text)
-        # finish="main", NOT "back": popping back would land on this view again,
-        # re-derive the keys and sign the same digests in a loop. The card goes
-        # to the PC next anyway, so the main menu is where the user belongs.
-        return self.result(text)
+        # finish="tools", NOT "back": popping back would land on this view again,
+        # re-derive the keys and sign the same digests in a loop. Not "main"
+        # either: Home clears the cached BIP85 keys, and an air-gap session
+        # usually signs again once the PC has laid the next digests.
+        return self.result(text, finish="tools")
 
 
 """****************************************************************************
@@ -994,8 +1011,9 @@ class ToolsRekeyExportRunView(_FlowView):
                "  airgap-sign.py rekey <bundle> --card <mount>\n"
                "  airgap-sign.py digests <bundle> --card <mount> --only rootfs\n\n"
                "Then take the card back here and run Round 1.")
-        # finish="main": the card goes to the PC next; there is no next screen here.
-        return self.result(text + pc)
+        # Back to the Re-Key menu, not Home: Home clears the cached BIP85 keys,
+        # and Round 1 needs the same ones once the card returns.
+        return self.result(text + pc, finish="rekey")
 
 
 class _RekeySignRoundView(_FlowView):
@@ -1040,10 +1058,11 @@ class _RekeySignRoundView(_FlowView):
             return self.refuse(_report_text(report) + "\n\n" +
                                _("Fix this on the PC and bring the card back."))
 
-        # finish="main", NOT "back": popping back would land on this view again
-        # and re-sign the same digests (harmless but pointless). The card goes
-        # to the PC next anyway, so the main menu is where the user belongs.
-        return self.result(_report_text(report) + "\n\n" + self.pc_steps())
+        # finish="rekey", NOT "back": popping back would land on this view again
+        # and re-sign the same digests (harmless but pointless). Not "main"
+        # either: Home clears the cached BIP85 keys, which the next round needs.
+        return self.result(_report_text(report) + "\n\n" + self.pc_steps(),
+                           finish="rekey")
 
     def validate_round(self, pending):
         """None when this round may proceed; otherwise the refusal text."""

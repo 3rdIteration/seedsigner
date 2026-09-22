@@ -583,6 +583,26 @@ class TestEndToEnd(LuckfoxFlowTest):
         assert msig["key_id"] == rr.ed25519_key_id(ed_seed)
         assert ms.ed25519_verify(pk, (d / "rootfs.digest").read_bytes(), msig["sig"])
 
+    def test_a_round_returns_to_the_rekey_menu_and_keeps_the_keys(self, monkeypatch, tmp_path):
+        """Finishing a round lands back on the Air-Gap Re-Key menu, not Home.
+        Home clears the cached BIP85 derivations, and the next round needs the
+        same keys, so passing through it would re-derive RSA-2048 each round."""
+        from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+        card = use_microsd(monkeypatch, tmp_path)
+        self.release(card)
+        self.store_seed()
+        session = UISession(script=select("Luckfox Build Tools", "Air-Gap Re-Key")
+                            + self._round_script("Round 0 - Export Pubkeys"))
+        steps = self._round_steps(rv.ToolsRekeyExportRunView)[:-1] + [
+            # one page, so its last-page routing is what runs next
+            FlowStep(rv.ToolsLuckfoxResultView,
+                     before_run=lambda view: setattr(view, "paged_info", ["done"])),
+            FlowStep(rv.ToolsRekeyMenuView, screen_return_value=RET_CODE__BACK_BUTTON),
+        ]
+        self.run_sequence(self.to_submenu() + steps, ui_session=session)
+        assert rv._bip85_cache(self.controller), \
+            "the BIP85 cache was cleared - the round went through Home"
+
     def test_rekey_rounds_refuse_the_wrong_card_state(self, monkeypatch, tmp_path):
         """Round 1 with boot-chain digests already present points at round 2; round 2
         with no digests at all says what the PC must run first."""
