@@ -49,6 +49,51 @@ EXCLUSIVE_OPEN = (
     "        sys.exit(f'{device} is not block device {devnum}')\n"
 )
 
+# Runs the dd commands on its command line in turn, with the card claimed
+# the same way for as long as they last: EXCLUSIVE_OPEN lets go before dd
+# starts, and anything could take the card in that gap. Each dd writes
+# through the claimed file, of=/proc/self/fd/N, so nothing can mount the
+# card meanwhile. And it must still be the card that was chosen, by its CID,
+# before the first dd and after each one: a card pulled and another put in
+# takes the same node and device number, and unmounted it passes every other
+# check.
+CLAIMED_WRITE = (
+    "import json, os, stat, subprocess, sys\n"
+    "device, devnum, cid_path, cid, commands = sys.argv[1:]\n"
+    "def same_card():\n"
+    "    try:\n"
+    "        st = os.stat(device)\n"
+    "        with open(cid_path) as f:\n"
+    "            named = f.read().strip()\n"
+    "    except OSError:\n"
+    "        return False\n"
+    "    return (stat.S_ISBLK(st.st_mode) and named == cid\n"
+    "            and f'{os.major(st.st_rdev)}:{os.minor(st.st_rdev)}' == devnum)\n"
+    "fd = os.open(device, os.O_WRONLY | os.O_EXCL)\n"
+    "st = os.fstat(fd)\n"
+    "if not stat.S_ISBLK(st.st_mode):\n"
+    "    sys.exit(f'{device} is not a block device')\n"
+    "if f'{os.major(st.st_rdev)}:{os.minor(st.st_rdev)}' != devnum:\n"
+    "    sys.exit(f'{device} is not block device {devnum}')\n"
+    "def changed():\n"
+    "    print('The MicroSD card was changed.', file=sys.stderr)\n"
+    "    sys.exit(75)\n"
+    "for dd in json.loads(commands):\n"
+    "    if not same_card():\n"
+    "        changed()\n"
+    "    dd = [f'of=/proc/self/fd/{fd}' if arg == f'of={device}' else arg for arg in dd]\n"
+    "    code = subprocess.run(dd, pass_fds=(fd,)).returncode\n"
+    "    # Before the exit code: a wipe that filled the card ends in an error\n"
+    "    # that counts as success, and must not if another card was filled.\n"
+    "    if not same_card():\n"
+    "        changed()\n"
+    "    if code:\n"
+    "        sys.exit(code)\n"
+)
+# The exit status CLAIMED_WRITE gives when the card in the slot is not the one
+# chosen. Whatever dd reported, nothing it wrote counts.
+CARD_CHANGED = 75
+
 
 def _mmc_device_type(device: str) -> str | None:
     """The MMC card type the kernel reports: "SD", "MMC" (eMMC) or "SDIO"."""
@@ -402,6 +447,35 @@ def run_dd(cmd):
     return run(cmd, capture_output=True, text=True, env={**os.environ, "LC_ALL": "C"})
 
 
+def card_identity(device: str) -> str | None:
+    """The card's CID, which names this one card, or None if it will not say."""
+    try:
+        return _read_sysfs(os.path.join(SYS_BLOCK, os.path.basename(device), "device", "cid"))
+    except OSError:
+        return None
+
+
+def write_card(dd_cmds: list[list[str]], device: str, card: str):
+    """
+    Run dd_cmds, dds that write device, in turn, holding the card for
+    exclusive use from before the first opens it until the last has
+    finished, and only while it is still the card whose CID is card.
+
+    They run under the su prefix, so none carries its own.
+    """
+    import json
+    from subprocess import CompletedProcess
+    try:
+        devnum = _read_sysfs(os.path.join(SYS_BLOCK, os.path.basename(device), "dev"))
+    except OSError as e:
+        return CompletedProcess(dd_cmds, 1, "", f"Cannot tell which device {device} is: {e}\n")
+    cid_path = os.path.join(SYS_BLOCK, os.path.basename(device), "device", "cid")
+    return run_dd(
+        Settings.SU_COMMAND_PREFIX.split()
+        + [sys.executable, "-c", CLAIMED_WRITE, device, devnum, cid_path, card, json.dumps(dd_cmds)]
+    )
+
+
 def is_the_card(device: str) -> bool:
     """
     True when device is still the card: the block device sysfs numbers it.
@@ -445,6 +519,8 @@ def write_failure(data, device: str, wipe: bool = False) -> str | None:
     """
     if not is_the_card(device):
         return "The write did not reach the MicroSD card."
+    if data.returncode == CARD_CHANGED:
+        return "The MicroSD card was changed. It was not written in full."
     if not dd_succeeded(data, wipe):
         return data.stderr
     return None
@@ -596,6 +672,9 @@ class ToolsMicroSDFlashView(View):
             microsd_dev = find_sd_card_device()
             if microsd_dev is None:
                 return refuse_without_card(self, "No MicroSD card detected. Nothing was written.")
+            card = card_identity(microsd_dev)
+            if card is None:
+                return refuse_without_card(self, "Could not identify the MicroSD card. Nothing was written.")
 
             if not unmount_card(microsd_dev):
                 return refuse_without_card(self, "Could not unmount the MicroSD card. Nothing was written.")
@@ -603,21 +682,18 @@ class ToolsMicroSDFlashView(View):
             self.loading_screen = LoadingScreenThread(text="Flashing MicroSD\n\n\n\n\n\n")
             self.loading_screen.start()
 
-            # Zero the MicroSD first
-            dd_cmd = ["dd", f"if=/dev/zero", f"of={microsd_dev}", "bs=1M", "count=26"]
-            if not Settings.is_seedsigner_os():
-                dd_cmd = ["sudo"] + dd_cmd
-
-            data = run_dd(dd_cmd)
+            # Zero the MicroSD first, then flash the image, under one claim.
+            # A zero pass that fails stops there, and it is that failure that
+            # is reported.
+            data = write_card(
+                [
+                    ["dd", f"if=/dev/zero", f"of={microsd_dev}", "bs=1M", "count=26"],
+                    ["dd", "if=/tmp/img.img", f"of={microsd_dev}"],
+                ],
+                microsd_dev, card,
+            )
             logger.info(data)
             failure = write_failure(data, microsd_dev)
-
-            # Then flash the image, unless zeroing failed or missed the card:
-            # then it is that failure that is reported.
-            if failure is None:
-                data = run_dd(["dd", "if=/tmp/img.img", f"of={microsd_dev}"])
-                logger.info(data)
-                failure = write_failure(data, microsd_dev)
 
             self.loading_screen.stop()
 
@@ -659,11 +735,14 @@ class ToolsMicroSDFlashView(View):
             microsd_dev = find_sd_card_device()
             if microsd_dev is None:
                 return refuse_without_card(self, "No MicroSD card detected. Nothing was written.")
+            card = card_identity(microsd_dev)
+            if card is None:
+                return refuse_without_card(self, "Could not identify the MicroSD card. Nothing was written.")
 
             if not unmount_card(microsd_dev):
                 return refuse_without_card(self, "Could not unmount the MicroSD card. Nothing was written.")
 
-            data = run_dd(['sudo', 'dd', f'if=/tmp/img.img', f'of={microsd_dev}'])
+            data = write_card([['dd', f'if=/tmp/img.img', f'of={microsd_dev}']], microsd_dev, card)
             logger.info(data)
 
             failure = write_failure(data, microsd_dev)
@@ -830,6 +909,9 @@ class ToolsMicroSDWipeZeroView(View):
         microsd_dev = find_sd_card_device()
         if microsd_dev is None:
             return refuse_without_card(self, "No MicroSD card detected. Nothing was wiped.")
+        card = card_identity(microsd_dev)
+        if card is None:
+            return refuse_without_card(self, "Could not identify the MicroSD card. Nothing was wiped.")
 
         if not unmount_card(microsd_dev):
             return refuse_without_card(self, "Could not unmount the MicroSD card. Nothing was wiped.")
@@ -838,10 +920,7 @@ class ToolsMicroSDWipeZeroView(View):
         self.loading_screen.start()
 
         dd_cmd = ["dd", f"if=/dev/zero", f"of={microsd_dev}", "bs=1M"] + wipesize_cmd_string.split()
-        if not Settings.is_seedsigner_os():
-            dd_cmd = ["sudo"] + dd_cmd
-
-        data = run_dd(dd_cmd)
+        data = write_card([dd_cmd], microsd_dev, card)
         logger.info(data)
 
         self.loading_screen.stop()
@@ -913,6 +992,9 @@ class ToolsMicroSDWipeRandomView(View):
         microsd_dev = find_sd_card_device()
         if microsd_dev is None:
             return refuse_without_card(self, "No MicroSD card detected. Nothing was wiped.")
+        card = card_identity(microsd_dev)
+        if card is None:
+            return refuse_without_card(self, "Could not identify the MicroSD card. Nothing was wiped.")
 
         if not unmount_card(microsd_dev):
             return refuse_without_card(self, "Could not unmount the MicroSD card. Nothing was wiped.")
@@ -921,10 +1003,7 @@ class ToolsMicroSDWipeRandomView(View):
         self.loading_screen.start()
 
         dd_cmd = ["dd", f"if=/dev/urandom", f"of={microsd_dev}", "bs=1M"] + wipesize_cmd_string.split()
-        if not Settings.is_seedsigner_os():
-            dd_cmd = ["sudo"] + dd_cmd
-
-        data = run_dd(dd_cmd)
+        data = write_card([dd_cmd], microsd_dev, card)
         logger.info(data)
 
         self.loading_screen.stop()

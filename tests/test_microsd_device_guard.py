@@ -204,6 +204,9 @@ def fake_kernel(monkeypatch, tmp_path, mounts, loops=None, aliases=None, holders
         (block / "dev").write_text(DEVNUMS[device] + "\n")
         for holder in (holders or {}).get(device, []):
             (block / "holders" / holder).touch()
+    # The card's CID register, which names this one card
+    (blocks[SD_DEV] / "device").mkdir()
+    (blocks[SD_DEV] / "device" / "cid").write_text("035344534430344780aabbccdd013a00\n")
     for loop, backing_file in (loops or {}).items():
         (sys_block / loop / "loop").mkdir(parents=True)
         (sys_block / loop / "dev").write_text(DEVNUMS[f"/dev/{loop}"] + "\n")
@@ -244,7 +247,7 @@ def fake_kernel(monkeypatch, tmp_path, mounts, loops=None, aliases=None, holders
     monkeypatch.setattr(os, "stat", on_dev(os.stat))
     monkeypatch.setattr(os, "lstat", on_dev(os.lstat))
 
-    def exclusive_open(script, argv):
+    def exclusive_open(script, argv, env=None):
         """Run script the way `python -c script *argv` would, on the fake /dev."""
         held = [device for _, device in up if device] + list(claimed)
         opened = {}
@@ -276,20 +279,48 @@ def fake_kernel(monkeypatch, tmp_path, mounts, loops=None, aliases=None, holders
             if opened.pop(fd, None) is None:
                 real_close(fd)
 
+        # A claimed write runs its dd through the claimed fd: dd writes the
+        # device that was opened, under the name it was opened by.
+        paths = {}
+        inner = []
+
+        outer_run = subprocess.run
+
+        def claimed_run(cmd, *args, **kwargs):
+            cmd = [
+                f"of={paths[int(part[len('of=/proc/self/fd/'):])]}" if part.startswith("of=/proc/self/fd/") else part
+                for part in cmd
+            ]
+            # A child's children inherit its environment.
+            inner.append(outer_run(cmd, capture_output=True, text=True, env=env))
+            return SimpleNamespace(returncode=inner[-1].returncode)
+
+        def reported(code):
+            """What the child printed: each dd's report, then its own message."""
+            stderr = "".join(result.stderr for result in inner)
+            if isinstance(code, str):
+                return SimpleNamespace(stdout="", stderr=stderr + code + "\n", returncode=1)
+            return SimpleNamespace(stdout="", stderr=stderr, returncode=code or 0)
+
+        def tracking_open(path, flags, *args, **kwargs):
+            fd = fake_open(path, flags, *args, **kwargs)
+            paths[fd] = path
+            return fd
+
         with monkeypatch.context() as patched:
-            patched.setattr(os, "open", fake_open)
+            patched.setattr(os, "open", tracking_open)
             patched.setattr(os, "fstat", fake_fstat)
             patched.setattr(os, "close", fake_close)
+            patched.setattr(subprocess, "run", claimed_run)
             patched.setattr(sys, "argv", ["-c", *argv])
             try:
                 exec(script, {"__name__": "__main__"})  # pylint: disable=exec-used
             except SystemExit as e:
                 if e.code not in (None, 0):
-                    return SimpleNamespace(stdout="", stderr=f"{e.code}\n", returncode=1)
+                    return reported(e.code)
             except Exception as e:  # pylint: disable=broad-except
-                return SimpleNamespace(stdout="", stderr=f"{type(e).__name__}: {e}\n",
-                                       returncode=1)
-        return SimpleNamespace(stdout="", stderr="", returncode=0)
+                return reported(f"{type(e).__name__}: {e}")
+        return reported(0)
 
     pulled = []
 
@@ -319,7 +350,7 @@ def fake_kernel(monkeypatch, tmp_path, mounts, loops=None, aliases=None, holders
             # umount takes off the top mount at a path
             del up[max(i for i, (mountpoint, _) in enumerate(up) if mountpoint == cmd[-1])]
         elif "-c" in cmd and "O_EXCL" in cmd[cmd.index("-c") + 1]:
-            return exclusive_open(cmd[cmd.index("-c") + 1], cmd[cmd.index("-c") + 2:])
+            return exclusive_open(cmd[cmd.index("-c") + 1], cmd[cmd.index("-c") + 2:], kwargs.get("env"))
         elif "rm" in cmd:
             dev[cmd[-1]] = None
         elif "dd" in cmd:
@@ -618,6 +649,142 @@ class TestEveryStepIsChecked(BaseTest):
         view.run()
 
         assert screens.showed(done)
+
+
+class TestTheCardIsHeldThroughTheWrite(BaseTest):
+    """
+    The kernel's exclusive-open check let go of the card again before dd
+    began, so whatever took the card in between -- a remount, or a card
+    swapped into the slot and mounted on insert -- was written under.
+    """
+
+    @pytest.mark.parametrize("view_cls, on_seedsigner_os", [
+        (microsd_views.ToolsMicroSDFlashView, True),
+        (microsd_views.ToolsMicroSDFlashView, False),
+        (microsd_views.ToolsMicroSDWipeZeroView, True),
+        (microsd_views.ToolsMicroSDWipeRandomView, True),
+    ])
+    def test_a_card_mounted_after_the_checks_is_not_written(
+        self, monkeypatch, tmp_path, view_cls, on_seedsigner_os
+    ):
+        commands = []
+        patch_environment(monkeypatch, commands, on_seedsigner_os=on_seedsigner_os)
+        # Mounted again once every check unmount_card makes had passed
+        fake_kernel(monkeypatch, tmp_path, mounts=[f"{SD_DEV}p1 /mnt/microsd vfat rw"])
+        monkeypatch.setattr(microsd_views, "unmount_card", lambda device: True)
+        monkeypatch.setattr(microsd_views, "find_sd_card_device", lambda: SD_DEV)
+        view, screens = build_view(monkeypatch, view_cls)
+
+        view.run()
+
+        assert not [cmd for cmd in commands if cmd[:1] == ["dd"] or cmd[:2] == ["sudo", "dd"]]
+        assert not screens.showed("MicroSD Flashed")
+        assert not screens.showed("MicroSD Wiped")
+
+
+class TestTheSameCardFromStartToEnd(BaseTest):
+    """
+    A card is chosen, unmounted, then written, and a card pulled and another
+    put in between takes the same /dev/mmcblkN and the same device number:
+    unmounted, it passed every check. Flash also let go of the card between
+    its zero pass and its image.
+    """
+
+    RAW_WRITERS = [
+        (microsd_views.ToolsMicroSDFlashView, True),
+        (microsd_views.ToolsMicroSDFlashView, False),
+        (microsd_views.ToolsMicroSDWipeZeroView, True),
+        (microsd_views.ToolsMicroSDWipeRandomView, True),
+    ]
+
+    def run_view(self, monkeypatch, tmp_path, view_cls, on_seedsigner_os, swap=False, cid=True):
+        commands = []
+        patch_environment(monkeypatch, commands, on_seedsigner_os=on_seedsigner_os)
+        fake_kernel(monkeypatch, tmp_path, mounts=[])
+        cid_file = tmp_path / "block" / SD_DEV.rsplit("/", 1)[-1] / "device" / "cid"
+        if not cid:
+            cid_file.unlink()
+        if swap:
+            unmount_card = microsd_views.unmount_card
+
+            def swap_after_unmount(device):
+                # Another card in the slot, under the same node and number
+                cid_file.write_text("035344534430304780ffffffff013a00\n")
+                return unmount_card(device)
+
+            monkeypatch.setattr(microsd_views, "unmount_card", swap_after_unmount)
+        monkeypatch.setattr(microsd_views, "find_sd_card_device", lambda: SD_DEV)
+        view, screens = build_view(monkeypatch, view_cls)
+        view.run()
+        return screens, commands
+
+    @staticmethod
+    def dd_runs(commands):
+        return [cmd for cmd in commands if cmd[:1] == ["dd"] or cmd[:2] == ["sudo", "dd"]]
+
+    @pytest.mark.parametrize("view_cls, on_seedsigner_os", RAW_WRITERS)
+    def test_a_card_swapped_in_after_it_was_chosen_is_not_written(
+        self, monkeypatch, tmp_path, view_cls, on_seedsigner_os
+    ):
+        screens, commands = self.run_view(monkeypatch, tmp_path, view_cls, on_seedsigner_os, swap=True)
+
+        assert self.dd_runs(commands) == []
+        assert not screens.showed("MicroSD Flashed")
+        assert not screens.showed("MicroSD Wiped")
+        assert screens.showed("The MicroSD card was changed")
+
+    @pytest.mark.parametrize("view_cls, on_seedsigner_os", RAW_WRITERS)
+    def test_a_card_that_will_not_say_who_it_is_is_not_written(
+        self, monkeypatch, tmp_path, view_cls, on_seedsigner_os
+    ):
+        screens, commands = self.run_view(monkeypatch, tmp_path, view_cls, on_seedsigner_os, cid=False)
+
+        assert self.dd_runs(commands) == []
+        assert not screens.showed("MicroSD Flashed")
+        assert not screens.showed("MicroSD Wiped")
+
+    @pytest.mark.parametrize(
+        "view_cls",
+        [microsd_views.ToolsMicroSDWipeZeroView, microsd_views.ToolsMicroSDWipeRandomView],
+    )
+    def test_a_card_swapped_during_a_wipe_that_filled_it_is_not_wiped(self, monkeypatch, tmp_path, view_cls):
+        # A wipe to the end of the card finishes with "No space left", which
+        # is success -- unless it was another card that filled up.
+        commands = []
+        patch_environment(monkeypatch, commands)
+        fake_kernel(monkeypatch, tmp_path, mounts=[])
+        cid_file = tmp_path / "block" / SD_DEV.rsplit("/", 1)[-1] / "device" / "cid"
+        run = subprocess.run
+
+        def fills_another_card(cmd, *args, **kwargs):
+            if cmd[:1] == ["dd"]:
+                commands.append(cmd)
+                cid_file.write_text("035344534430304780ffffffff013a00\n")
+                return SimpleNamespace(
+                    stdout="", returncode=1,
+                    stderr=f"dd: error writing '{SD_DEV}': No space left on device\n"
+                           "15193+0 records in\n15192+1 records out\n",
+                )
+            return run(cmd, *args, **kwargs)
+
+        monkeypatch.setattr("subprocess.run", fills_another_card)
+        monkeypatch.setattr(microsd_views, "find_sd_card_device", lambda: SD_DEV)
+        view, screens = build_view(monkeypatch, view_cls)
+
+        view.run()
+
+        assert not screens.showed("MicroSD Wiped")
+        assert screens.showed("The MicroSD card was changed")
+
+    def test_flash_holds_the_card_across_both_of_its_writes(self, monkeypatch, tmp_path):
+        screens, commands = self.run_view(
+            monkeypatch, tmp_path, microsd_views.ToolsMicroSDFlashView, on_seedsigner_os=True
+        )
+
+        claims = [cmd for cmd in commands if "-c" in cmd and microsd_views.CLAIMED_WRITE in cmd]
+        assert len(claims) == 1, claims
+        assert [cmd[1] for cmd in self.dd_runs(commands)] == ["if=/dev/zero", "if=/tmp/img.img"]
+        assert screens.showed("MicroSD Flashed")
 
 
 class TestBlankCardIsStillACard(BaseTest):

@@ -84,10 +84,12 @@ def unmounted(commands):
 
 
 def writes(commands):
-    """Indexes of the dd commands that write anywhere."""
+    """Indexes of the dd commands that write anywhere: dd itself, not the
+    claimed write that runs it."""
     return [
         i for i, cmd in enumerate(commands)
-        if "dd" in cmd and any(part.startswith("of=") for part in cmd)
+        if (cmd[:1] == ["dd"] or cmd[:2] == ["sudo", "dd"])
+        and any(part.startswith("of=") for part in cmd)
     ]
 
 
@@ -443,6 +445,7 @@ class TestNothingIsWrittenUnderAMountedCard(BaseTest):
         commands = []
         patch_environment(monkeypatch, commands, on_seedsigner_os=on_seedsigner_os)
         monkeypatch.setattr(microsd_views, "find_sd_card_device", lambda: SD_DEV)
+        monkeypatch.setattr(microsd_views, "card_identity", lambda dev: "a card")
         monkeypatch.setattr(microsd_views, "unmount_card", lambda dev: False)
         view, screens = build_view(monkeypatch, view_cls)
 
