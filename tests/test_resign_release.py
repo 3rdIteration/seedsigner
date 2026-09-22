@@ -62,7 +62,10 @@ def _rk_container(n, hdr_off=0x0):
     buf = bytearray(b"\xa5" * (hdr_off + rk.HDR_LEN + rk.SIG_LEN + 0x40))
     buf[hdr_off:hdr_off + 4] = rk.MAGIC_UNSIGNED
     struct.pack_into("<I", buf, hdr_off + 0x0c, 0x01)
-    buf[hdr_off + rk.MOD_OFF:hdr_off + rk.MOD_OFF + rk.SIG_LEN] = n.to_bytes(rk.SIG_LEN, "little")
+    # The whole header key block (N, E and the PKA constant C), as the vendor
+    # tools write it. check_release fails a header whose C does not match its
+    # modulus, because a fused BootROM rejects exactly that image.
+    rk.write_key_block(buf, hdr_off, n)
     return buf
 
 
