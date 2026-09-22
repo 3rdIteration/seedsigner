@@ -50,7 +50,8 @@ from seedsigner.models.seed import Seed, Slip39Seed
 from seedsigner.models.settings import Settings
 from seedsigner.models.settings_definition import SettingsConstants, SettingsDefinition
 from seedsigner.views import (MainMenuView, PowerOptionsView, RestartView, RemoveMicroSDWarningView, NotYetImplementedView, UnhandledExceptionView, 
-    psbt_views, seed_views, settings_views, tools_views, scan_views)
+    psbt_views, seed_views, settings_views, tools_views, scan_views,
+    smartcard_views, password_generator_views, microsd_views, gpg_views)
 from seedsigner.views import resign_views
 from seedsigner.helpers import secure_boot_tools
 from seedsigner.views.screensaver import OpeningSplashView
@@ -126,6 +127,18 @@ seed_24_w_passphrase = Seed(mnemonic=mnemonic_24, passphrase="some-PASS*phrase9"
 
 MULTISIG_WALLET_DESCRIPTOR = """wsh(sortedmulti(1,[22bde1a9/48h/1h/0h/2h]tpubDFfsBrmpj226ZYiRszYi2qK6iGvh2vkkghfGB2YiRUVY4rqqedHCFEgw12FwDkm7rUoVtq9wLTKc6BN2sxswvQeQgp7m8st4FP8WtP8go76/{0,1}/*,[73c5da0a/48h/1h/0h/2h]tpubDFH9dgzveyD8zTbPUFuLrGmCydNvxehyNdUXKJAQN8x4aZ4j6UZqGfnqFrD4NqyaTVGKbvEW54tsvPTK2UoSbCC1PJY8iCNiwTL3RWZEheQ/{0,1}/*))#3jhtf6yx"""
 
+# A coordinator that includes PSBT_GLOBAL_XPUB, which is what lets PSBTParser tie the
+# multisig change's cosigner keys to the inputs' wallet. Without them the change stays
+# a payment until a descriptor identifies it (see PSBTIdentifyChangeView).
+def add_global_xpubs(base64_psbt: str, descriptor_str: str) -> str:
+    from embit.psbt import DerivationPath
+    psbt = PSBT.from_base64(base64_psbt)
+    for key in embit.descriptor.Descriptor.from_string(descriptor_str).keys:
+        psbt.xpubs[key.key] = DerivationPath(key.origin.fingerprint, key.origin.derivation)
+    return psbt.to_string()
+
+BASE64_MULTISIG_PSBT_WITH_XPUBS = add_global_xpubs(BASE64_MULTISIG_PSBT, MULTISIG_WALLET_DESCRIPTOR)
+
 # Grab the most recent release version info for the "release build" splash screenshots.
 (latest_release_version_name, latest_release_version_timestamp) = VersionUtils._fetch_latest_seedsigner_release_tag()
 if not latest_release_version_name or not latest_release_version_timestamp:
@@ -168,8 +181,14 @@ def generate_screenshots(locale):
         When the `Renderer` instance is needed, we patch in our own test-only
         `ScreenshotRenderer`.
     """
-    # Prep the ScreenshotRenderer that will be patched over the normal Renderer
-    screenshot_root = os.path.join(os.getcwd(), "seedsigner-screenshots")
+    # Prep the ScreenshotRenderer that will be patched over the normal Renderer.
+    # SEEDSIGNER_SCREENSHOT_ROOT lets the fork's documentation generator write the
+    # curated images straight into docs/ without touching the upstream screenshot
+    # submodule; unset it keeps the historical behaviour.
+    screenshot_root = os.environ.get(
+        "SEEDSIGNER_SCREENSHOT_ROOT",
+        os.path.join(os.getcwd(), "seedsigner-screenshots"),
+    )
     ScreenshotRenderer.configure_instance()
     screenshot_renderer: ScreenshotRenderer = ScreenshotRenderer.get_instance()
 
@@ -186,6 +205,16 @@ def generate_screenshots(locale):
 
         controller.settings.set_value(SettingsConstants.SETTING__SIG_TYPES, [attr for attr, name in SettingsConstants.ALL_SIG_TYPES])
         controller.settings.set_value(SettingsConstants.SETTING__SCRIPT_TYPES, [attr for attr, name in SettingsConstants.ALL_SCRIPT_TYPES])
+
+        # The fork's smartcard menus only appear when their feature toggles are on.
+        for setting in (
+            SettingsConstants.SETTING__SMARTCARD_SUPPORT,
+            SettingsConstants.SETTING__SATOCHIP_SUPPORT,
+            SettingsConstants.SETTING__KEYCARD_SUPPORT,
+            SettingsConstants.SETTING__SPECTER_DIY_SUPPORT,
+            SettingsConstants.SETTING__SLIP39_SEEDS,
+        ):
+            controller.settings.set_value(setting, SettingsConstants.OPTION__ENABLED)
 
         controller.storage.seeds.append(seed_12)
         controller.storage.seeds.append(seed_12b)
@@ -293,7 +322,7 @@ def generate_screenshots(locale):
             decoder.add_data(base64_psbt)
             with patch.object(controller, 'psbt', decoder.get_psbt()):
                 with patch.object(controller, 'psbt_seed', seed):
-                    with patch.object(controller, 'psbt_parser', PSBTParser(p=controller.psbt, seed=seed)):
+                    with patch.object(controller, 'psbt_parser', PSBTParser(p=controller.psbt, seed=seed, multisig_descriptor=controller.multisig_wallet_descriptor)):
                         yield
 
 
@@ -305,6 +334,12 @@ def generate_screenshots(locale):
 
         @contextmanager
         def mock_multisig_psbt_loaded():
+            with mock_load_psbt(BASE64_MULTISIG_PSBT_WITH_XPUBS):
+                yield
+
+
+        @contextmanager
+        def mock_multisig_psbt_without_xpubs_loaded():
             with mock_load_psbt(BASE64_MULTISIG_PSBT):
                 yield
 
@@ -317,8 +352,16 @@ def generate_screenshots(locale):
 
         @contextmanager
         def mock_multisig_psbt_and_descriptor_loaded():
-            with mock_multisig_psbt_loaded():
-                with mock_multisig_wallet_descriptor_loaded():
+            # Descriptor first: the parser is built with whatever descriptor is loaded.
+            with mock_multisig_wallet_descriptor_loaded():
+                with mock_multisig_psbt_loaded():
+                    yield
+
+
+        @contextmanager
+        def mock_multisig_psbt_without_xpubs_and_descriptor_loaded():
+            with mock_multisig_wallet_descriptor_loaded():
+                with mock_multisig_psbt_without_xpubs_loaded():
                     yield
 
 
@@ -619,6 +662,8 @@ def generate_screenshots(locale):
                 ScreenshotConfig(psbt_views.PSBTUnsupportedScriptTypeWarningView),
                 ScreenshotConfig(psbt_views.PSBTNoChangeWarningView),
                 ScreenshotConfig(psbt_views.PSBTRiskWarningView, mock_context_manager=mock_psbt_with_risk_warnings_loaded),
+                ScreenshotConfig(psbt_views.PSBTIdentifyChangeView, screenshot_name="PSBTIdentifyChangeView_no_descriptor", mock_context_manager=mock_multisig_psbt_without_xpubs_loaded),
+                ScreenshotConfig(psbt_views.PSBTIdentifyChangeView, screenshot_name="PSBTIdentifyChangeView_descriptor_mismatch", mock_context_manager=mock_multisig_psbt_without_xpubs_and_descriptor_loaded),
                 ScreenshotConfig(psbt_views.PSBTMathView, mock_context_manager=mock_multisig_psbt_loaded),
                 ScreenshotConfig(psbt_views.PSBTAddressDetailsView, dict(address_num=0), mock_context_manager=mock_multisig_psbt_loaded),
 
@@ -717,6 +762,39 @@ def generate_screenshots(locale):
                 ScreenshotConfig(settings_views.SettingsIngestSettingsQRView, dict(data=settingsqr_data_persistent),     screenshot_name="SettingsIngestSettingsQRView_persistent"),
                 ScreenshotConfig(settings_views.SettingsIngestSettingsQRView, dict(data=settingsqr_data_not_persistent), screenshot_name="SettingsIngestSettingsQRView_not_persistent"),
                 ScreenshotConfig(settings_views.SettingsSelectionRequiredWarningView, dict(attr_name=SettingsConstants.SETTING__SCRIPT_TYPES)),
+            ],
+            "Smartcard Views": [
+                ScreenshotConfig(smartcard_views.ToolsSmartcardMenuView),
+                ScreenshotConfig(smartcard_views.ToolsSeedkeeperView),
+                ScreenshotConfig(smartcard_views.ToolsSeedkeeperCardSettingsView),
+                ScreenshotConfig(smartcard_views.ToolsCommonNdefView),
+                ScreenshotConfig(smartcard_views.ToolsSatochipView),
+                ScreenshotConfig(smartcard_views.ToolsSatochipCardSettingsView),
+                ScreenshotConfig(smartcard_views.ToolsSatochipAdvancedView),
+                ScreenshotConfig(smartcard_views.ToolsKeycardView),
+                ScreenshotConfig(smartcard_views.ToolsKeycardAdvancedView),
+                ScreenshotConfig(smartcard_views.ToolsSatodimeView),
+                ScreenshotConfig(smartcard_views.ToolsSatodimeCardSettingsView),
+                ScreenshotConfig(smartcard_views.ToolsSpecterDIYView),
+                ScreenshotConfig(smartcard_views.ToolsSatochipDIYView),
+                ScreenshotConfig(smartcard_views.ToolsJavacardKeysView),
+                ScreenshotConfig(smartcard_views.SatochipExportXpubSigTypeView),
+                ScreenshotConfig(smartcard_views.SatochipExportXpubScriptTypeView, dict(sig_type=SettingsConstants.SINGLE_SIG)),
+                ScreenshotConfig(smartcard_views.SatochipLoadDescriptorScriptTypeView),
+            ],
+            "Password Generator Views": [
+                ScreenshotConfig(password_generator_views.ToolsPasswordGeneratorTypeView),
+                ScreenshotConfig(password_generator_views.ToolsPasswordStrengthView, dict(password_type=password_generator_views.PASSWORD_TYPE_DICEWARE_BIP39)),
+                ScreenshotConfig(password_generator_views.ToolsPasswordEntropySourceView, dict(password_type=password_generator_views.PASSWORD_TYPE_DICEWARE_BIP39, strength_bits=128)),
+                ScreenshotConfig(password_generator_views.ToolsPasswordReviewView, dict(password="correct horse battery staple")),
+                ScreenshotConfig(password_generator_views.ToolsPasswordSaveView, dict(password="correct horse battery staple")),
+            ],
+            "MicroSD Views": [
+                ScreenshotConfig(microsd_views.ToolsMicroSDMenuView),
+                ScreenshotConfig(microsd_views.ToolsMicroSDFlashView),
+                ScreenshotConfig(microsd_views.ToolsMicroSDVerifyWarningView),
+                ScreenshotConfig(microsd_views.ToolsMicroSDWipeZeroView),
+                ScreenshotConfig(microsd_views.ToolsMicroSDWipeRandomView),
             ],
             "Misc Error Views": [
                 ScreenshotConfig(NotYetImplementedView),

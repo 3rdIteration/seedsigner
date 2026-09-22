@@ -6,6 +6,12 @@ renders past the bottom edge, straight over the button. So an overlong refusal
 reason produces a visually broken screen that nothing else catches. These tests
 measure the real layout and fail if a message no longer fits.
 """
+# Before any seedsigner import: base installs the test doubles for the renderer
+# and the hardware buttons. Importing the GUI first bound the real ones for every
+# module collected after this file, so the flow tests that followed it hung -- on
+# an unconfigured Renderer, or on real buttons waiting for a key press.
+import base  # noqa: F401
+
 import threading
 
 from unittest.mock import patch
@@ -105,9 +111,8 @@ class TestRefusalScreensFit:
             PSBTParser(p=load_psbt(vector.name), seed=suite_seed(), network=SUITE_NETWORK)
 
         presentation = REJECT_PRESENTATION.get(excinfo.value.code, RejectPresentation())
-        assert presentation.text is None, (
-            f"{vector.name}: this code now renders fixed prose, so the parser's own "
-            f"message is never shown; cover it in test_table_prose_fits instead.")
+        if presentation.text is not None:
+            pytest.skip(f"{excinfo.value.code} renders fixed prose; see test_table_prose_fits")
 
         text = str(excinfo.value)
         if presentation.tip:
@@ -294,3 +299,23 @@ class TestBlockAnchor:
         data = json.loads(path.read_text(encoding="utf-8"))
         assert data["height"] > 900_000
         assert data["timestamp"] > 1_700_000_000
+
+
+class TestIdentifyChangeScreenFits:
+    """PSBTIdentifyChangeView's text shares the warning box with a headline and two buttons."""
+
+    @pytest.mark.parametrize("text,buttons", [
+        ("Load descriptor to identify change.", ["Load descriptor", "Continue as payment"]),
+        ("The loaded descriptor doesn't identify it. Shown as a payment.", ["Continue"]),
+    ])
+    def test_text_fits(self, text, buttons):
+        screen = WarningScreen(
+            status_headline="Change Not Identified",
+            text=text,
+            button_data=[ButtonOption(b) for b in buttons],
+            show_back_button=True,
+        )
+        text_area = [c for c in screen.components if c.__class__.__name__ == "TextArea"][-1]
+        lines = len(text_area.text_lines)
+        height = text_area.text_height_above_baseline * lines + text_area.line_spacing * (lines - 1)
+        assert height <= text_area.height, f"{lines} lines, {height}px in a {text_area.height}px box"

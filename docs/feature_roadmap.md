@@ -1,11 +1,21 @@
 # Feature Roadmap
 
+> **Historical document.** This roadmap predates the smartcard fork and describes the
+> original SeedSigner v0.5.0 preview milestones. It is kept for reference only and is no
+> longer maintained.
+>
+> For what the software actually does today, see the [documentation index](./README.md)
+> and the [CHANGELOG](https://github.com/3rdIteration/seedsigner/blob/dev/CHANGELOG.md). For current development focus, see the
+> repository's issues and releases.
+
+## Original v0.5.0 plan (archived)
+
 Current focus: v0.5.0 preview releases.
 
 *Note: It may or may not make sense to do minor bugfix preview releases along the way (e.g. 1.0 -> 1.1).*
 
 
-## v0.5.0 Pre-Release 1.x
+### v0.5.0 Pre-Release 1.x
 * Scan SeedQR/CompactSeedQR
 * Add/Edit passphrase
 * View seed words with configurable warnings
@@ -22,7 +32,7 @@ Current focus: v0.5.0 preview releases.
 Screens will be functional but not necessarily in their final presentation state (icons, text, positioning, etc.).
 
 
-## v0.5.0 Pre-Release 2.x
+### v0.5.0 Pre-Release 2.x
 * Existing screen refinement (visual presentation, text, etc.)
 * Create new seed via image entropy
 * Manual mnemonic seed word entry
@@ -34,7 +44,7 @@ Screens will be functional but not necessarily in their final presentation state
 * All GUI Components support scrollable Screens
 
 
-## v0.5.0 Pre-Release 3.x
+### v0.5.0 Pre-Release 3.x
 * Settings: I/O Test
 * Create new seed via dice rolls
 * Custom derivation paths in xpub export flow
@@ -45,11 +55,11 @@ Screens will be functional but not necessarily in their final presentation state
 * "Final" bugfixes
 
 
-## Initial v0.5.0 Release
+### Initial v0.5.0 Release
 All of the above!
 
 
-## Beyond v0.5.0
+### Beyond v0.5.0
 These features will not be included in the initial v0.5.0 release and will have varying degrees of priority for subsequent releases (or possibly not at all).
 
 * Multisig wallet descriptor QR scan(?) and address verification(?)

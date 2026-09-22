@@ -426,3 +426,82 @@ class TestSettingsQRParser(SettingsQRBase):
             self.settings._reset_save_infra()
             self.settings.flush_save()
             assert write_count == 0
+
+
+class TestSettingsValueHardening(BaseTest):
+    """Untrusted inputs (SettingsQR, a tampered settings.json) must not be able
+    to push bounded settings out of range or inject invalid enum values."""
+
+    def test_set_value_enforces_bounded_free_entry(self):
+        attr = SettingsConstants.SETTING__ENCRYPTION_ITER
+        default = SettingsConstants.ENCRYPTION_ITERATIONS
+        assert self.settings.get_value(attr) == default
+
+        # Below the floor (would weaken Encrypted SeedQR brute-force resistance)
+        self.settings.set_value(attr, 1, save=False)
+        assert self.settings.get_value(attr) == default
+        self.settings.set_value(attr, 0, save=False)
+        assert self.settings.get_value(attr) == default
+
+        # Above the encodable ceiling
+        self.settings.set_value(attr, SettingsConstants.ENCRYPTION_ITERATIONS_MAX + 1, save=False)
+        assert self.settings.get_value(attr) == default
+
+        # Non-integers are rejected
+        self.settings.set_value(attr, "lots", save=False)
+        assert self.settings.get_value(attr) == default
+
+        # Valid numeric strings are coerced to int and accepted
+        self.settings.set_value(attr, "20", save=False)
+        assert self.settings.get_value(attr) == 20
+
+        # Valid ints are accepted, at both bounds
+        self.settings.set_value(attr, SettingsConstants.ENCRYPTION_ITERATIONS_MIN, save=False)
+        assert self.settings.get_value(attr) == SettingsConstants.ENCRYPTION_ITERATIONS_MIN
+        self.settings.set_value(attr, SettingsConstants.ENCRYPTION_ITERATIONS_MAX, save=False)
+        assert self.settings.get_value(attr) == SettingsConstants.ENCRYPTION_ITERATIONS_MAX
+
+
+    def test_settingsqr_cannot_downgrade_encryption_iterations(self):
+        """A SettingsQR that tries to set pbkdf2_iterations below the floor must
+        have the value rejected when applied (the current value is retained)."""
+        attr = SettingsConstants.SETTING__ENCRYPTION_ITER
+        default = SettingsConstants.ENCRYPTION_ITERATIONS
+
+        _, settings_update_dict = Settings.parse_settingsqr("settings::v1 pbkdf2_iterations=1")
+        assert settings_update_dict[attr] == 1  # parsing itself keeps the raw value
+
+        self.settings.update(settings_update_dict, persist=False)
+        assert self.settings.get_value(attr) == default
+
+
+    def test_update_validate_skips_invalid_enum_values(self):
+        """update(validate=True) (the settings.json load path) must skip invalid
+        option values instead of applying them."""
+        self.settings.set_value(SettingsConstants.SETTING__NETWORK, SettingsConstants.TESTNET, save=False)
+
+        self.settings.update({SettingsConstants.SETTING__NETWORK: "bogus"}, persist=False, validate=True)
+        assert self.settings.get_value(SettingsConstants.SETTING__NETWORK) == SettingsConstants.TESTNET
+
+        # Valid values still apply
+        self.settings.update({SettingsConstants.SETTING__NETWORK: SettingsConstants.REGTEST}, persist=False, validate=True)
+        assert self.settings.get_value(SettingsConstants.SETTING__NETWORK) == SettingsConstants.REGTEST
+
+        # Without validation (the SettingsQR path, which validates during parsing)
+        # the value is applied as before.
+        self.settings.update({SettingsConstants.SETTING__NETWORK: "bogus"}, persist=False)
+        assert self.settings.get_value(SettingsConstants.SETTING__NETWORK) == "bogus"
+
+
+    def test_update_validate_skips_invalid_multiselect_members(self):
+        """A tampered multiselect value with an invalid member is skipped
+        entirely; the current value is retained."""
+        attr = SettingsConstants.SETTING__SIG_TYPES
+        current = self.settings.get_value(attr)
+
+        self.settings.update({attr: [current[0], "bogus-sig-type"]}, persist=False, validate=True)
+        assert self.settings.get_value(attr) == current
+
+        # All-valid selections still apply
+        self.settings.update({attr: [current[0]]}, persist=False, validate=True)
+        assert self.settings.get_value(attr) == [current[0]]

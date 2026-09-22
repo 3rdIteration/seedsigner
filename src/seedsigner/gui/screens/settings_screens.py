@@ -833,6 +833,44 @@ class VersionScreen(BaseTopNavScreen):
 
 
 @dataclass
+class SettingsQRReviewScreen(ButtonListScreen):
+    """
+    Shown after scanning a SettingsQR; settings are only applied if the user
+    confirms here (Apply). Cancel discards the scanned settings.
+    """
+    config_name: str = None
+    title: str = _mft("Settings QR")
+    # TRANSLATOR_NOTE: Shown after scanning a SettingsQR; nothing is applied until the user taps Apply.
+    status_message: str = _mft("Apply these settings? Nothing changes until you tap Apply.")
+    is_bottom_list: bool = True
+
+    def __post_init__(self):
+        # TRANSLATOR_NOTE: Button that applies the scanned settings
+        self.button_data = [ButtonOption(_("Apply")), ButtonOption(_("Cancel"))]
+        self.show_back_button = False
+        super().__post_init__()
+
+        start_y = self.top_nav.height + 20
+        if self.config_name:
+            self.config_name_textarea = TextArea(
+                text=f'"{self.config_name}"',  # User-supplied string (from SettingsQR); don't wrap to translate
+                is_text_centered=True,
+                auto_line_break=True,
+                screen_y=start_y
+            )
+            self.components.append(self.config_name_textarea)
+            start_y = self.config_name_textarea.screen_y + 20
+
+        self.components.append(TextArea(
+            text=_(self.status_message),
+            is_text_centered=True,
+            auto_line_break=True,
+            screen_y=start_y
+        ))
+
+
+
+@dataclass
 class SettingsQRConfirmationScreen(ButtonListScreen):
     config_name: str = None
     title: str = _mft("Settings QR")

@@ -639,6 +639,16 @@ class SettingsConstants:
     ENCRYPTION_MODE_CBCV1 = "AES-CBC v1"
     ENCRYPTION_MODE       = ENCRYPTION_MODE_GCM
     ENCRYPTION_ITERATIONS = 10
+    # Bounds for the raw pbkdf2_iterations setting (effective iterations =
+    # raw * QR_CODE_ITER_MULTIPLE = raw * 10,000).
+    #   * floor: default (10 -> 100,000 iterations); lower values make an
+    #     Encrypted SeedQR meaningfully cheaper to brute-force and must not be
+    #     injected via a SettingsQR or tampered settings.json.
+    #   * ceiling: 1,000 -> 10,000,000 effective. kef.wrap() only encodes
+    #     iteration counts < 2**24 once the optional time-delta is added, so a
+    #     larger raw value could produce an unencodable (crashing) wrap.
+    ENCRYPTION_ITERATIONS_MIN = ENCRYPTION_ITERATIONS
+    ENCRYPTION_ITERATIONS_MAX = 1000
     AMBIGUOUS_QR_PROMPT  = "prompt"
     AMBIGUOUS_QR_COMPACT = "compactseedqr"
     AMBIGUOUS_QR_ENCRYPTED = "encryptedseedqr"
@@ -725,8 +735,14 @@ class SettingsEntry:
             on the device itself, too.
         
         * selection_options: May be specified as a List(Any) or List(tuple(Any, str)).
-            The tuple form is to provide a human-readable display_name. Probably all
-            entries should shift to using the tuple form.
+          The tuple form is to provide a human-readable display_name. Probably all
+          entries should shift to using the tuple form.
+
+        * min_value / max_value: Inclusive bounds enforced by
+          `Settings.set_value()` for numeric (free-entry) settings. Values coming
+          from untrusted inputs (SettingsQR, settings.json on an SD card) that
+          fall outside the range -- or are not integers at all -- are rejected so
+          they cannot silently weaken or break dependent crypto operations.
     """
     # TODO: Handle multi-language `display_name` and `help_text`
     category: str
@@ -738,6 +754,8 @@ class SettingsEntry:
     help_text: str = None
     selection_options: list[tuple[str | int], str] = None
     default_value: Any = None
+    min_value: Any = None
+    max_value: Any = None
 
     def __post_init__(self):
         if self.type == SettingsConstants.TYPE__ENABLED_DISABLED:
@@ -1054,6 +1072,8 @@ class SettingsDefinition:
                       display_name="Encryption Iter.(PBKDF2)",
                       type=SettingsConstants.TYPE__FREE_ENTRY,
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      min_value=SettingsConstants.ENCRYPTION_ITERATIONS_MIN,
+                      max_value=SettingsConstants.ENCRYPTION_ITERATIONS_MAX,
                       default_value=SettingsConstants.ENCRYPTION_ITERATIONS),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,

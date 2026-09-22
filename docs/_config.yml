@@ -1,0 +1,9 @@
+title: SeedSigner + Satochip Documentation
+description: >-
+  User documentation for the SeedSigner + Satochip fork: smartcard applets,
+  SeedKeeper/Satochip/Satodime/Keycard/Specter-DIY, password generator, GPG and
+  seed-backup quick starts.
+theme: jekyll-theme-minimal
+
+# The docs reference files that live outside docs/ (source code, tests) via absolute
+# GitHub links, so no theme-specific plugin config is needed here.

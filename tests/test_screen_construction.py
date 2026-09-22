@@ -95,3 +95,13 @@ class TestScreenConstruction(BaseTest):
     def test_screen_constructs_and_keyboards_fit(self, screen_cls, kwargs):
         screen = screen_cls(**kwargs)
         _assert_all_keyboards_fit(screen)
+
+    def test_settingsqr_review_screen_constructs(self):
+        """SettingsQRReviewScreen (Apply/Cancel gate before applying a scanned
+        SettingsQR) must construct on the 240x240 canvas."""
+        from seedsigner.gui.screens.settings_screens import SettingsQRReviewScreen
+
+        screen = SettingsQRReviewScreen(title="Settings QR", config_name="A somewhat long config name for wrapping")
+        assert len(screen.button_data) == 2
+        labels = [b.button_label for b in screen.button_data]
+        assert labels[0] != labels[1]

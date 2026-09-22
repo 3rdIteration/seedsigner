@@ -132,7 +132,7 @@ class TestMaliciousPSBTFlows(FlowTest):
 
     def test_unparseable_psbt_is_rejected_at_scan(self):
         """
-        TX-16.foreign_fingerprint carries a pubkey embit cannot parse. Delivered
+        TX-04 carries a pubkey embit cannot parse. Delivered
         as UR2 (how a real scan arrives), `DecodeQR.is_psbt` is True but
         `get_psbt()` returns None. ScanView must refuse it there, rather than
         routing on with `controller.psbt = None` — which PSBTSelectSeedView
@@ -142,6 +142,82 @@ class TestMaliciousPSBTFlows(FlowTest):
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
             FlowStep(scan_views.ScanView,
-                     before_run=self.load_psbt_as_ur2("TX-16.foreign_fingerprint")),
+                     before_run=self.load_psbt_as_ur2("TX-04")),
             FlowStep(MainMenuView),
+        ])
+
+
+    def test_unidentified_multisig_change_is_a_payment_until_identified(self):
+        """
+        With no global xpubs, genuine multisig change looks exactly like a different
+        wallet that shares our key (TX-21.ms_foreign_quorum_no_xpubs). Without the
+        descriptor it is shown as a payment, and the user is told a descriptor would
+        identify it. Continuing without one reviews it as the full spend it appears to be.
+        """
+        def assert_unidentified(view):
+            assert view.controller.psbt_parser.unidentified_change_outputs == [0]
+            assert view.controller.psbt_parser.num_change_outputs == 0
+
+        self.run_sequence(
+            self.scan_and_select_seed("TX-21.ms_honest_change_no_xpubs") + [
+                FlowStep(psbt_views.PSBTOverviewView, screen_return_value=0),
+                FlowStep(psbt_views.PSBTIdentifyChangeView, before_run=assert_unidentified,
+                         button_data_selection=psbt_views.PSBTIdentifyChangeView.CONTINUE_AS_PAYMENT),
+                FlowStep(psbt_views.PSBTNoChangeWarningView),
+            ]
+        )
+
+    def test_loading_the_descriptor_identifies_the_change(self):
+        """"Load descriptor" goes to the descriptor loader, resuming the psbt flow."""
+        from seedsigner.controller import Controller
+        from seedsigner.views.seed_views import LoadMultisigWalletDescriptorView
+
+        def assert_resumes(view):
+            assert view.controller.resume_main_flow == Controller.FLOW__PSBT
+
+        self.run_sequence(
+            self.scan_and_select_seed("TX-21.ms_honest_change_no_xpubs") + [
+                FlowStep(psbt_views.PSBTOverviewView, screen_return_value=0),
+                FlowStep(psbt_views.PSBTIdentifyChangeView,
+                         button_data_selection=psbt_views.PSBTIdentifyChangeView.LOAD_DESCRIPTOR),
+                FlowStep(LoadMultisigWalletDescriptorView, before_run=assert_resumes),
+            ]
+        )
+
+    def test_returning_with_a_descriptor_re_reads_the_psbt(self):
+        """
+        Once a descriptor is loaded, "Return to transaction" discards the parse that
+        couldn't identify the change and restarts review, now with the change shown as
+        change. (Starts at MultisigWalletDescriptorView, as after a descriptor scan.)
+        """
+        from embit.descriptor import Descriptor
+
+        from seedsigner.controller import Controller
+        from seedsigner.models.psbt_parser import PSBTParser
+        from seedsigner.views.seed_views import MultisigWalletDescriptorView
+
+        from psbt_suite_util import MULTISIG_DESCRIPTOR, SUITE_NETWORK, load_psbt
+
+        seed = self.controller.storage.seeds[0]
+        psbt = load_psbt("TX-21.ms_honest_change_no_xpubs")
+        self.controller.psbt = psbt
+        self.controller.psbt_seed = seed
+        self.controller.psbt_parser = PSBTParser(psbt, seed=seed, network=SUITE_NETWORK)
+        assert self.controller.psbt_parser.unidentified_change_outputs == [0]
+        self.controller.multisig_wallet_descriptor = Descriptor.from_string(MULTISIG_DESCRIPTOR)
+        self.controller.resume_main_flow = Controller.FLOW__PSBT
+        # On a device the descriptor screen is on the back stack when RETURN skips it.
+        from seedsigner.views.view import Destination
+        self.controller.back_stack.append(Destination(MultisigWalletDescriptorView))
+
+        def assert_identified(view):
+            parser = view.controller.psbt_parser
+            assert parser.unidentified_change_outputs == []
+            assert parser.num_change_outputs == 1
+
+        self.run_sequence([
+            FlowStep(MultisigWalletDescriptorView,
+                     button_data_selection=MultisigWalletDescriptorView.RETURN),
+            FlowStep(psbt_views.PSBTOverviewView, screen_return_value=0),
+            FlowStep(psbt_views.PSBTMathView, before_run=assert_identified),
         ])
