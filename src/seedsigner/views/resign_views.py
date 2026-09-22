@@ -41,7 +41,6 @@ logger = logging.getLogger(__name__)
 RSA_KEY_BITS = 2048
 
 ACTION__CHECK = "check"
-ACTION__EXPORT = "export"
 ACTION__RESIGN = "resign"
 # Air-Gap Re-Key is a submenu, one action per round: each round re-derives its
 # keys from the seed and indexes, so nothing has to survive in RAM between card
@@ -61,7 +60,6 @@ ACTION__ARM = "arm"
 # is collected here, and the ceremony itself paces the card round-trips.
 STEPS = {
     ACTION__CHECK: ("folder",),
-    ACTION__EXPORT: ("seed_num", "rsa_index", "ed_index"),
     # Resign Release asks where its keys come from first; see _steps().
     ACTION__RESIGN: ("source", "folder"),
     ACTION__REKEY_EXPORT: ("source",),
@@ -75,7 +73,6 @@ STEPS = {
 
 TITLES = {
     ACTION__CHECK: _mft("Check Release"),
-    ACTION__EXPORT: _mft("Export Pubkeys"),
     ACTION__RESIGN: _mft("Resign Release"),
     ACTION__REKEY_EXPORT: _mft("Re-Key: Export Pubkeys"),
     ACTION__REKEY_SIGN_ROOTFS: _mft("Re-Key: Sign Rootfs Digest"),
@@ -159,7 +156,6 @@ def next_step(flow: dict, skip_current_view: bool = False) -> Destination:
     }
     finals = {
         ACTION__CHECK: ToolsLuckfoxCheckReleaseView,
-        ACTION__EXPORT: ToolsLuckfoxExportRunView,
         ACTION__RESIGN: ToolsResignConfirmView,
         ACTION__REKEY_EXPORT: ToolsRekeyExportRunView,
         ACTION__REKEY_SIGN_ROOTFS: ToolsRekeySignRootfsView,
@@ -328,7 +324,6 @@ LUCKFOX_MINI_PROFILE = "luckfox_22"
 ****************************************************************************"""
 class ToolsLuckfoxBuildToolsMenuView(View):
     CHECK = ButtonOption("Check Release")
-    EXPORT = ButtonOption("Export Pubkeys")
     RESIGN = ButtonOption("Resign Release")
     REKEY = ButtonOption("Air-Gap Re-Key")
     SIGN_DIGEST = ButtonOption("Sign Digest")
@@ -349,7 +344,7 @@ class ToolsLuckfoxBuildToolsMenuView(View):
             )
             return Destination(BackStackView)
 
-        button_data = [self.CHECK, self.EXPORT, self.RESIGN, self.REKEY, self.SIGN_DIGEST,
+        button_data = [self.CHECK, self.RESIGN, self.REKEY, self.SIGN_DIGEST,
                        self.PROVISION, self.FORCE, self.DANGER]
         selected = self.run_screen(
             ButtonListScreen,
@@ -378,8 +373,6 @@ class ToolsLuckfoxBuildToolsMenuView(View):
                         "and leaves its digest on the card - sign it with Sign Digest, then splice.")))
         if choice == self.CHECK:
             return next_step(dict(action=ACTION__CHECK))
-        if choice == self.EXPORT:
-            return next_step(dict(action=ACTION__EXPORT))
         if choice == self.RESIGN:
             return Destination(ToolsResignReleaseStartView)
         if choice == self.REKEY:
@@ -727,31 +720,7 @@ class ToolsLuckfoxCheckReleaseView(_FlowView):
 
 
 """****************************************************************************
-    2. Export Pubkeys
-****************************************************************************"""
-class ToolsLuckfoxExportRunView(_FlowView):
-    def run(self):
-        from seedsigner.helpers import resign_release
-
-        try:
-            rsa_key, (ed_seed, _kid) = self.derive_keys(want_ed=True)
-            out = resign_release.export_pubkeys(
-                str(MicroSD.get_microsd_dir()), rsa_key, ed_seed,
-                self.flow["rsa_index"], self.flow["ed_index"])
-        except Exception as e:
-            logger.exception("exporting the public keys failed")
-            return self.result(_("Export failed: {}").format(e))
-
-        text = _("Written to {dir} on the MicroSD:\n- release-rsa.pub\n- release-rootfs.pub\n"
-                 "- README.txt\n\nRSA fingerprint:\n{fp}\n\nRootfs key id:\n{kid}").format(
-            dir=os.path.basename(out),
-            fp=resign_release.rsa_modulus_fingerprint(int(rsa_key.n))[:32],
-            kid=resign_release.ed25519_key_id_text(ed_seed))
-        return self.result(text)
-
-
-"""****************************************************************************
-    3. Resign Release
+    2. Resign Release
 ****************************************************************************"""
 class ToolsResignReleaseStartView(View):
     """Explain what this does before asking for anything."""
@@ -872,7 +841,7 @@ class ToolsLuckfoxUpdateImgDeletedView(View):
 
 
 """****************************************************************************
-    3b. Sign Digest (air-gap: no bundle on the device)
+    2b. Sign Digest (air-gap: no bundle on the device)
 ****************************************************************************"""
 class ToolsSignDigestStartView(View):
     """Explain the digest-signer role before asking for anything."""
@@ -931,7 +900,7 @@ class ToolsSignDigestRunView(_FlowView):
 
 
 """****************************************************************************
-    3c. Air-Gap Re-Key (guided two-round-trip ceremony)
+    2c. Air-Gap Re-Key (guided two-round-trip ceremony)
 
     Moves a release from its current boot key to the user's own keys with the
     private halves never leaving this device. The PC does round 0 (`rekey`,
@@ -973,7 +942,12 @@ class ToolsRekeyMenuView(View):
 
 class ToolsRekeyExportRunView(_FlowView):
     """Round 0: derive the keys and put their public halves on the card (skipping
-    that when they are already there)."""
+    that when they are already there).
+
+    The only way to export the public keys: a standalone Export Pubkeys item used
+    to sit in the parent menu and did exactly this, which left two paths to the
+    same files. `rekey` on the PC needs them before any digest round, so Round 0
+    is where they belong."""
 
     def run(self):
         from seedsigner.helpers import resign_release
@@ -1114,7 +1088,7 @@ class ToolsRekeySignBootView(_RekeySignRoundView):
 
 
 """****************************************************************************
-    4. Provision MicroSD for Update
+    3. Provision MicroSD for Update
 ****************************************************************************"""
 class ToolsLuckfoxProvisionView(_FlowView):
     """Check the release and the card; confirm every risk; then copy."""
@@ -1200,7 +1174,7 @@ class ToolsLuckfoxProvisionDoneView(View):
 
 
 """****************************************************************************
-    5. Force Rootfs Check
+    4. Force Rootfs Check
 ****************************************************************************"""
 class ToolsLuckfoxForceInfoView(View):
     """Two screens of explanation before anything else."""
@@ -1288,7 +1262,7 @@ class ToolsLuckfoxForceRunView(_FlowView):
 
 
 """****************************************************************************
-    6. Danger Zone
+    5. Danger Zone
 ****************************************************************************"""
 class ToolsLuckfoxDangerZoneView(View):
     ARM = ButtonOption("Arm eFuse Burn", button_label_color="red")

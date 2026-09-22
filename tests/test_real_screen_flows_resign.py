@@ -142,13 +142,15 @@ class TestMenuEntry(LuckfoxFlowTest):
         self.run_sequence(self.to_submenu() + [FlowStep(rv.ToolsLuckfoxDangerZoneView)],
                           ui_session=session)
         labels = [b.button_label for b in (
-            rv.ToolsLuckfoxBuildToolsMenuView.CHECK, rv.ToolsLuckfoxBuildToolsMenuView.EXPORT,
+            rv.ToolsLuckfoxBuildToolsMenuView.CHECK,
             rv.ToolsLuckfoxBuildToolsMenuView.RESIGN, rv.ToolsLuckfoxBuildToolsMenuView.REKEY,
             rv.ToolsLuckfoxBuildToolsMenuView.SIGN_DIGEST,
             rv.ToolsLuckfoxBuildToolsMenuView.PROVISION, rv.ToolsLuckfoxBuildToolsMenuView.FORCE,
             rv.ToolsLuckfoxBuildToolsMenuView.DANGER)]
-        assert labels == ["Check Release", "Export Pubkeys", "Resign Release", "Air-Gap Re-Key",
+        # no standalone "Export Pubkeys": exporting is Air-Gap Re-Key's Round 0
+        assert labels == ["Check Release", "Resign Release", "Air-Gap Re-Key",
                           "Sign Digest", "Provision MicroSD", "Force Rootfs Check", "Danger Zone"]
+        assert not hasattr(rv.ToolsLuckfoxBuildToolsMenuView, "EXPORT")
 
     def test_no_microsd_warns_and_backs_out(self, monkeypatch):
         self.tools_available(monkeypatch)
@@ -215,19 +217,6 @@ class TestNavigation(LuckfoxFlowTest):
             FlowStep(rv.ToolsLuckfoxCheckReleaseView),
         ], ui_session=session)
         assert flow == dict(action="check")
-
-    def test_export_pubkeys(self, monkeypatch, tmp_path):
-        self.tools_available(monkeypatch)
-        use_microsd(monkeypatch, tmp_path)
-        self.store_seed()
-        session = UISession(script=(select("Luckfox Build Tools", "Export Pubkeys") + select(0)
-                                    + [TypeKeys("3"), TypeKeys("5")]))
-        self.run_sequence(self.to_submenu() + [
-            FlowStep(rv.ToolsLuckfoxSelectSeedView, real_screens=True),
-            FlowStep(rv.ToolsLuckfoxRsaIndexView, real_screens=True),
-            FlowStep(rv.ToolsLuckfoxEd25519IndexView, real_screens=True),
-            FlowStep(rv.ToolsLuckfoxExportRunView),
-        ], ui_session=session)
 
     def test_rekey_navigation(self, monkeypatch, tmp_path):
         """Menu -> round item -> key source -> seed/index; export is the run view."""
@@ -332,7 +321,9 @@ class TestNavigation(LuckfoxFlowTest):
         self.run_sequence([
             FlowStep(rv.ToolsLuckfoxSelectSeedView, real_screens=True),
             FlowStep(LoadSeedView),
-        ], initial_destination_view_args=dict(flow=dict(action="export")), ui_session=session)
+        ], initial_destination_view_args=dict(
+            flow=dict(action=rv.ACTION__REKEY_EXPORT, source=rv.KEY_SOURCE__BIP85)),
+            ui_session=session)
 
     def test_card_without_a_release_folder_warns(self, monkeypatch, tmp_path):
         self.tools_available(monkeypatch)
