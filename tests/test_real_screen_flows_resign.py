@@ -230,25 +230,33 @@ class TestNavigation(LuckfoxFlowTest):
         ], ui_session=session)
 
     def test_rekey_navigation(self, monkeypatch, tmp_path):
-        """Start -> key source -> seed/index; export is the first run view."""
+        """Menu -> round item -> key source -> seed/index; export is the run view."""
         self.tools_available(monkeypatch)
         use_microsd(monkeypatch, tmp_path)
         self.store_seed()
         flow = {}
-        session = UISession(script=(select("Luckfox Build Tools", "Air-Gap Re-Key", "Continue",
-                                           "BIP85 Derive") + select(0)
+        session = UISession(script=(select("Luckfox Build Tools", "Air-Gap Re-Key",
+                                           "Round 0 - Export Pubkeys", "BIP85 Derive") + select(0)
                                     + [TypeKeys("3"), TypeKeys("5")]))
         self.run_sequence(self.to_submenu() + [
-            FlowStep(rv.ToolsRekeyStartView, real_screens=True),
+            FlowStep(rv.ToolsRekeyMenuView, real_screens=True),
             FlowStep(rv.ToolsLuckfoxKeySourceView, real_screens=True),
             FlowStep(rv.ToolsLuckfoxSelectSeedView, real_screens=True),
             FlowStep(rv.ToolsLuckfoxRsaIndexView, real_screens=True),
             # ed_index is set by this view's own run(), so capture one step earlier.
             FlowStep(rv.ToolsLuckfoxEd25519IndexView, real_screens=True,
                      before_run=captured_flow(flow)),
-            FlowStep(rv.ToolsRekeyExportView),
+            FlowStep(rv.ToolsRekeyExportRunView),
         ], ui_session=session)
-        assert flow == dict(action="rekey", source="bip85", seed_num=0, rsa_index=3)
+        assert flow == dict(action="rekey_export", source="bip85", seed_num=0, rsa_index=3)
+
+    def test_rekey_menu_lists_one_item_per_round(self):
+        # Class-level ButtonOptions: no card or tools needed to read them.
+        labels = [b.button_label for b in (rv.ToolsRekeyMenuView.EXPORT,
+                                           rv.ToolsRekeyMenuView.SIGN_ROOTFS,
+                                           rv.ToolsRekeyMenuView.SIGN_BOOT)]
+        assert labels == ["Round 0 - Export Pubkeys", "Round 1 - Sign Rootfs Digest",
+                          "Round 2 - Sign Boot Chain"]
 
     def test_provision(self, monkeypatch, tmp_path):
         self.tools_available(monkeypatch)
@@ -484,8 +492,24 @@ class TestEndToEnd(LuckfoxFlowTest):
             ui_session=session)
         assert rr.force_rootfs_state(folder) is True
 
-    def test_rekey_ceremony(self, monkeypatch, tmp_path):
-        """Export pubkeys -> sign rootfs -> sign the rest; keys leave RAM at the end."""
+    def _round_steps(self, run_view):
+        """One menu entry through a round: pick the item, collect the keys, run it."""
+        return [
+            FlowStep(rv.ToolsRekeyMenuView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxKeySourceView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxSelectSeedView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxRsaIndexView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxEd25519IndexView, real_screens=True),
+            FlowStep(run_view, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxResultView),
+        ]
+
+    def _round_script(self, item):
+        return (select(item, "BIP85 Derive") + select(0) + [TypeKeys("3"), TypeKeys("5")])
+
+    def test_rekey_ceremony_as_three_resumable_rounds(self, monkeypatch, tmp_path):
+        """Each round is entered on its own - an interrupted ceremony resumes at the
+        pending round instead of restarting from the top."""
         from seedsigner.helpers import resign_release as rr
         rk, fs, ms, lr = secure_boot_tools.load()
 
@@ -493,15 +517,28 @@ class TestEndToEnd(LuckfoxFlowTest):
         folder = self.release(card)
         seed = self.store_seed()
 
-        # One page per paged screen: the ceremony logic is what is under test here.
-        monkeypatch.setattr(rv, "reflow_text_into_pages", lambda **kw: [kw["text"]])
-
         d = card / rr.DIGEST_DIR
         d.mkdir()
         size = lr.signed_size(lr.initramfs_members(rk.read(os.path.join(folder, "boot.img"))))
         (d / "rootfs.digest").write_bytes(lr.rootfs_prehash(folder, size))
 
-        def add_round2_digests(view):      # the PC's work between the round-trips
+        # Round 0: export the public halves.
+        session = UISession(script=select("Luckfox Build Tools", "Air-Gap Re-Key")
+                            + self._round_script("Round 0 - Export Pubkeys"))
+        self.run_sequence(self.to_submenu() + self._round_steps(rv.ToolsRekeyExportRunView),
+                          ui_session=session)
+
+        # The PC's work between round-trips: re-key, then emit the rootfs digest.
+        (d / "rootfs.digest").write_bytes(lr.rootfs_prehash(folder, size))
+
+        # Round 1: sign the rootfs digest - entered fresh, keys re-derived from cache.
+        session = UISession(script=select("Luckfox Build Tools", "Air-Gap Re-Key")
+                            + self._round_script("Round 1 - Sign Rootfs Digest"))
+        self.run_sequence(self.to_submenu() + self._round_steps(rv.ToolsRekeySignRootfsView),
+                          ui_session=session)
+
+        # The PC's work: splice the rootfs signature, emit the boot-chain digests.
+        def add_round2_digests(view):
             for name in ("download", "idblock"):
                 path = os.path.join(folder, name + (".bin" if name == "download" else ".img"))
                 buf = rk.read(path)
@@ -510,25 +547,19 @@ class TestEndToEnd(LuckfoxFlowTest):
                 path = os.path.join(folder, name + ".img")
                 (d / (name + ".digest")).write_bytes(fs.signed_digest(rk.read(path)))
 
-        # One Select per paged screen (instruction x2, final report): a list-mul of
-        # one token would share its _clicked state across the three slots.
-        session = UISession(script=(select("Luckfox Build Tools", "Air-Gap Re-Key", "Continue",
-                                           "BIP85 Derive", 0)
-                                    + [TypeKeys("3"), TypeKeys("5")]
-                                    + select("Done", "Done", "Done")))
+        # Round 2: sign the boot chain - a third independent entry. The stale
+        # rootfs.digest from round 1 is still on the card; re-signing it is a no-op.
+        session = UISession(script=select("Luckfox Build Tools", "Air-Gap Re-Key")
+                            + self._round_script("Round 2 - Sign Boot Chain"))
         self.run_sequence(self.to_submenu() + [
-            FlowStep(rv.ToolsRekeyStartView, real_screens=True),
+            FlowStep(rv.ToolsRekeyMenuView, real_screens=True),
             FlowStep(rv.ToolsLuckfoxKeySourceView, real_screens=True),
             FlowStep(rv.ToolsLuckfoxSelectSeedView, real_screens=True),
             FlowStep(rv.ToolsLuckfoxRsaIndexView, real_screens=True),
-            FlowStep(rv.ToolsLuckfoxEd25519IndexView, real_screens=True),
-            FlowStep(rv.ToolsRekeyExportView, real_screens=True),
-            FlowStep(rv.ToolsRekeyInstructionView, real_screens=True),   # after export
-            FlowStep(rv.ToolsRekeySignView, real_screens=True),          # round 1: rootfs only
-            FlowStep(rv.ToolsRekeyInstructionView, real_screens=True),   # after round 1
-            FlowStep(rv.ToolsRekeySignView, real_screens=True,
-                     before_run=add_round2_digests),                     # round 2: the rest
-            FlowStep(rv.ToolsLuckfoxResultView, real_screens=True),      # final report
+            FlowStep(rv.ToolsLuckfoxEd25519IndexView, real_screens=True,
+                     before_run=add_round2_digests),
+            FlowStep(rv.ToolsRekeySignBootView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxResultView),
         ], ui_session=session)
 
         rsa_key, ed_seed = self.bip85_keys(seed, 3, 5)
@@ -552,21 +583,51 @@ class TestEndToEnd(LuckfoxFlowTest):
         assert msig["key_id"] == rr.ed25519_key_id(ed_seed)
         assert ms.ed25519_verify(pk, (d / "rootfs.digest").read_bytes(), msig["sig"])
 
+    def test_rekey_rounds_refuse_the_wrong_card_state(self, monkeypatch, tmp_path):
+        """Round 1 with boot-chain digests already present points at round 2; round 2
+        with no digests at all says what the PC must run first."""
+        from seedsigner.helpers import resign_release as rr
+        rk, fs = secure_boot_tools.load()[:2]
+
+        card = use_microsd(monkeypatch, tmp_path)
+        folder = self.release(card)
+        self.store_seed()
+        d = card / rr.DIGEST_DIR
+        d.mkdir()
+        for name in ("download", "idblock"):
+            path = os.path.join(folder, name + (".bin" if name == "download" else ".img"))
+            buf = rk.read(path)
+            (d / (name + ".digest")).write_bytes(rk.signing_digest(buf, rk.layout(buf)))
+
+        session = UISession(script=(select("Luckfox Build Tools", "Air-Gap Re-Key",
+                                           "Round 1 - Sign Rootfs Digest", "BIP85 Derive")
+                                    + select(0) + [TypeKeys("3"), TypeKeys("5")]))
+        self.run_sequence(self.to_submenu() + self._round_steps(rv.ToolsRekeySignRootfsView),
+                          ui_session=session)
+
+        for name in ("download", "idblock"):
+            (d / (name + ".digest")).unlink()
+        session = UISession(script=(select("Luckfox Build Tools", "Air-Gap Re-Key",
+                                           "Round 2 - Sign Boot Chain", "BIP85 Derive")
+                                    + select(0) + [TypeKeys("3"), TypeKeys("5")]))
+        self.run_sequence(self.to_submenu() + self._round_steps(rv.ToolsRekeySignBootView),
+                          ui_session=session)
+
     def test_rekey_sign_refuses_without_a_card(self, monkeypatch):
-        """Round 1 with no card inserted is refused; the ceremony's keys stay put."""
+        """A signing round with no card inserted is refused before any key work."""
         self.mock_microsd.is_inserted = False
-        rsa_key, ed_seed = self.bip85_keys(self.store_seed(), 3, 5)
-        rv.stash_seedkeeper_keys(self.controller, rsa_key, ed_seed)
-        session = UISession(script=select("Done") + [Back()])   # instructions, then leave the refusal
+        self.store_seed()
+        session = UISession(script=(select("Round 1 - Sign Rootfs Digest", "BIP85 Derive")
+                                    + select(0) + [TypeKeys("3"), TypeKeys("5")]))
         self.run_sequence([
-            FlowStep(rv.ToolsRekeyInstructionView, real_screens=True),  # initial: not pushed to history
-            FlowStep(rv.ToolsRekeySignView, real_screens=True),         # refuses: no card
-            FlowStep(rv.ToolsLuckfoxResultView, real_screens=True),     # the refusal; Back() leaves it
-            FlowStep(MainMenuView),                                     # where Back lands; not run
-        ], initial_destination_view_args=dict(
-            title="Air-Gap Re-Key", text="x", next_view=rv.ToolsRekeySignView,
-            next_args=dict(flow=dict(action="rekey", rekey_round=1))), ui_session=session)
-        assert rv.peek_rekey_keys(self.controller) is not None
+            FlowStep(rv.ToolsRekeyMenuView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxKeySourceView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxSelectSeedView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxRsaIndexView, real_screens=True),
+            FlowStep(rv.ToolsLuckfoxEd25519IndexView, real_screens=True),
+            FlowStep(rv.ToolsRekeySignRootfsView, real_screens=True),   # refuses: no card
+            FlowStep(rv.ToolsLuckfoxResultView),                        # the refusal; not run
+        ], ui_session=session)
 
     def test_arm_refuses_a_dev_key_release_before_the_seed(self, monkeypatch, tmp_path):
         card = use_microsd(monkeypatch, tmp_path)
@@ -599,6 +660,80 @@ class TestEndToEnd(LuckfoxFlowTest):
             ui_session=session)
         for name in ("sd_update.txt", "boot.img", "rootfs.img"):
             assert (card / name).is_file()
+
+
+class TestBip85Cache(LuckfoxFlowTest):
+    """Derived signing keys are cached per (seed, type, index) until Home is reached.
+
+    RSA-2048 generation takes tens of seconds on device hardware, so each round of a
+    re-key ceremony must not re-derive what an earlier round already derived."""
+
+    MNEMONIC_12_ALT = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".split()
+
+    def _patch_derivation(self, monkeypatch):
+        from seedsigner.views import gpg_views
+        calls = []
+        monkeypatch.setattr(gpg_views, "bip85_rsa_from_root",
+                            lambda root, bits, idx: (calls.append(("rsa", idx)), object())[1])
+        monkeypatch.setattr(gpg_views, "bip85_ed25519_seed_from_root",
+                            lambda root, idx: (calls.append(("ed", idx)), b"\x00" * 32)[1])
+
+        class _NoopLoading:
+            def __init__(self, **kw): pass
+            def start(self): pass
+            def stop(self): pass
+        monkeypatch.setattr(rv, "LoadingScreenThread", _NoopLoading)
+        return calls
+
+    def _view(self, flow):
+        # Any _FlowView will do: derive_keys is shared. The singleton Controller from
+        # setup_method provides the seed storage and carries the cache attribute.
+        return rv.ToolsRekeyExportRunView(flow=flow)
+
+    def test_second_derivation_is_served_from_cache(self, monkeypatch):
+        calls = self._patch_derivation(monkeypatch)
+        self.store_seed()
+        flow = dict(action="rekey_export", source="bip85", seed_num=0, rsa_index=3, ed_index=5)
+        first = self._view(flow).derive_keys(want_ed=True)
+        assert calls == [("rsa", 3), ("ed", 5)]
+        second = self._view(flow).derive_keys(want_ed=True)
+        assert calls == [("rsa", 3), ("ed", 5)], "the second derivation must hit the cache"
+        assert first[0] is second[0] and first[1][0] is second[1][0]
+
+    def test_cache_is_keyed_by_seed_type_and_index(self, monkeypatch):
+        calls = self._patch_derivation(monkeypatch)
+        self.store_seed()
+        flow = dict(action="rekey_export", source="bip85", seed_num=0, rsa_index=3, ed_index=5)
+        self._view(flow).derive_keys(want_ed=True)
+
+        # A new index derives only the missing part.
+        flow["rsa_index"] = 4
+        self._view(flow).derive_keys(want_ed=True)
+        assert calls[-1] == ("rsa", 4), "a new rsa index must derive; ed stays cached"
+
+        # want_ed=False never touches the ed derivation (or cache).
+        flow["ed_index"] = 6
+        self._view(flow).derive_keys(want_ed=False)
+        assert calls[-1] == ("rsa", 4), "want_ed=False must not derive or cache an ed seed"
+
+        # A different seed at the same indexes derives everything again.
+        alt = Seed(mnemonic=self.MNEMONIC_12_ALT)
+        self.controller.storage.set_pending_seed(alt)
+        self.controller.storage.finalize_pending_seed()
+        flow["seed_num"] = 1
+        flow["rsa_index"] = 3
+        flow["ed_index"] = 5
+        self._view(flow).derive_keys(want_ed=True)
+        assert calls[-2:] == [("rsa", 3), ("ed", 5)], "a different seed must never reuse another's keys"
+
+    def test_home_clears_the_cache(self, monkeypatch):
+        calls = self._patch_derivation(monkeypatch)
+        self.store_seed()
+        flow = dict(action="rekey_export", source="bip85", seed_num=0, rsa_index=3, ed_index=5)
+        self._view(flow).derive_keys(want_ed=True)
+        rv.clear_bip85_cache(self.controller)   # what MainMenuView.run() does on Home
+        self._view(flow).derive_keys(want_ed=True)
+        assert calls == [("rsa", 3), ("ed", 5)] * 2, "after returning to Home the keys re-derive"
 
 
 # --- Resign Release with keys brought from MicroSD or a SeedKeeper -----------------

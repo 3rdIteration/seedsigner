@@ -681,9 +681,9 @@ def generate_screenshots(locale):
                 ScreenshotConfig(resign_views.ToolsResignConfirmView, dict(flow=dict(resign_flow, folder=release_dir)), mock_context_manager=mock_release_helpers),
                 ScreenshotConfig(resign_views.ToolsLuckfoxUpdateImgDeletedView, dict(title="Resign Release", text=sample_resign_text)),
                 ScreenshotConfig(resign_views.ToolsLuckfoxResultView, dict(title="Resign Release", text=sample_resign_text), screenshot_name="ToolsLuckfoxResultView_resign_all"),
-                ScreenshotConfig(resign_views.ToolsRekeyStartView),
-                ScreenshotConfig(resign_views.ToolsRekeyInstructionView, dict(
-                    title="Air-Gap Re-Key",
+                ScreenshotConfig(resign_views.ToolsRekeyMenuView),
+                ScreenshotConfig(resign_views.ToolsLuckfoxResultView, dict(
+                    title="Re-Key: Export Pubkeys",
                     text=("Public halves on the card (seedsigner-release-keys):\n"
                           "- release-rsa.pub\n- release-rootfs.pub\n\n"
                           "RSA fingerprint:\nbbeea6c72f9a1019db70d087ba3b180a\n\n"
@@ -691,9 +691,9 @@ def generate_screenshots(locale):
                           "On the PC, with the card mounted:\n"
                           "  airgap-sign.py rekey <bundle> --card <mount>\n"
                           "  airgap-sign.py digests <bundle> --card <mount> --only rootfs\n\n"
-                          "Then take the card back here."),
-                    next_view=resign_views.ToolsRekeySignView,
-                    next_args=dict(flow=dict(action=resign_views.ACTION__REKEY)))),
+                          "Then take the card back here and run Round 1."),
+                    finish="main"),
+                    screenshot_name="ToolsLuckfoxResultView_rekey_export"),
                 ScreenshotConfig(resign_views.ToolsLuckfoxProvisionView, dict(flow=dict(action=resign_views.ACTION__PROVISION, folder=release_dir)), mock_context_manager=mock_release_helpers),
                 ScreenshotConfig(resign_views.ToolsLuckfoxProvisionView, dict(flow=dict(action=resign_views.ACTION__PROVISION, folder=release_dir)), screenshot_name="ToolsLuckfoxProvisionView_warnings", mock_context_manager=mock_provision_warnings),
                 ScreenshotConfig(resign_views.ToolsLuckfoxProvisionDoneView),

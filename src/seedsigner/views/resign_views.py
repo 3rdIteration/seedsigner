@@ -43,7 +43,12 @@ RSA_KEY_BITS = 2048
 ACTION__CHECK = "check"
 ACTION__EXPORT = "export"
 ACTION__RESIGN = "resign"
-ACTION__REKEY = "rekey"
+# Air-Gap Re-Key is a submenu, one action per round: each round re-derives its
+# keys from the seed and indexes, so nothing has to survive in RAM between card
+# round-trips and an interrupted ceremony resumes at whatever round is pending.
+ACTION__REKEY_EXPORT = "rekey_export"
+ACTION__REKEY_SIGN_ROOTFS = "rekey_sign_rootfs"
+ACTION__REKEY_SIGN_BOOT = "rekey_sign_boot"
 ACTION__SIGN_DIGEST = "sign_digest"
 ACTION__PROVISION = "provision"
 ACTION__FORCE = "force"
@@ -59,7 +64,9 @@ STEPS = {
     ACTION__EXPORT: ("seed_num", "rsa_index", "ed_index"),
     # Resign Release asks where its keys come from first; see _steps().
     ACTION__RESIGN: ("source", "folder"),
-    ACTION__REKEY: ("source",),
+    ACTION__REKEY_EXPORT: ("source",),
+    ACTION__REKEY_SIGN_ROOTFS: ("source",),
+    ACTION__REKEY_SIGN_BOOT: ("source",),
     ACTION__SIGN_DIGEST: ("source",),
     ACTION__PROVISION: ("folder",),
     ACTION__FORCE: ("folder", "force_on", "seed_num", "rsa_index"),
@@ -70,7 +77,9 @@ TITLES = {
     ACTION__CHECK: _mft("Check Release"),
     ACTION__EXPORT: _mft("Export Pubkeys"),
     ACTION__RESIGN: _mft("Resign Release"),
-    ACTION__REKEY: _mft("Air-Gap Re-Key"),
+    ACTION__REKEY_EXPORT: _mft("Re-Key: Export Pubkeys"),
+    ACTION__REKEY_SIGN_ROOTFS: _mft("Re-Key: Sign Rootfs Digest"),
+    ACTION__REKEY_SIGN_BOOT: _mft("Re-Key: Sign Boot Chain"),
     ACTION__SIGN_DIGEST: _mft("Sign Digest"),
     ACTION__PROVISION: _mft("Provision MicroSD"),
     ACTION__FORCE: _mft("Force Rootfs Check"),
@@ -152,7 +161,9 @@ def next_step(flow: dict, skip_current_view: bool = False) -> Destination:
         ACTION__CHECK: ToolsLuckfoxCheckReleaseView,
         ACTION__EXPORT: ToolsLuckfoxExportRunView,
         ACTION__RESIGN: ToolsResignConfirmView,
-        ACTION__REKEY: ToolsRekeyExportView,
+        ACTION__REKEY_EXPORT: ToolsRekeyExportRunView,
+        ACTION__REKEY_SIGN_ROOTFS: ToolsRekeySignRootfsView,
+        ACTION__REKEY_SIGN_BOOT: ToolsRekeySignBootView,
         ACTION__SIGN_DIGEST: ToolsSignDigestRunView,
         ACTION__PROVISION: ToolsLuckfoxProvisionView,
         ACTION__FORCE: ToolsLuckfoxForceRunView,
@@ -227,19 +238,31 @@ class _FlowView(View):
         return self.derive_keys(want_ed)
 
     def derive_keys(self, want_ed: bool):
-        """(rsa_key, (ed_seed, None) or None). RSA-2048 from a DRNG is slow on
-        this hardware (tens of seconds is normal), so a loading screen goes up
-        first. Derived keys have no stored id: it comes from the seed."""
+        """(rsa_key, (ed_seed, None) or None). Derived keys have no stored id: it
+        comes from the seed. Results are cached per (seed, type, index) until Home
+        is reached again - RSA-2048 generation takes tens of seconds on this
+        hardware and a ceremony re-derives the same keys in every round."""
         from seedsigner.views.gpg_views import bip85_rsa_from_root, bip85_ed25519_seed_from_root
         seed = self.controller.storage.seeds[self.flow["seed_num"]]
-        root = seed.get_root(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
-        loading = LoadingScreenThread(text=_("Deriving keys..."))
-        loading.start()
-        try:
-            rsa_key = bip85_rsa_from_root(root, RSA_KEY_BITS, self.flow["rsa_index"])
-            ed_seed = bip85_ed25519_seed_from_root(root, self.flow["ed_index"]) if want_ed else None
-        finally:
-            loading.stop()
+        network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+        root = seed.get_root(network)
+        fp = seed.get_fingerprint(network)
+
+        cache = _bip85_cache(self.controller)
+        rsa_key = cache.get((fp, "rsa", self.flow["rsa_index"]))
+        ed_seed = cache.get((fp, "ed", self.flow["ed_index"])) if want_ed else None
+        if rsa_key is None or (want_ed and ed_seed is None):
+            loading = LoadingScreenThread(text=_("Deriving keys..."))
+            loading.start()
+            try:
+                if rsa_key is None:
+                    rsa_key = bip85_rsa_from_root(root, RSA_KEY_BITS, self.flow["rsa_index"])
+                    cache[(fp, "rsa", self.flow["rsa_index"])] = rsa_key
+                if want_ed and ed_seed is None:
+                    ed_seed = bip85_ed25519_seed_from_root(root, self.flow["ed_index"])
+                    cache[(fp, "ed", self.flow["ed_index"])] = ed_seed
+            finally:
+                loading.stop()
         return rsa_key, (ed_seed, None) if want_ed else None
 
 
@@ -270,6 +293,26 @@ def peek_rekey_keys(controller):
 
 def clear_rekey_keys(controller):
     setattr(controller, _SEEDKEEPER_KEYS_ATTR, None)
+
+
+# BIP85 derivations for the Luckfox signing actions, cached per session. RSA-2048
+# generation takes tens of seconds on this hardware, and a ceremony re-derives
+# the same keys in every round - so derived keys are kept until Home is reached
+# again (MainMenuView clears them). The key carries the seed's root fingerprint
+# plus type and index, so different seeds or indexes can never be mixed up.
+_BIP85_CACHE_ATTR = "luckfox_bip85_cache"
+
+
+def _bip85_cache(controller):
+    cache = getattr(controller, _BIP85_CACHE_ATTR, None)
+    if cache is None:
+        cache = {}
+        setattr(controller, _BIP85_CACHE_ATTR, cache)
+    return cache
+
+
+def clear_bip85_cache(controller):
+    setattr(controller, _BIP85_CACHE_ATTR, {})
 
 
 # The Pico Mini (RV1103) cannot run the two heaviest actions: Resign Release runs
@@ -340,7 +383,7 @@ class ToolsLuckfoxBuildToolsMenuView(View):
         if choice == self.RESIGN:
             return Destination(ToolsResignReleaseStartView)
         if choice == self.REKEY:
-            return Destination(ToolsRekeyStartView)
+            return Destination(ToolsRekeyMenuView)
         if choice == self.SIGN_DIGEST:
             return Destination(ToolsSignDigestStartView)
         if choice == self.PROVISION:
@@ -877,72 +920,43 @@ class ToolsSignDigestRunView(_FlowView):
     private halves never leaving this device. The PC does round 0 (`rekey`,
     public halves only) and both splices; the device exports the pubkeys and
     signs twice - rootfs first, then everything else, because boot.img's
-    signature covers the ramdisk the tier-C injection rewrites. Each step ends
-    in an instruction screen; the next step validates the card before acting,
-    so pressing on too early is refused rather than harmful.
+    signature covers the ramdisk the tier-C injection rewrites.
+
+    Each round is its own menu item rather than one long flow: the keys are
+    re-derived from the seed and indexes every time (deterministic BIP85), so
+    nothing has to survive in RAM between card round-trips, and an interrupted
+    ceremony resumes at whatever round the card says is pending. Each signing
+    round validates the digests on the card before acting, so pressing on too
+    early is refused rather than harmful.
 ****************************************************************************"""
-class ToolsRekeyStartView(View):
-    """Explain the ceremony before asking for anything."""
+class ToolsRekeyMenuView(View):
+    """One item per round; each can be entered - and re-entered - on its own."""
 
-    CONTINUE = ButtonOption("Continue")
+    EXPORT = ButtonOption("Round 0 - Export Pubkeys")
+    SIGN_ROOTFS = ButtonOption("Round 1 - Sign Rootfs Digest")
+    SIGN_BOOT = ButtonOption("Round 2 - Sign Boot Chain")
 
     def run(self):
+        button_data = [self.EXPORT, self.SIGN_ROOTFS, self.SIGN_BOOT]
         selected = self.run_screen(
-            WarningScreen,
+            ButtonListScreen,
             title=_("Air-Gap Re-Key"),
-            status_headline=_("Your keys never touch the PC"),
-            text=_("Moves a release from its current boot key to your own. The "
-                   "private keys stay on this device; the PC only ever sees "
-                   "public halves and digests.\n\n"
-                   "Two card round-trips, in an order that matters: rootfs "
-                   "first, then everything else."),
-            button_data=[self.CONTINUE],
+            is_button_text_centered=False,
+            button_data=button_data,
         )
         if selected == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-        return next_step(dict(action=ACTION__REKEY))
+        choice = button_data[selected]
+        if choice == self.EXPORT:
+            return next_step(dict(action=ACTION__REKEY_EXPORT))
+        if choice == self.SIGN_ROOTFS:
+            return next_step(dict(action=ACTION__REKEY_SIGN_ROOTFS))
+        return next_step(dict(action=ACTION__REKEY_SIGN_BOOT))
 
 
-class ToolsRekeyInstructionView(View):
-    """Paged ceremony instructions; the last page advances to `next_view`.
-
-    Backing out returns to the previous step, which is safe to re-run: export
-    is idempotent and signing is deterministic."""
-
-    def __init__(self, title: str, text: str, next_view, next_args: dict = None,
-                 page_num: int = 0, paged_info: list = None):
-        super().__init__()
-        self.title, self.text = title, text
-        self.next_view = next_view
-        self.next_args = next_args or {}
-        self.page_num, self.paged_info = page_num, paged_info
-
-    def run(self):
-        if self.paged_info is None:
-            width, height = PagedTextScreen.get_paging_dimensions()
-            self.paged_info = reflow_text_into_pages(
-                text=self.text, width=width, height=height,
-                font_size=GUIConstants.get_body_font_size())
-        selected = self.run_screen(
-            PagedTextScreen,
-            title=self.title,
-            page_num=self.page_num,
-            paged_info=self.paged_info,
-            show_back_button=True,
-        )
-        if selected == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
-        if self.page_num < len(self.paged_info) - 1:
-            return Destination(ToolsRekeyInstructionView, view_args=dict(
-                title=self.title, text=self.text, next_view=self.next_view,
-                next_args=self.next_args, page_num=self.page_num + 1,
-                paged_info=self.paged_info))
-        return Destination(self.next_view, view_args=self.next_args)
-
-
-class ToolsRekeyExportView(_FlowView):
-    """Derive the keys, hold them in RAM for both signing rounds, and put the
-    public halves on the card (skipping that when they are already there)."""
+class ToolsRekeyExportRunView(_FlowView):
+    """Round 0: derive the keys and put their public halves on the card (skipping
+    that when they are already there)."""
 
     def run(self):
         from seedsigner.helpers import resign_release
@@ -952,9 +966,6 @@ class ToolsRekeyExportView(_FlowView):
         except Exception as e:
             logger.exception("loading the re-key keys failed")
             return self.refuse(_("Could not load the keys: {}").format(e))
-        # Hold them for the two signing rounds; opening the submenu again drops
-        # any left behind if the ceremony is abandoned.
-        stash_seedkeeper_keys(self.controller, rsa_key, ed_seed)
 
         card_root = str(MicroSD.get_microsd_dir())
         already = resign_release.pubkeys_on_card(card_root, rsa_key, ed_seed)
@@ -965,7 +976,6 @@ class ToolsRekeyExportView(_FlowView):
                     self.flow["rsa_index"], self.flow["ed_index"])
             except Exception as e:
                 logger.exception("exporting the public keys failed")
-                clear_rekey_keys(self.controller)
                 return self.refuse(_("Export failed: {}").format(e))
         else:
             out = os.path.join(card_root, resign_release.KEYS_DIR)
@@ -983,33 +993,43 @@ class ToolsRekeyExportView(_FlowView):
         pc = _("\nOn the PC, with the card mounted:\n"
                "  airgap-sign.py rekey <bundle> --card <mount>\n"
                "  airgap-sign.py digests <bundle> --card <mount> --only rootfs\n\n"
-               "Then take the card back here.")
-        return Destination(ToolsRekeyInstructionView, view_args=dict(
-            title=self.title, text=text + pc,
-            next_view=ToolsRekeySignView, next_args=dict(flow=self.flow)))
+               "Then take the card back here and run Round 1.")
+        # finish="main": the card goes to the PC next; there is no next screen here.
+        return self.result(text + pc)
 
 
-class ToolsRekeySignView(_FlowView):
-    """One signing round-trip. `rekey_round` in the flow: 1 (rootfs) or 2 (rest)."""
+class _RekeySignRoundView(_FlowView):
+    """Shared body for rounds 1 and 2: validate the card, sign what it carries,
+    then hand back the PC steps that follow THIS round."""
 
     def run(self):
         from seedsigner.helpers import resign_release
 
         if not MicroSD.get_instance().is_inserted:
             return self.refuse(_("Insert the card first - it must carry the "
-                                 "digests the PC wrote."))
-        keys = peek_rekey_keys(self.controller)
-        if keys is None:
-            clear_rekey_keys(self.controller)
-            return self.refuse(_("The ceremony's keys are no longer in memory. "
-                                 "Start Air-Gap Re-Key again."))
-        rsa_key, ed_seed = keys
+                                  "digests the PC wrote."))
+
+        # Validate before deriving: a wrong round must refuse in an instant, not
+        # after tens of seconds of RSA-2048 generation (and without consuming the
+        # SeedKeeper keys load_keys would take).
+        pending = resign_release.list_digests(
+            os.path.join(str(MicroSD.get_microsd_dir()), resign_release.DIGEST_DIR))
+        refusal = self.validate_round(pending)
+        if refusal:
+            return self.refuse(refusal)
+
+        try:
+            rsa_key, (ed_seed, stored_key_id) = self.load_keys(want_ed=True)
+        except Exception as e:
+            logger.exception("loading the re-key keys failed")
+            return self.refuse(_("Could not load the keys: {}").format(e))
 
         loading = LoadingScreenThread(text=_("Signing..."))
         loading.start()
         try:
             report = resign_release.sign_digests(
-                str(MicroSD.get_microsd_dir()), rsa_key, ed_seed)
+                str(MicroSD.get_microsd_dir()), rsa_key, ed_seed,
+                stored_key_id=stored_key_id)
         except Exception as e:
             logger.exception("signing the digests failed")
             return self.refuse(_("Signing failed, nothing was written: {}").format(e))
@@ -1020,29 +1040,58 @@ class ToolsRekeySignView(_FlowView):
             return self.refuse(_report_text(report) + "\n\n" +
                                _("Fix this on the PC and bring the card back."))
 
-        round_num = self.flow.get("rekey_round", 1)
-        if round_num == 1:
-            pc = _("\nOn the PC, with the card mounted:\n"
-                   "  airgap-sign.py splice <bundle> --card <mount> \\\n"
-                   "      --only rootfs --no-check\n"
-                   "  airgap-sign.py digests <bundle> --card <mount> \\\n"
-                   "      --only download,idblock,uboot,boot\n\n"
-                   "Then take the card back here.")
-            return Destination(ToolsRekeyInstructionView, view_args=dict(
-                title=self.title, text=_report_text(report) + pc,
-                next_view=ToolsRekeySignView,
-                next_args=dict(flow=dict(self.flow, rekey_round=2))))
-
-        # Round 2 done: the ceremony is over and the keys go away.
-        clear_rekey_keys(self.controller)
-        text = _report_text(report) + "\n\n" + \
-            _("On the PC, with the card mounted:\n"
-              "  airgap-sign.py splice <bundle> --card <mount>\n\n"
-              "It must print RESULT: VALID. Then flash to a sacrificial, "
-              "unfused board before trusting it.")
         # finish="main", NOT "back": popping back would land on this view again
-        # and re-sign the same digests (harmless but pointless).
-        return self.result(text)
+        # and re-sign the same digests (harmless but pointless). The card goes
+        # to the PC next anyway, so the main menu is where the user belongs.
+        return self.result(_report_text(report) + "\n\n" + self.pc_steps())
+
+    def validate_round(self, pending):
+        """None when this round may proceed; otherwise the refusal text."""
+        raise NotImplementedError
+
+    def pc_steps(self):
+        raise NotImplementedError
+
+
+class ToolsRekeySignRootfsView(_RekeySignRoundView):
+    """Round 1: sign the rootfs digest (tier C)."""
+
+    def validate_round(self, pending):
+        if "rootfs" not in pending:
+            return _("The card carries no rootfs digest. On the PC run\n"
+                     "  airgap-sign.py rekey <bundle> --card <mount>\n"
+                     "  airgap-sign.py digests <bundle> --card <mount> --only rootfs\n"
+                     "then bring the card back.")
+        if any(name in pending for name in ("download", "idblock", "uboot", "boot")):
+            return _("The card already carries the boot-chain digests, so Round 1 is "
+                     "done. Use Round 2 - Sign Boot Chain.")
+
+    def pc_steps(self):
+        return _("\nOn the PC, with the card mounted:\n"
+                 "  airgap-sign.py splice <bundle> --card <mount> \\\n"
+                 "      --only rootfs --no-check\n"
+                 "  airgap-sign.py digests <bundle> --card <mount> \\\n"
+                 "      --only download,idblock,uboot,boot\n\n"
+                 "Then take the card back here and run Round 2.")
+
+
+class ToolsRekeySignBootView(_RekeySignRoundView):
+    """Round 2: sign the boot-chain digests (tiers A and B)."""
+
+    def validate_round(self, pending):
+        if not any(name in pending for name in ("download", "idblock", "uboot", "boot")):
+            return _("The card carries no boot-chain digests. On the PC run\n"
+                     "  airgap-sign.py splice <bundle> --card <mount> \\\n"
+                     "      --only rootfs --no-check\n"
+                     "  airgap-sign.py digests <bundle> --card <mount> \\\n"
+                     "      --only download,idblock,uboot,boot\n"
+                     "then bring the card back.")
+
+    def pc_steps(self):
+        return _("\nOn the PC, with the card mounted:\n"
+                 "  airgap-sign.py splice <bundle> --card <mount>\n\n"
+                 "It must print RESULT: VALID. Then flash to a sacrificial, "
+                 "unfused board before trusting it.")
 
 
 """****************************************************************************
