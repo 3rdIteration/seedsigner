@@ -42,6 +42,7 @@ from seedsigner.helpers import embit_utils, mnemonic_generation
 from seedsigner.helpers import bip85_drng, diceware, password_generation
 from seedsigner.helpers.iso7816 import format_sw_error
 from seedsigner.helpers import ndef_helper
+from seedsigner.helpers import secure_boot_tools
 from seedsigner.models.decode_qr import DecodeQR
 from seedsigner.models.encode_qr import GenericStaticQrEncoder
 from seedsigner.gui.screens.screen import ButtonOption
@@ -365,6 +366,7 @@ class ToolsMenuView(View):
     MICROSD = ButtonOption("MicroSD Tools")
     BATTERY_CALIBRATION = ButtonOption("Battery Calibration")
     GPG = ButtonOption("GPG Tools")
+    LUCKFOX_BUILD_TOOLS = ButtonOption("Luckfox Build Tools")
     CLEAR_DESCRIPTOR = ButtonOption("Clear Multisig Descriptor")
     NETWORK_INFO = ButtonOption("Network Info")
 
@@ -393,6 +395,18 @@ class ToolsMenuView(View):
             self.VERIFY_ADDRESS,
             self.TEXTQRCODE,
             self.MICROSD,
+            # Two gates, both deliberate. The setting is off by default because
+            # this turns the device into a signing machine for SeedSigner OS
+            # releases. The availability check is because the signers are
+            # provided by SeedSigner OS, not by this app, so an image whose
+            # build opted out has nothing to run - the same shape as Network
+            # Info above. (Every board can run the tools: they stream, and the
+            # heavy actions warn when free memory is low.)
+            self.LUCKFOX_BUILD_TOOLS if (
+                self.settings.get_value(SettingsConstants.SETTING__LUCKFOX_BUILD_TOOLS)
+                == SettingsConstants.OPTION__ENABLED
+                and secure_boot_tools.is_available()
+            ) else None,
             battery_calibration_button,
             self.NETWORK_INFO if Path("/usr/bin/network-info").is_file() else None,
             self.GPG,
@@ -436,6 +450,10 @@ class ToolsMenuView(View):
 
         elif button_data[selected_menu_num] == self.TEXTQRCODE:
             return Destination(ToolsTextQRView)
+
+        elif button_data[selected_menu_num] == self.LUCKFOX_BUILD_TOOLS:
+            from seedsigner.views.resign_views import ToolsLuckfoxBuildToolsMenuView
+            return Destination(ToolsLuckfoxBuildToolsMenuView)
 
         elif button_data[selected_menu_num] == self.PASSWORD_GENERATOR:
             return Destination(ToolsPasswordGeneratorTypeView)

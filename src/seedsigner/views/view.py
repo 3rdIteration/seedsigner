@@ -282,6 +282,10 @@ class MainMenuView(View):
                     logger.debug("boot-counter clear skipped", exc_info=True)
 
         controller.storage.discard_pending_slip39_shares()
+        # Reaching Home ends any signing session: drop the cached BIP85
+        # derivations (private halves) the Luckfox tools kept for speed.
+        from seedsigner.views.resign_views import clear_bip85_cache
+        clear_bip85_cache(controller)
         controller.psbt_from_microsd = False
         controller.psbt_microsd_save_path = None
         controller.psbt_microsd_seed_warning_shown = False

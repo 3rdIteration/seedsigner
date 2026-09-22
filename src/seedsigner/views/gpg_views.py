@@ -5633,20 +5633,33 @@ def bip85_rsa_from_root(
     return RSA.generate(bits, randfunc=drng.read)
 
 
-def bip85_ed25519_from_root(
-    root, index: int, sub_index: int | None = None, alg: str = "EdDSA", version=None
-):
+def bip85_ed25519_seed_from_root(
+    root, index: int, sub_index: int | None = None, version=None
+) -> bytes:
+    """The raw 32-byte Ed25519 seed for a BIP85 index.
+
+    Factored out of ``bip85_ed25519_from_root`` so consumers that want the key
+    itself rather than an OpenPGP packet -- the Luckfox rootfs signer, which
+    needs a minisign keypair -- derive it down the exact same path. Two callers
+    computing the same path separately is how they drift apart.
+    """
     from embit import bip85
-    from seedsigner.helpers.ec_point import ed25519_pub_from_seed, curve25519_pub_from_seed
-    from pgpy.constants import EllipticCurveOID
-    from pgpy.packet import fields
 
     app, kt = _resolve_bip85_app_and_keytype(BIP85_GPG_KEY_TYPE_CURVE25519, version)
     path = ([kt] if kt is not None else []) + [256, index]
     if sub_index is not None:
         path.append(sub_index)
-    entropy = bip85.derive_entropy(root, app, path)
-    d_bytes = entropy[:32]
+    return bip85.derive_entropy(root, app, path)[:32]
+
+
+def bip85_ed25519_from_root(
+    root, index: int, sub_index: int | None = None, alg: str = "EdDSA", version=None
+):
+    from seedsigner.helpers.ec_point import ed25519_pub_from_seed, curve25519_pub_from_seed
+    from pgpy.constants import EllipticCurveOID
+    from pgpy.packet import fields
+
+    d_bytes = bip85_ed25519_seed_from_root(root, index, sub_index, version)
     if alg == "EdDSA":
         priv = fields.EdDSAPriv()
         priv.oid = EllipticCurveOID.Ed25519
