@@ -60,6 +60,8 @@ SeedSigner currently does not use the backlight PWM and drives the display CS lo
 | `SeedSigner Plus Pico Smartcard Case (Old Faceplate 1.0.0).stl` | Faceplate for the earlier board revision |
 | `SeedSigner Plus Pico Smartcard Case (Optional small camera cover).stl` | Optional camera cover |
 
+The case is designed for **low-profile** Pico Mini camera modules. The full-sized camera modules commonly sold for other Luckfox Pico boards will not fit.
+
 ## Related hardware
 
 - [`../SmartcardHat/`](../SmartcardHat/readme.md) — SEC1210 smart card hat for Raspberry Pi.
