@@ -476,6 +476,15 @@ class KeycardSatochipConnector:
         return self._pin_failure_sw()
 
     def _refresh_uid(self) -> None:
+        # Never re-SELECT the applet once a secure session is open. On real hardware a
+        # redundant SELECT of the already-selected applet is a no-op, but jcardsim runs
+        # a full deselect+select cycle for every SELECT APDU and Keycard's selectApplet()
+        # wipes the secure channel and PIN validation state in response -- so a mid-session
+        # re-SELECT would silently kill the session (SW=6985 on the next command). The UID
+        # cannot change mid-session anyway; card_get_status gets live key state from GET STATUS.
+        if self._secure_open:
+            return
+
         try:
             info = self._card.select()
             instance_uid = getattr(info, "instance_uid", None)
