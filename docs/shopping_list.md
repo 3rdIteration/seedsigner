@@ -21,14 +21,20 @@ Notes:
 * Raspberry Pi 1 is also compatible, but will require a [hardware modification to the Waveshare LCD Hat](./legacy_hardware.md).
 
 - **Luckfox Pico Boards**:
-  - Luckfox Pico Mini (requires adaptor board)
-  - Luckfox Pico Pro/Max (requires adaptor board) 
+  - Luckfox Pico Mini
+  - Luckfox Pico Pro/Max
   - Luckfox Pico Pi
 
-Note: The Luckfox Pico Mini and Pro/Max models require an adaptor board that can be obtained from:
-- https://github.com/3rdIteration/seedsigner-luckfox-pico/tree/master/hardware-kicad
-- Or from my webstore
-- A compatible "Plus Hat" is also available as an alternative
+There are three ways to build a SeedSigner around a Luckfox Pico:
+
+1. **Luckfox Pico Mini / Pro/Max with an adaptor board** — the Pico plugs into a small adaptor PCB that presents a standard Raspberry Pi-style 40-pin header, so it can use the same Waveshare display hats as a Pi build. Adaptor boards are available from:
+   - https://github.com/3rdIteration/seedsigner-luckfox-pico/tree/master/hardware-kicad
+   - Or from my webstore
+   - 3D-printable cases: [`enclosures/luckfox_pico/seedsigner-luckfox-pico-mini-max-case/`](../enclosures/luckfox_pico/seedsigner-luckfox-pico-mini-max-case/)
+2. **SeedSigner-Plus Smartcard Pico (all-in-one)** — a single board for the Luckfox Pico Mini that combines the display, joystick/buttons and the SEC1210 smartcard interface, so no separate display or smartcard hat is needed. Design files: [`electronics/SeedSigner-Plus-smartcard-luckfoxpicozero/`](../electronics/SeedSigner-Plus-smartcard-luckfoxpicozero/); matching case: [`enclosures/luckfox_pico/plus-hat-smartcard-pico-zero/`](../enclosures/luckfox_pico/plus-hat-smartcard-pico-zero/)
+3. **Luckfox Pico Pi** — supported directly.
+
+A "Plus Hat" (see Display below) can also be used in place of the Waveshare display hat with the adaptor-board and Pico Pi options.
 
 - **Libre Computer La Frite**:
   - Libre Computer La Frite AML-S805X-AC
@@ -55,6 +61,7 @@ Note: The Luckfox Pico Mini and Pro/Max models require an adaptor board that can
 - **SeedSigner Plus Hat** (2.8 inch 320x240)
   - Alternative display option with different screen size
   - Schematics available at: https://github.com/3rdIteration/seedsigner-hardware/tree/main/display_hats
+  - The same 2.8" display module is used on the all-in-one SeedSigner-Plus Smartcard Pico (Luckfox) board above
 
 ## Additional Hardware Support (Smartcard Integration)
 
