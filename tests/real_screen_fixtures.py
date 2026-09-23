@@ -146,10 +146,14 @@ def simulated_keycard(monkeypatch, pin: str = "123456", puk: str = "987654321012
 
     Skips (via JCardSimUnavailable) when Java or the applet sources are absent.
     """
-    from jcardsim import open_card
+    from jcardsim import open_card, why_keycard_unavailable
     from jcardsim.pcsc_shim import patched_pcsc
 
     from seedsigner.helpers import seedkeeper_utils
+
+    reason = why_keycard_unavailable()
+    if reason:
+        pytest.skip(reason)
 
     with open_card("keycard") as card:
         card.select()

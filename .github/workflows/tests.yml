@@ -101,6 +101,12 @@ jobs:
           sudo apt-get install -y gnupg2 pinentry-curses pinentry-tty libzbar0 libpcsclite-dev pcscd swig
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r tests/requirements.txt
+          # keycard-py is the Keycard backend the desktop simulator uses, and the
+          # jcardsim Keycard tests import it too; without it those tests error with
+          # "Unable to load keycard backend". Not part of the device requirements
+          # (requirements.txt), so it has its own file, shared with
+          # requirements-desktop.txt.
+          pip install -r requirements-keycard.txt
           # requirements-l10n.txt is hash-locked (SeedSigner OS installs it
           # during image builds). It needs its own pip invocation: one hashed
           # requirement makes pip demand hashes for everything else in the

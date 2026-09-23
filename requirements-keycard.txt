@@ -1,0 +1,6 @@
+# The Keycard backend (src/seedsigner/helpers/keycard_connector.py) needs keycard-py
+# importable. It is a desktop-simulator runtime dependency *and* a prerequisite for the
+# jcardsim Keycard tests, so it lives here on its own: requirements-desktop.txt pulls it
+# in with `-r`, and the CI `test` job installs it without dragging in pygame/OpenCV.
+# Without it, get_keycard_class() returns None and every Keycard flow raises ImportError.
+keycard @ https://github.com/3rdIteration/keycard-py/archive/refs/tags/0.3.2.zip  # fork with duress PIN fixes

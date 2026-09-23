@@ -20,3 +20,19 @@ from .simulator import (  # noqa: F401
     why_unavailable,
 )
 from .applets import APPLETS, AppletSpec, open_card, resolve_applet  # noqa: F401
+
+
+def why_keycard_unavailable() -> str | None:
+    """
+    A reason the Keycard *client* cannot be exercised, or None if keycard-py imports.
+
+    The Keycard tests here drive SeedSigner's real keycard-py adapter (the same one used
+    against a physical card), which is a desktop/jcardsim dependency rather than part of
+    the device requirements -- CI installs it from requirements-keycard.txt. Returning a
+    reason lets a checkout without it skip cleanly instead of erroring on import.
+    """
+    from seedsigner.helpers.keycard_connector import get_keycard_class
+
+    if get_keycard_class() is None:
+        return "keycard-py not importable (install it or set SEEDSIGNER_KEYCARD_PY_PATH)"
+    return None

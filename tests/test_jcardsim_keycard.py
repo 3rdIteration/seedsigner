@@ -33,6 +33,7 @@ from jcardsim import (
     JCardSimUnavailable,
     SimulatedCard,
     resolve_applet,
+    why_keycard_unavailable,
     why_unavailable,
 )
 from jcardsim.pcsc_shim import patched_pcsc
@@ -63,6 +64,9 @@ def keycard():
 
 @pytest.fixture
 def connector(keycard):
+    reason = why_keycard_unavailable()
+    if reason:
+        pytest.skip(reason)
     with patched_pcsc(keycard):
         from seedsigner.helpers.keycard_connector import KeycardSatochipConnector
 
@@ -193,6 +197,10 @@ class TestKeycardDuressPin:
         physical card configured this way.
         """
         from embit import bip32
+
+        reason = why_keycard_unavailable()
+        if reason:
+            pytest.skip(reason)
 
         with patched_pcsc(keycard):
             from seedsigner.helpers.keycard_connector import KeycardSatochipConnector
