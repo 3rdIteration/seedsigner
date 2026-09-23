@@ -13,11 +13,23 @@ It is designed for this SeedSigner fork, which adds the smart card (Satochip / S
 | Host module | Luckfox Pico Mini (Rockchip RV1106) | Plugs into the `LUCKFOX_PICO_MINI` footprint; MicroSD and USB-C are accessible from the board edge |
 | Smart card controller | Microchip **SEC1210PV-URT** | Connected to the Pico Mini over UART; **SEC1210PV-UR2** is a drop-in alternative |
 | Smart card socket | Amphenol **7312P0225A13LF** combo socket | One card channel (full-size smart card / SIM) |
-| Display | Amphenol **62684-402100ALF** 40-pin 0.5 mm FPC | For a 2.8" SPI LCD; hard-wired for 4-line SPI (IM0=0, IM1=1, IM2=1) |
+| Display | Amphenol **62684-402100ALF** 40-pin 0.5 mm FPC | For the same 2.8" IPS ST7789 (240 × 320) module used on the SeedSignerPlus display hat — see [Display](#display) |
 | Input | 8 × FSMSM tactile switches | 5-way joystick (up / down / left / right / press) plus Key1 / Key2 / Key3 |
 | Power | USB-C power-only receptacle | ESD / TVS protected |
 
 The camera is not routed on this board — it connects to the Pico Mini module directly.
+
+## Display
+
+The board drives the **same 2.8" IPS LCD module as the existing SeedSignerPlus display hat**, over a 40-pin 0.5 mm FPC connector wired for 4-line SPI (IM0 = 0, IM1 = 1, IM2 = 1).
+
+- Size / type: 2.8" IPS
+- Resolution: 240 × 320 (RGB565)
+- Controller: ST7789
+- Interface: 3/4-wire SPI, 40-pin FPC
+- Backlight: white LED
+
+See the [SeedSignerPlus display hat readme](https://github.com/3rdIteration/seedsigner-hardware/tree/main/display_hats/plus_hat) for the full module specification and 40-pin pinout. The display module is the same as the plus hat, but note that the FPC pinout is **not** reversed on this board — unlike the reversal noted in the plus hat readme.
 
 ## Configuration solder jumpers
 
@@ -66,6 +78,7 @@ The case is designed for **low-profile** Pico Mini camera modules. In the photo 
 
 - [`../SmartcardHat/`](../SmartcardHat/readme.md) — SEC1210 smart card hat for Raspberry Pi.
 - [`../SeedSigner+ Smartcard combo hat/`](../SeedSigner+%20Smartcard%20combo%20hat/) — combined SeedSignerPlus display + smart card hat.
+- [SeedSignerPlus display hat](https://github.com/3rdIteration/seedsigner-hardware/tree/main/display_hats/plus_hat) — Raspberry Pi hat using the same 2.8" IPS display module as this board.
 - Smaller Luckfox Pico carrier boards that present a standard Raspberry Pi-style 40-pin header (for use with existing Waveshare hats), from the [`seedsigner-luckfox-pico`](https://github.com/3rdIteration/seedsigner-luckfox-pico) repository:
   - [Luckfox Pico Mini v2](https://github.com/3rdIteration/seedsigner-luckfox-pico/tree/master/hardware-kicad/seedsigner-luckfox-pico-mini-v2)
   - [Luckfox Pico Max v2](https://github.com/3rdIteration/seedsigner-luckfox-pico/tree/master/hardware-kicad/seedsigner-luckfox-pico-max-v2)
