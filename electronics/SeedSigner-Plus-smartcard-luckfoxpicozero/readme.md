@@ -89,4 +89,6 @@ The case is designed for **low-profile** Pico Mini camera modules. In the photo 
 
 ## Changelog
 
-**v1.0.1** — initial release of the Pico-Mini Smartcard Display Hat.
+**v1.0.0** — initial beta.
+
+**v1.0.1** — moved the display slightly; added a couple of extra capacitors.
