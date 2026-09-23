@@ -38,6 +38,8 @@ from jcardsim import (
 )
 from jcardsim.pcsc_shim import patched_pcsc
 
+from seedsigner.models.settings_definition import SettingsConstants
+
 
 pytestmark = pytest.mark.skipif(
     why_unavailable() is not None, reason=f"jcardsim unavailable: {why_unavailable()}"
@@ -302,3 +304,172 @@ class TestKeycardMultisigPSBT:
         digest = psbt.sighash(0)
         vk = VerifyingKey.from_string(card_pub.sec(), curve=SECP256k1)
         assert vk.verify_digest(sig_der, digest, sigdecode=sigdecode_der)
+
+
+class TestKeycardPSBTSigning:
+    """
+    sign_psbt_with_keycard against the real v3.2 applet across PSBT shapes.
+
+    Every signature here is checked off-card against the sighash and the key at the
+    claimed derivation, so a pass means the card derived and signed at the right place.
+    """
+
+    def _seed(self, connector) -> None:
+        setup_and_login(connector)
+        assert connector.card_bip32_import_seed(list(TEST_SEED))[1:] == (0x90, 0x00)
+
+    @pytest.mark.parametrize(
+        "script_type, path",
+        [
+            (SettingsConstants.NATIVE_SEGWIT, "m/84'/0'/0'/0/0"),
+            (SettingsConstants.NESTED_SEGWIT, "m/49'/0'/0'/0/0"),
+        ],
+    )
+    def test_single_sig_signs_and_verifies(self, connector, monkeypatch, script_type, path):
+        from card_signing_helpers import (
+            assert_signed_and_verifies,
+            make_psbt,
+            patch_signing_settings,
+            single_sig_input,
+        )
+        from embit import bip32
+
+        patch_signing_settings(monkeypatch)
+        self._seed(connector)
+
+        root = bip32.HDKey.from_seed(TEST_SEED)
+        pub = root.derive(path).get_public_key()
+        psbt = make_psbt([
+            single_sig_input(pub, root.my_fingerprint, path, script_type, txid=bytes(range(32))),
+        ])
+
+        from seedsigner.helpers.keycard_signer import sign_psbt_with_keycard
+
+        result = sign_psbt_with_keycard(psbt, connector)
+
+        assert result.signed_count == 1
+        assert not result.timed_out
+        assert_signed_and_verifies(psbt, 0, pub)
+
+    def test_multi_input_signs_every_input(self, connector, monkeypatch):
+        from card_signing_helpers import (
+            assert_signed_and_verifies,
+            make_psbt,
+            patch_signing_settings,
+            single_sig_input,
+        )
+        from embit import bip32
+
+        patch_signing_settings(monkeypatch)
+        self._seed(connector)
+
+        root = bip32.HDKey.from_seed(TEST_SEED)
+        paths = ["m/84'/0'/0'/0/0", "m/84'/0'/0'/0/1"]
+        psbt = make_psbt([
+            single_sig_input(
+                root.derive(path).get_public_key(), root.my_fingerprint, path,
+                SettingsConstants.NATIVE_SEGWIT, txid=bytes([index]) * 32, vout=index,
+            )
+            for index, path in enumerate(paths)
+        ])
+
+        from seedsigner.helpers.keycard_signer import sign_psbt_with_keycard
+
+        result = sign_psbt_with_keycard(psbt, connector)
+
+        assert result.signed_count == len(paths)
+        for index, path in enumerate(paths):
+            assert_signed_and_verifies(psbt, index, root.derive(path).get_public_key())
+
+    def test_multisig_nested_segwit_signs_only_the_card_cosigner(self, connector, monkeypatch):
+        from card_signing_helpers import (
+            assert_signed_and_verifies,
+            make_psbt,
+            multisig_input,
+            patch_signing_settings,
+        )
+        from embit import bip32
+
+        patch_signing_settings(monkeypatch)
+        self._seed(connector)
+
+        # Native multisig is covered by TestKeycardMultisigPSBT; this is the p2sh-p2wsh
+        # account layout (m/48'/0'/0'/1').
+        path = "m/48'/0'/0'/1'/0/0"
+        card_root = bip32.HDKey.from_seed(TEST_SEED)
+        cosigners = [(card_root.derive(path).get_public_key(), card_root.my_fingerprint, path)]
+        for foreign_seed in (bytes([0xAA]) * 64, bytes([0xBB]) * 64):
+            foreign_root = bip32.HDKey.from_seed(foreign_seed)
+            cosigners.append(
+                (foreign_root.derive(path).get_public_key(), foreign_root.my_fingerprint, path)
+            )
+
+        inp = multisig_input(cosigners, 2, SettingsConstants.NESTED_SEGWIT, txid=bytes(range(32)))
+        psbt = make_psbt([inp])
+
+        from seedsigner.helpers.keycard_signer import sign_psbt_with_keycard
+
+        result = sign_psbt_with_keycard(psbt, connector)
+
+        assert result.signed_count == 1
+        assert_signed_and_verifies(psbt, 0, cosigners[0][0])
+        for foreign_pub, _fingerprint, _path in cosigners[1:]:
+            assert foreign_pub not in inp.partial_sigs
+
+    def test_multisig_without_the_card_signs_nothing(self, connector, monkeypatch):
+        from card_signing_helpers import make_psbt, multisig_input, patch_signing_settings
+        from embit import bip32
+
+        patch_signing_settings(monkeypatch)
+        self._seed(connector)
+
+        path = "m/48'/0'/0'/2'/0/0"
+        cosigners = []
+        for foreign_seed in (bytes([0xAA]) * 64, bytes([0xBB]) * 64):
+            foreign_root = bip32.HDKey.from_seed(foreign_seed)
+            cosigners.append(
+                (foreign_root.derive(path).get_public_key(), foreign_root.my_fingerprint, path)
+            )
+
+        inp = multisig_input(cosigners, 2, SettingsConstants.NATIVE_SEGWIT, txid=bytes(range(32)))
+        psbt = make_psbt([inp])
+
+        from seedsigner.helpers.keycard_signer import sign_psbt_with_keycard
+
+        result = sign_psbt_with_keycard(psbt, connector)
+
+        assert result.signed_count == 0
+        assert not inp.partial_sigs
+
+
+class TestKeycardMessageSigning:
+
+    def test_sign_message_matches_the_derived_key(self, connector, monkeypatch):
+        from card_signing_helpers import assert_message_signature, patch_signing_settings
+        from embit import bip32
+        from seedsigner.helpers.satochip_signer import sign_message_with_satochip
+
+        patch_signing_settings(monkeypatch)
+        setup_and_login(connector)
+        assert connector.card_bip32_import_seed(list(TEST_SEED))[1:] == (0x90, 0x00)
+
+        path = "m/84'/0'/0'/0/0"
+        message = "SeedSigner jcardsim Keycard message"
+        signature = sign_message_with_satochip(path, message, connector)
+
+        expected_pub = bip32.HDKey.from_seed(TEST_SEED).derive(path).get_public_key()
+        assert_message_signature(signature, message, expected_pub)
+
+    def test_card_sign_message_requires_a_32_byte_digest(self, connector, monkeypatch):
+        """
+        The Keycard backend signs a digest, not a message: the connector normalizes the
+        payload to exactly 32 bytes and must reject anything else rather than signing a
+        truncated digest. sign_message_with_satochip pre-hashes for this backend.
+        """
+        import pytest as _pytest
+
+        setup_and_login(connector)
+        assert connector.card_bip32_import_seed(list(TEST_SEED))[1:] == (0x90, 0x00)
+
+        with _pytest.raises(ValueError):
+            connector.card_sign_message(0xFF, None, b"not-a-digest", None)
