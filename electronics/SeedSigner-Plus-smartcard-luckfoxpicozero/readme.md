@@ -84,7 +84,7 @@ The case is designed for **low-profile** Pico Mini camera modules. In the photo 
 - Smaller Luckfox Pico carrier boards that present a standard Raspberry Pi-style 40-pin header (for use with existing Waveshare hats), from the [`seedsigner-luckfox-pico`](https://github.com/3rdIteration/seedsigner-luckfox-pico) repository:
   - [Luckfox Pico Mini v2](https://github.com/3rdIteration/seedsigner-luckfox-pico/tree/master/hardware-kicad/seedsigner-luckfox-pico-mini-v2)
   - [Luckfox Pico Max v2](https://github.com/3rdIteration/seedsigner-luckfox-pico/tree/master/hardware-kicad/seedsigner-luckfox-pico-max-v2)
-  - The existing Pico enclosures in [`../../enclosures/luckfox_pico/initial_case/`](../../enclosures/luckfox_pico/initial_case/) are designed for those two boards.
+  - The existing Pico enclosures in [`../../enclosures/luckfox_pico/seedsigner-luckfox-pico-mini-max-case/`](../../enclosures/luckfox_pico/seedsigner-luckfox-pico-mini-max-case/) are designed for those two boards.
 - Software support and wiring: [`../../docs/hardware_platform_support.md`](../../docs/hardware_platform_support.md) and [`../../docs/smartcard_support_installation.md`](../../docs/smartcard_support_installation.md).
 
 ## Changelog
