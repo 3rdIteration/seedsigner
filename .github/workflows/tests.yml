@@ -29,7 +29,10 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The suite is ~15 minutes of pytest on top of JDK setup, the applet checkouts and the
+    # pip install, which had grown to ~19 minutes -- close enough to the old 20 that the
+    # 3.12 leg timed out. 30 leaves room for adding tests without cutting coverage.
+    timeout-minutes: 30
     strategy:
       matrix:
         # 3.10: currently used by Seedsigner
