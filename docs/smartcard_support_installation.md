@@ -22,7 +22,7 @@ This SeedSigner fork now supports the SEC1210 Serial Smart Card reader, connecte
 
 You can also simply buy a SmartCard2Click board and connect it to the Raspberry Pi GPIO header.
 
-On a Luckfox Pico Mini, the [SeedSigner-Plus Smartcard Pico](../electronics/SeedSigner-Plus-smartcard-luckfoxpicozero/readme.md) combines the display, buttons and the SEC1210 smartcard interface on a single board, so it replaces both the display hat and a separate smartcard hat.
+On a Luckfox Pico Mini, the [SeedSigner-Plus Smartcard Pico](https://github.com/3rdIteration/seedsigner/tree/dev/electronics/SeedSigner-Plus-smartcard-luckfoxpicozero) combines the display, buttons and the SEC1210 smartcard interface on a single board, so it replaces both the display hat and a separate smartcard hat.
 
 ### USB Smart Card Readers 
 Any USB smart card reader that is compatible with will work, either hard-wired (Contact) or NFC (Contactless).
