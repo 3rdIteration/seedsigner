@@ -128,6 +128,46 @@ def simulated_satochip(monkeypatch, applet: str = "satochip", setup_pin: str = "
             yield connector
 
 
+@contextmanager
+def simulated_keycard(monkeypatch, pin: str = "123456", puk: str = "987654321012", seed_hex: str | None = None):
+    """
+    Put a *real* Keycard v3.2 applet behind `init_satochip`, running in jcardsim.
+
+    Same seam as `simulated_satochip`, but the connector is SeedSigner's keycard-py
+    adapter (KeycardSatochipConnector) instead of pysatochip, so flows that select the
+    "keycard" backend preference exercise the real secure channel, PIN and on-card
+    derivation.
+
+    The PUK must not start with the PIN: Keycard has a duress-PIN feature in which the
+    alt (duress) PIN defaults to the first six digits of the PUK when init carries no
+    explicit duress PIN, and verifying with it silently switches every derivation to a
+    decoy chain code. The defaults above keep the two apart; see
+    tests/test_jcardsim_keycard.py::TestKeycardDuressPin.
+
+    Skips (via JCardSimUnavailable) when Java or the applet sources are absent.
+    """
+    from jcardsim import open_card
+    from jcardsim.pcsc_shim import patched_pcsc
+
+    from seedsigner.helpers import seedkeeper_utils
+
+    with open_card("keycard") as card:
+        card.select()
+        with patched_pcsc(card):
+            from seedsigner.helpers.keycard_connector import KeycardSatochipConnector
+
+            connector = KeycardSatochipConnector.create(card_filter=["satochip"])
+            connector.card_setup(3, 5, pin, puk, 3, 5, pin, puk, 32, 32, 0x01, 0x01, 0x01)
+            assert connector.card_verify_PIN()[1:] == (0x90, 0x00)
+            if seed_hex:
+                assert connector.card_bip32_import_seed(list(bytes.fromhex(seed_hex)))[1:] == (0x90, 0x00)
+
+            monkeypatch.setattr(
+                seedkeeper_utils, "init_satochip", lambda *a, **kw: connector
+            )
+            yield connector
+
+
 
 class FakePyGP:
     """

@@ -70,10 +70,22 @@ jobs:
             https://github.com/Toporin/Seedkeeper-Applet.git \
             "$HOME/applet-repos/Seedkeeper-Applet"
           # Provides the jcardsim jar the simulator runs on, as well as the Keycard
-          # applet sources.
-          git clone --recursive --depth 1 \
+          # applet sources. Full history (no --depth): Keycard is pinned to tag 3.2 and
+          # exported with git archive, which cannot see a tag a shallow clone never fetched.
+          git clone --recursive \
             https://github.com/status-im/status-keycard.git \
             "$HOME/applet-repos/status-keycard"
+          # SmartPGP is pinned to its JavaCard 3.0.4 release tag; the oracle_javacard_sdks
+          # submodule carries the jc304_kit its sources compile against.
+          git clone --recursive --depth 1 --branch v1.23.2.0-javacard-3.0.4 \
+            https://github.com/ANSSI-FR/SmartPGP.git \
+            "$HOME/applet-repos/SmartPGP"
+          # SpecterDIY (the MemoryCardApplet) plus the specter_card Python client that
+          # drives it; sdks/ is a submodule. The 3rdIteration fork carries the 0.1-pytest
+          # tag upstream does not have.
+          git clone --recursive --depth 1 --branch 0.1-pytest \
+            https://github.com/3rdIteration/specter-javacard.git \
+            "$HOME/applet-repos/specter-javacard"
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -95,6 +107,9 @@ jobs:
           # Where the applet checkouts above landed. The jcardsim harness looks here for
           # them and skips with a reason if any are missing, so this never breaks the run.
           export SEEDSIGNER_APPLET_ROOT="$HOME/applet-repos"
+          # The specter_card Python client (SpecterDIY) is not importable by default; point
+          # SeedSigner's discovery at the checkout above.
+          export SEEDSIGNER_SPECTER_CARD_PY_PATH="$HOME/applet-repos/specter-javacard/py"
           python -m pytest \
             --color=yes \
             --cov=seedsigner \
