@@ -62,7 +62,7 @@ In normal use the jumpers can simply be left at their factory defaults — they 
 
 ## Enclosure
 
-3D-printable case files live in [`../../enclosures/luckfox_pico/plus-hat-smartcard-pico-zero/`](../../enclosures/luckfox_pico/plus-hat-smartcard-pico-zero/). The set covers both mounting options (soldered Pico Mini or through-hole pin header), matching microSD covers, a faceplate, and an optional camera cover:
+3D-printable case files live in [`../../enclosures/luckfox_pico/plus-hat-smartcard-pico-zero/`](../../enclosures/luckfox_pico/plus-hat-smartcard-pico-zero/). See the [enclosure readme](../../enclosures/luckfox_pico/plus-hat-smartcard-pico-zero/readme.md) for part selection and hardware details — the set covers both mounting options (soldered Pico Mini or through-hole pin header), matching microSD covers, a faceplate, and an optional camera cover:
 
 | File | Purpose |
 |------|---------|
