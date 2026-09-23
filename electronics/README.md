@@ -15,3 +15,7 @@ The SeedSignerPlus display hat design files are maintained in a separate reposit
 ## SeedSignerPlus + Smartcard Combo Hat
 
 The [`SeedSigner+ Smartcard combo hat/`](SeedSigner+%20Smartcard%20combo%20hat/) folder contains the design files for a hat that integrates the SeedSignerPlus display hat and the Smartcard hat functionality into a single board.
+
+## SeedSigner-Plus Smartcard Pico (Luckfox Pico Mini)
+
+The [`SeedSigner-Plus-smartcard-luckfoxpicozero/`](SeedSigner-Plus-smartcard-luckfoxpicozero/) folder contains the design files for a single-board SeedSigner carrier for the Luckfox Pico Mini. It combines a 2.8" SPI display, joystick/buttons, and a CCID/PCSC smart card interface (SEC1210 over UART) on one board. The Pico Mini can be soldered directly to the PCB or mounted on an 11-pin 2.54 mm pin header. See the [readme](SeedSigner-Plus-smartcard-luckfoxpicozero/readme.md) for details; a matching 3D-printable enclosure lives in [`enclosures/luckfox_pico/plus-hat-smartcard-pico-zero/`](../enclosures/luckfox_pico/plus-hat-smartcard-pico-zero/).
