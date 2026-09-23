@@ -88,6 +88,7 @@ class TestKeycardXpubExportAgainstRealApplet(SimulatedKeycardFlowTest):
             )
 
             displayed = []
+            qr_frame_baseline = []
 
             session = UISession(script=(
                 select(smartcard_views.ToolsKeycardView.EXPORT_XPUB)
@@ -109,11 +110,22 @@ class TestKeycardXpubExportAgainstRealApplet(SimulatedKeycardFlowTest):
                     FlowStep(
                         smartcard_views.SatochipExportXpubQRDisplayView,
                         real_screens=True,
-                        before_run=lambda view: displayed.append(view.xpub),
+                        before_run=lambda view: (
+                            displayed.append(view.xpub),
+                            qr_frame_baseline.append(len(session.renderer.frames)),
+                        ),
                     ),
                 ],
                 ui_session=session,
             )
+
+        # The QR display thread must have rendered at least one frame on top of the
+        # screen's initial render (BaseScreen.display() draws and shows the static screen
+        # once before starting its threads). A crash in the encoder it drives -- e.g.
+        # _SpecterEncoder lacking part_to_image/next_part_image -- dies on its first
+        # iteration, leaving exactly that one initial frame behind; the xpub assertions
+        # below would pass either way, so this is what catches that class of bug.
+        assert len(session.renderer.frames) >= qr_frame_baseline[0] + 2
 
         # The xpub the flow actually displayed must be what embit derives from the same seed.
         # Native segwit single-sig exports with the zpub version bytes (0x04B24746), matching

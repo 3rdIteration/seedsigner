@@ -53,6 +53,7 @@ from seedsigner.helpers.satochip_signer import (
 )
 from seedsigner.helpers.iso7816 import format_sw_error
 from seedsigner.helpers.seedsigner_os import read_diy_mount_status
+from seedsigner.models.encode_qr import BaseSimpleAnimatedQREncoder
 from seedsigner.models.seed import InvalidSeedException, Seed, XprvSeed
 from seedsigner.models.settings_definition import SettingsConstants
 
@@ -4190,53 +4191,42 @@ class SatochipExportXpubQRDisplayView(View):
         self.fingerprint = fingerprint
         self.sig_type = sig_type
 
-    class _SpecterEncoder:
+    # The xpub comes from the card rather than an in-memory seed, so
+    # SpecterLegacyXPubQrEncoder (which derives it via prep_xpub()) cannot be used here.
+    # This is its same "pXofY" part-splitting on top of BaseSimpleAnimatedQREncoder, which
+    # supplies the QR image methods (part_to_image/next_part_image) that QRDisplayScreen's
+    # display thread requires -- a standalone class without them crashes the thread and
+    # leaves the screen blank.
+    class _SpecterEncoder(BaseSimpleAnimatedQREncoder):
         def __init__(self, xpubstring: str, qr_density: str):
+            self.xpubstring = xpubstring
+            self.qr_density = qr_density
+            super().__post_init__()
+
+        @property
+        def qr_max_fragment_size(self):
             density_mapping = {
                 SettingsConstants.DENSITY__LOW: 40,
                 SettingsConstants.DENSITY__MEDIUM: 65,
                 SettingsConstants.DENSITY__HIGH: 90,
             }
-            self.qr_max_fragment_size = density_mapping.get(qr_density, 65)
-            self.parts = []
+            return density_mapping.get(self.qr_density, 65)
+
+        def _create_parts(self):
             start = 0
             stop = self.qr_max_fragment_size
-            qr_cnt = ((len(xpubstring) - 1) // self.qr_max_fragment_size) + 1
+            qr_cnt = ((len(self.xpubstring) - 1) // self.qr_max_fragment_size) + 1
             if qr_cnt == 1:
-                self.parts.append(xpubstring[start:stop])
+                self.parts.append(self.xpubstring[start:stop])
             cnt = 0
             while cnt < qr_cnt and qr_cnt != 1:
-                part = "p" + str(cnt + 1) + "of" + str(qr_cnt) + " " + xpubstring[start:stop]
+                part = "p" + str(cnt + 1) + "of" + str(qr_cnt) + " " + self.xpubstring[start:stop]
                 self.parts.append(part)
                 start = start + self.qr_max_fragment_size
                 stop = stop + self.qr_max_fragment_size
-                if stop > len(xpubstring):
-                    stop = len(xpubstring)
+                if stop > len(self.xpubstring):
+                    stop = len(self.xpubstring)
                 cnt += 1
-            self.part_num_sent = 0
-
-        def next_part(self):
-            if self.part_num_sent > (len(self.parts) - 1):
-                self.part_num_sent = 0
-            part = self.parts[self.part_num_sent]
-            self.part_num_sent += 1
-            return part
-
-        def cur_part(self):
-            if self.part_num_sent == 0:
-                self.part_num_sent = len(self.parts) - 1
-            else:
-                self.part_num_sent -= 1
-            return self.next_part()
-
-        def restart(self):
-            self.part_num_sent = 0
-
-        def is_complete(self):
-            return len(self.parts) == 1
-
-        def seq_len(self):
-            return len(self.parts)
 
     def run(self):
         from seedsigner.gui.screens.screen import QRDisplayScreen
