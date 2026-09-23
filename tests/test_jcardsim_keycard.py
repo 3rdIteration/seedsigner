@@ -74,7 +74,11 @@ def connector(keycard):
 
 
 def setup_and_login(cc, pin=PIN, puk=PUK) -> None:
-    cc.card_setup(3, 5, pin, puk, 3, 5, pin, puk, 32, 32, 0x01, 0x01, 0x01)
+    # Assert the INIT status word instead of ignoring it: an INIT the applet rejects (e.g.
+    # the jcardsim EC-scalar bug the ByteContainer patch fixes) otherwise surfaces three
+    # calls later as keycard-py's opaque "Card Initialization must be satisfied".
+    setup_sw = cc.card_setup(3, 5, pin, puk, 3, 5, pin, puk, 32, 32, 0x01, 0x01, 0x01)[1:]
+    assert setup_sw == (0x90, 0x00), f"card_setup returned SW={setup_sw[0]:02X}{setup_sw[1]:02X}"
     assert cc.card_verify_PIN()[1:] == (0x90, 0x00)
 
 
