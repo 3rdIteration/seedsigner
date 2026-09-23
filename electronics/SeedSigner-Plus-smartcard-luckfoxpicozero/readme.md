@@ -1,7 +1,5 @@
 # SeedSigner-Plus Smartcard Pico
 
-*Silkscreened as the **Pico-Mini Smartcard Display Hat** — v1.0.1, 2026, Stephen Rothery.*
-
 ![Pico-Mini Smartcard Display Hat prototype](./example-phohotos.jpg)
 
 A single-board SeedSigner carrier ("hat") for the **Luckfox Pico Mini**. It puts the display, joystick/buttons and a CCID/PCSC-compatible smart card interface on one board, so a self-contained SeedSigner + Satochip device can be built around a Pico Mini instead of a Raspberry Pi.
@@ -42,7 +40,10 @@ SeedSigner currently does not use the backlight PWM and drives the display CS lo
 
 ## Assembly notes
 
-- The Pico Mini mounts **MicroSD side up**, with its USB-C end facing the board edge (see silkscreen).
+- The board accepts the Luckfox Pico Mini in either of two ways:
+  - soldered directly onto the PCB, or
+  - mounted on an 11-pin 2.54 mm female pin header (easiest is to buy a 12-pin strip and cut the end leg off).
+- The Pico Mini mounts **MicroSD side up**, with its USB-C end facing the board edge. Be sure to follow the orientation markings printed on the board — the photo at the top of this page shows the correct orientation.
 - If you use a through-hole pin header instead of soldering the Pico Mini flat, tape over the pins — the LCD housing can otherwise short 3v3 to GND (silkscreen warning).
 
 ## Enclosure
