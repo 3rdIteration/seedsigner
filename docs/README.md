@@ -1,7 +1,8 @@
 # SeedSigner + Satochip Documentation
 
 This directory documents the extra features this fork adds on top of stock SeedSigner,
-with a focus on smartcards, plus the quick-start guides most users need.
+with a focus on smartcards, plus the quick-start guides most users need and documentation
+for building, developing and assembling your own hardware.
 
 New to the smartcard features? Start with the
 [applet reference](./javacard_applets.md) to decide what to install, then the relevant
@@ -50,11 +51,18 @@ quick start below.
 - [GPG trusted signers](./gpg_trusted_signers.md)
 - [BIP85 GPG version history](./bip85_gpg_version_history.md)
 
-### Hardware and project
+### Hardware
+- [Shopping list](./shopping_list.md) — what to buy, including store links
+- [Hardware shopping and assembly](./hardware.md) — platform/board options, cases and assembly
 - [Hardware platform support](./hardware_platform_support.md)
 - [IO config](./io_config.md)
 - [Battery](./battery.md)
 - [Legacy hardware](./legacy_hardware.md)
+
+### Building and development
+- [Building SeedSigner OS images](./building.md)
+- [Raspberry Pi OS build instructions](./raspberry_pi_os_build_instructions.md)
+- [Development device setup](./dev_device_setup_instructions.md)
 - [Repositories and releases](./repositories.md)
 - [Desktop simulation](./desktop_simulation.md)
 - [Developer tips](./developer_tips.md)

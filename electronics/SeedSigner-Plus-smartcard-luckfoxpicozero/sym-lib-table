@@ -1,0 +1,4 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "Seedsigner-plus-library")(type "KiCad")(uri "${KIPRJMOD}/Footprints/Seedsigner-plus-library.kicad_sym")(options "")(descr ""))
+)
