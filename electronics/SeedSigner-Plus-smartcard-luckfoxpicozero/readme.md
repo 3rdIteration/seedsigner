@@ -43,6 +43,8 @@ Three pairs of jumpers let one board match either the on-board display or a Wave
 
 SeedSigner currently does not use the backlight PWM and drives the display CS low all the time, so the defaults (backlight from 3v3, SPI CS driven from the Pico Mini) give the best compatibility. The full reasoning is in the schematic notes in `rpi_interface.kicad_sch`.
 
+In normal use the jumpers can simply be left at their factory defaults — they exist mainly for development/testing or for repurposing this hardware in other projects.
+
 ## Board and fabrication
 
 - 2-layer PCB, 1.6 mm thickness, rounded handheld outline (approx. 138 mm × 52 mm).
