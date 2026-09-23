@@ -22,7 +22,8 @@ class TestToolsSmartcardKeycardMenu(BaseTest):
         view.run_screen = fake_run_screen
         destination = view.run()
 
-        assert destination.View_cls == tools_views.ToolsCommonView
+        # Index 0 is now SeedKeeper (the Common menu was removed).
+        assert destination.View_cls == tools_views.ToolsSeedkeeperView
         assert tools_views.ToolsSmartcardMenuView.KEYCARD in captured["button_data"]
 
     def test_selecting_keycard_routes_to_keycard_view(self):

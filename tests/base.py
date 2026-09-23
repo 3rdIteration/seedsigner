@@ -19,6 +19,14 @@ _renderer_module = MagicMock()
 _renderer_module.Renderer.get_instance.return_value.canvas_width = 240
 _renderer_module.Renderer.get_instance.return_value.canvas_height = 240
 sys.modules['seedsigner.gui.renderer'] = _renderer_module
+# Views resolve the renderer as `from seedsigner.gui import Renderer`, i.e. through
+# the package attribute, not sys.modules. If a test module collected before this
+# one already imported seedsigner.gui (tests/test_psbt_refusal_screens.py does),
+# that attribute is still the real, never-configured Renderer: every View -- and
+# the error View the Controller falls back to -- raises "Must call
+# Renderer.configure_instance() first", and the Controller loops on it forever.
+if 'seedsigner.gui' in sys.modules:
+    sys.modules['seedsigner.gui'].Renderer = _renderer_module.Renderer
 sys.modules['seedsigner.gui.screens.screensaver'] = MagicMock()
 sys.modules['seedsigner.gui.toast'] = MagicMock()
 sys.modules['seedsigner.hardware.buttons'] = MagicMock()
@@ -30,8 +38,14 @@ sys.modules['seedsigner.hardware.st7789_mpy'] = MagicMock()
 sys.modules['seedsigner.hardware.ili9341'] = MagicMock()
 sys.modules['RPi'] = MagicMock()
 sys.modules['RPi.GPIO'] = MagicMock()
-sys.modules['pyzbar'] = MagicMock()
-sys.modules['pyzbar.pyzbar'] = MagicMock()
+# Use the real pyzbar when it's importable (e.g. desktop/CI with libzbar0). A blanket
+# MagicMock makes DecodeQR.is_qr_scanner_available() report True while extract_qr_data()
+# silently decodes nothing, which breaks any test that exercises real QR decoding.
+try:
+    from pyzbar import pyzbar  # noqa: F401
+except Exception:
+    sys.modules['pyzbar'] = MagicMock()
+    sys.modules['pyzbar.pyzbar'] = MagicMock()
 sys.modules['pysatochip'] = MagicMock()
 sys.modules['pysatochip.JCconstants'] = MagicMock()
 sys.modules['pysatochip.util'] = MagicMock()

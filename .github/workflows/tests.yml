@@ -86,6 +86,15 @@ jobs:
           git clone --recursive --depth 1 --branch 0.1-pytest \
             https://github.com/3rdIteration/specter-javacard.git \
             "$HOME/applet-repos/specter-javacard"
+      # The Luckfox release signers are provided by SeedSigner OS rather than
+      # vendored in this app, so the tests that actually sign a release need them
+      # fetched. Cloned outside the workspace so pytest does not collect
+      # seedsigner-os's own tests. Missing or older checkout: those tests skip with
+      # a reason, like the applet ones - it never breaks the run.
+      - name: Check out SeedSigner OS signing tools
+        run: |
+          git clone --depth 1 https://github.com/3rdIteration/seedsigner-os.git \
+            "$HOME/seedsigner-os" || echo "seedsigner-os unavailable; signing tests will skip"
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -110,6 +119,8 @@ jobs:
           # The specter_card Python client (SpecterDIY) is not importable by default; point
           # SeedSigner's discovery at the checkout above.
           export SEEDSIGNER_SPECTER_CARD_PY_PATH="$HOME/applet-repos/specter-javacard/py"
+          # Resolved by seedsigner.helpers.secure_boot_tools; absent -> skip.
+          export SEEDSIGNER_SECURE_BOOT_DIR="$HOME/seedsigner-os/opt/luckfox/secure-boot"
           python -m pytest \
             --color=yes \
             --cov=seedsigner \

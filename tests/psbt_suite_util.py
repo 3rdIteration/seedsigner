@@ -81,6 +81,10 @@ class RejectCode:
     FORGED_OUTPUT_OWNERSHIP = "FORGED_OUTPUT_OWNERSHIP"
     FORGED_INPUT_OWNERSHIP = "FORGED_INPUT_OWNERSHIP"
     SEED_CANNOT_SIGN = "SEED_CANNOT_SIGN"
+    SURPLUS_DERIVATIONS = "SURPLUS_DERIVATIONS"
+    MISLABELED_OUTPUT_OWNERSHIP = "MISLABELED_OUTPUT_OWNERSHIP"
+    INCONSISTENT_FINGERPRINTS = "INCONSISTENT_FINGERPRINTS"
+    MIXED_DERIVATION_MAPS = "MIXED_DERIVATION_MAPS"
 
 
 class Advisory:
@@ -94,6 +98,7 @@ class Advisory:
     DUST_OUTPUT = "DUST_OUTPUT"
     FUTURE_LOCKTIME = "FUTURE_LOCKTIME"
     RELATIVE_TIMELOCK = "RELATIVE_TIMELOCK"
+    SCRIPT_TIMELOCK = "SCRIPT_TIMELOCK"
     LOCKTIME_FAR_FUTURE = "LOCKTIME_FAR_FUTURE"
     RBF = "RBF"
 
@@ -250,16 +255,21 @@ VECTORS = [
     ),
     Vector(
         "TX-14.cross_net", "binding",
-        "Mainnet chain params with testnet-labeled derivation.",
-        Expect.PARSES,
-        input_amount=200_000, output_amount=199_000, num_outputs=2, owned_outputs=1,
-        vacuous=True,  # shipped derivation is m/84h/0h/0h — mainnet coin type, nothing crossed
+        "Mainnet transaction whose input derivation is relabelled to coin type 1h "
+        "(testnet) while the change stays at 0h. The input key is really our 0h key, "
+        "so the 1h claim is false -- refused as forged rather than by a network rule.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.FORGED_INPUT_OWNERSHIP,
     ),
     Vector(
         "TX-16.foreign_fingerprint", "binding",
-        "Output bip32_derivation with a foreign master fingerprint and an "
-        "unparseable pubkey.",
-        Expect.REJECT_EMBIT,
+        "Output bip32_derivation with a foreign master fingerprint. A foreign "
+        "fingerprint only means 'not claimed as ours': the output is shown as an "
+        "external payment, and ownership of the real change is still decided by "
+        "re-derivation.",
+        Expect.PARSES,
+        input_amount=200_000, output_amount=199_000, num_outputs=2, owned_outputs=1,
     ),
     Vector(
         "TX-16.global_xpub_injected", "binding",
@@ -277,13 +287,16 @@ VECTORS = [
     ),
     Vector(
         "TX-09.attacker_internal_key", "binding",
-        "p2tr change with an attacker-supplied internal key.",
-        Expect.REJECT_EMBIT,
+        "p2tr change with an attacker-supplied internal key. Must not be labelled "
+        "change: the output key cannot be rebuilt from anything this seed derives.",
+        Expect.PARSES,
+        input_amount=200_000, output_amount=199_000, num_outputs=2, owned_outputs=0,
     ),
     Vector(
         "TX-09.hidden_taptree", "binding",
-        "p2tr change with an unverifiable taptree leaf.",
-        Expect.REJECT_EMBIT,
+        "p2tr change with an unverifiable taptree leaf. Must not be labelled change.",
+        Expect.PARSES,
+        input_amount=200_000, output_amount=199_000, num_outputs=2, owned_outputs=0,
     ),
 
     # ------------------------------------------------------------------ crypto
@@ -339,11 +352,11 @@ VECTORS = [
     ),
     Vector(
         "TX-10", "coverage",
-        "Destination address ground to collide on the first 6 + last 6 characters "
-        "with the change address, defeating truncated verification.",
+        "Destination copies the first program bytes of the change output, so both "
+        "addresses share the HRP and leading characters and differ in the middle. "
+        "A display-layer trap: only full-address rendering catches it.",
         Expect.PARSES,
         input_amount=200_000, output_amount=199_000, num_outputs=2, owned_outputs=1,
-        vacuous=True,  # the shipped outputs share no visible prefix or suffix
     ),
     Vector(
         "TX-15.mismatch", "coverage",
@@ -357,16 +370,18 @@ VECTORS = [
     # --------------------------------------------------------------- catalogue
     Vector(
         "TX-11.v0_bech32m", "catalogue",
-        "v0 witness program encoded with bech32m.",
+        "A wrong-variant (bech32m) address string for a v0 output planted in a "
+        "non-standard global field. Display addresses must be re-derived from the "
+        "scriptPubKey, never read from the psbt.",
         Expect.PARSES,
         input_amount=200_000, output_amount=199_000, num_outputs=2, owned_outputs=1,
-        vacuous=True,  # a PSBT carries scriptPubKey bytes; the address encoding is display-layer
     ),
     Vector(
         "TX-11.v1_bech32", "catalogue",
-        "v1+ witness program encoded with bech32 instead of bech32m.",
-        Expect.REJECT_EMBIT,
-        vacuous=True,
+        "The v1/taproot counterpart: a bech32 (not bech32m) address string planted "
+        "in a non-standard global field.",
+        Expect.PARSES,
+        input_amount=200_000, output_amount=199_000, num_outputs=2, owned_outputs=0,
     ),
 
     # ------------------------------------------------------------------ extras
@@ -402,7 +417,9 @@ VECTORS = [
         "must carry a witness program.",
         Expect.REJECT_PARSER,
         input_amount=200_000, output_amount=199_000, num_outputs=2,
-        vacuous=True,  # no non_witness_utxo ships, so the real cross-check is untested here
+        # No non_witness_utxo ships, so the real cross-check is left to
+        # XTRAS.WITNESS_NONWITNESS_MISMATCH.
+        vacuous=True,
         reject_code=RejectCode.INVALID_WITNESS_UTXO,
     ),
     Vector(
@@ -427,6 +444,8 @@ VECTORS = [
         advisories=frozenset({Advisory.DUST_OUTPUT, Advisory.HIGH_FEE, Advisory.HIGH_FEE_RATE}),
     ),
     Vector(
+        # Dropped upstream in favour of TX-19.timestamp_future; kept as a local
+        # fixture because TestTimelocks mutates it.
         "XTRAS.LOCKTIME_FUTURE", "extras",
         "nLocktime 2,000,000,000 — a unix timestamp in 2033.",
         Expect.PARSES,
@@ -442,10 +461,13 @@ VECTORS = [
     ),
     Vector(
         "XTRAS.NETWORK_HRP_MISMATCH", "extras",
-        "Output address HRP does not match the active network.",
-        Expect.PARSES,
-        input_amount=200_000, output_amount=199_000, num_outputs=2, owned_outputs=1,
-        vacuous=True,  # the shipped output is an ordinary mainnet bc1q address
+        "Two inputs claiming different networks: input 0 at coin type 0h, input 1 "
+        "relabelled to 1h. scriptPubKeys carry no network, so the coin type is the "
+        "only cross-network signal -- and input 1's key is really our 0h key, so the "
+        "claim is false.",
+        Expect.REJECT_PARSER,
+        input_amount=400_000, output_amount=399_000, num_outputs=2,
+        reject_code=RejectCode.FORGED_INPUT_OWNERSHIP,
     ),
     Vector(
         "XTRAS.TRUNCATED_PSBT", "parser",
@@ -535,6 +557,418 @@ VECTORS = [
         Expect.PARSES,
         input_amount=100_000, output_amount=99_000, num_outputs=2, owned_outputs=1,
     ),
+
+    # ------------------------------------------------------ structural (XTRAS)
+    Vector(
+        "XTRAS.MISSING_UTXO", "extras",
+        "The sole input carries neither witness_utxo nor non_witness_utxo: no "
+        "amount, no script, nothing to sign against.",
+        Expect.REJECT_PARSER,
+        reject_code=RejectCode.MISSING_UTXO,
+    ),
+    Vector(
+        "XTRAS.MISSING_UTXO_V2", "extras",
+        "BIP-370 twin of XTRAS.MISSING_UTXO: a v2 input naming its prevout but "
+        "carrying no utxo.",
+        Expect.REJECT_PARSER,
+        reject_code=RejectCode.MISSING_UTXO,
+    ),
+    Vector(
+        "XTRAS.V2_MISSING_PREVOUT", "extras",
+        "A v2 input with a witness_utxo but no previous_txid / output_index. "
+        "BIP-370 requires the outpoint; without it there is no transaction to sign.",
+        Expect.REJECT_PARSER,
+        reject_code=RejectCode.MISSING_UTXO,
+    ),
+    Vector(
+        "XTRAS.UNSUPPORTED_PSBT_VERSION", "extras",
+        "A v0 psbt declaring PSBT_GLOBAL_VERSION 1, which BIP-370 reserves.",
+        Expect.REJECT_PARSER,
+        reject_code=RejectCode.UNSUPPORTED_PSBT_VERSION,
+    ),
+    Vector(
+        "XTRAS.UNSUPPORTED_PSBT_VERSION_V2", "extras",
+        "A structurally complete v2 psbt declaring version 3, which is undefined.",
+        Expect.REJECT_PARSER,
+        reject_code=RejectCode.UNSUPPORTED_PSBT_VERSION,
+    ),
+    Vector(
+        "XTRAS.ANYONE_CAN_SPEND_OUTPUT", "extras",
+        "The spend output pays witness version 2: no address form, and "
+        "anyone-can-spend until a soft fork defines it.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.UNDISPLAYABLE_OUTPUT,
+    ),
+    Vector(
+        "XTRAS.ANYONE_CAN_SPEND_OUTPUT_V2", "extras",
+        "BIP-370 twin of XTRAS.ANYONE_CAN_SPEND_OUTPUT.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.UNDISPLAYABLE_OUTPUT,
+    ),
+    Vector(
+        "XTRAS.BARE_MULTISIG_OUTPUT", "extras",
+        "The spend output is a bare 2-of-2 multisig script, which has no address "
+        "and so cannot be reviewed.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.UNDISPLAYABLE_OUTPUT,
+    ),
+    Vector(
+        "XTRAS.BARE_MULTISIG_OUTPUT_V2", "extras",
+        "BIP-370 twin of XTRAS.BARE_MULTISIG_OUTPUT.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.UNDISPLAYABLE_OUTPUT,
+    ),
+    Vector(
+        "XTRAS.WITNESS_NONWITNESS_MISMATCH", "extras",
+        "An input ships both utxo forms and they disagree (100,000 vs 200,000 sats, "
+        "different scripts) -- the BIP-143 amount-binding attack.",
+        Expect.REJECT_PARSER,
+        num_outputs=2,
+        reject_code=RejectCode.UTXO_MISMATCH,
+    ),
+
+    # --------------------------------------------------------------- timelocks
+    Vector(
+        "TX-19.timestamp_future", "extras",
+        "nLocktime 2,000,000,000 (~2033) with a non-final input: unconfirmable until then.",
+        Expect.PARSES,
+        input_amount=100_000, output_amount=99_000, num_outputs=2, owned_outputs=1,
+        advisories=frozenset({Advisory.FUTURE_LOCKTIME}),
+    ),
+    Vector(
+        "TX-19.height_far", "extras",
+        "Block-height nLockTime ~4 years out. With no block anchor it parses as an "
+        "ordinary spend, like its v2 twin.",
+        Expect.PARSES,
+        input_amount=100_000, output_amount=99_000, num_outputs=2, owned_outputs=1,
+    ),
+    Vector(
+        "TX-19.height_near", "extras",
+        "Negative control: nLockTime at the chain tip (anti-fee-sniping). Normal; "
+        "must not warn.",
+        Expect.PARSES,
+        input_amount=100_000, output_amount=99_000, num_outputs=2, owned_outputs=1,
+    ),
+    Vector(
+        "TX-19.inert", "extras",
+        "Negative control: far-future nLockTime with every input final, so the "
+        "locktime is not enforced. Must not warn.",
+        Expect.PARSES,
+        input_amount=100_000, output_amount=99_000, num_outputs=2, owned_outputs=1,
+    ),
+    Vector(
+        "TX-19.relative_blocks", "extras",
+        "BIP-68 block-based relative timelock (0x0000ffff, ~15 months).",
+        Expect.PARSES,
+        input_amount=100_000, output_amount=99_000, num_outputs=2, owned_outputs=1,
+        advisories=frozenset({Advisory.RBF, Advisory.RELATIVE_TIMELOCK}),
+    ),
+    Vector(
+        "TX-19.relative_time", "extras",
+        "BIP-68 time-based relative timelock (512-second units, ~24 days).",
+        Expect.PARSES,
+        input_amount=100_000, output_amount=99_000, num_outputs=2, owned_outputs=1,
+        advisories=frozenset({Advisory.RBF, Advisory.RELATIVE_TIMELOCK}),
+    ),
+    Vector(
+        "TX-19.relative_rbf_masquerade", "extras",
+        "Same bytes as relative_blocks, presented as mere RBF. 'Replaceable' alone "
+        "would hide a ~15-month hold.",
+        Expect.PARSES,
+        input_amount=100_000, output_amount=99_000, num_outputs=2, owned_outputs=1,
+        advisories=frozenset({Advisory.RBF, Advisory.RELATIVE_TIMELOCK}),
+    ),
+    Vector(
+        "TX-20.cltv_time", "coverage",
+        "A P2SH output whose redeem script is CLTV-locked until ~2033. Consensus "
+        "rejects any earlier spend of those funds; the address alone hides it.",
+        Expect.PARSES,
+        input_amount=100_000, output_amount=99_000, num_outputs=2, owned_outputs=1,
+        advisories=frozenset({Advisory.SCRIPT_TIMELOCK}),
+    ),
+    Vector(
+        "TX-20.cltv_height", "coverage",
+        "A P2WSH output whose witness script is CLTV-locked at a block height ~2 "
+        "years out.",
+        Expect.PARSES,
+        input_amount=100_000, output_amount=99_000, num_outputs=2, owned_outputs=1,
+        advisories=frozenset({Advisory.SCRIPT_TIMELOCK}),
+    ),
+    Vector(
+        "TX-20.csv_relative", "coverage",
+        "A P2WSH output whose witness script is CSV-locked (144 blocks after it "
+        "confirms). Unlike TX-19 the hold lives in the output's own script.",
+        Expect.PARSES,
+        input_amount=100_000, output_amount=99_000, num_outputs=2, owned_outputs=1,
+        advisories=frozenset({Advisory.SCRIPT_TIMELOCK}),
+    ),
+
+    # --------------------------------------------------------------- ownership
+    Vector(
+        "TX-21.claims_us_pays_other", "ownership",
+        "Change annotated with one of our genuine keys and paths, but the script "
+        "pays a stranger. The key re-derives; the output is not locked to it.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.FORGED_OUTPUT_OWNERSHIP,
+    ),
+    Vector(
+        "TX-21.claims_us_pays_other_V2", "ownership",
+        "BIP-370 twin of TX-21.claims_us_pays_other.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.FORGED_OUTPUT_OWNERSHIP,
+    ),
+    Vector(
+        "TX-21.pays_us_claims_other", "ownership",
+        "Change pays our key but is annotated with a foreign fingerprint. The "
+        "funds are ours, but the psbt misdescribes who owns its outputs, which is "
+        "refused just like the opposite lie.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.MISLABELED_OUTPUT_OWNERSHIP,
+    ),
+    Vector(
+        "TX-21.pays_us_claims_other_V2", "ownership",
+        "BIP-370 twin of TX-21.pays_us_claims_other.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.MISLABELED_OUTPUT_OWNERSHIP,
+    ),
+    Vector(
+        "TX-21.taproot_claims_other", "ownership",
+        "P2TR change paying our internal key but claiming a foreign fingerprint.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.MISLABELED_OUTPUT_OWNERSHIP,
+    ),
+    Vector(
+        "TX-22.surplus_paths", "ownership",
+        "A single-sig output naming two of our keys. Only one can be the key the "
+        "script pays; the other is a decoy for a first-entry-only checker.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.SURPLUS_DERIVATIONS,
+    ),
+    Vector(
+        "TX-22.taproot_surplus_internal_key", "ownership",
+        "A P2TR output claiming two internal keys; a taproot output has one.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.SURPLUS_DERIVATIONS,
+    ),
+    Vector(
+        "TX-22.mixed_path_maps", "ownership",
+        "An output scope naming us in both the ecdsa and taproot derivation maps.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.MIXED_DERIVATION_MAPS,
+    ),
+    Vector(
+        "TX-22.mixed_path_maps_input", "ownership",
+        "The input-side variant of TX-22.mixed_path_maps.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.MIXED_DERIVATION_MAPS,
+    ),
+    Vector(
+        "TX-23.forged_output_claim", "ownership",
+        "Change claims our fingerprint at a plausible change path, on a key we do "
+        "not derive.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.FORGED_OUTPUT_OWNERSHIP,
+    ),
+    Vector(
+        "TX-23.forged_output_claim_V2", "ownership",
+        "BIP-370 twin of TX-23.forged_output_claim.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.FORGED_OUTPUT_OWNERSHIP,
+    ),
+    Vector(
+        "TX-23.forged_taproot_claim", "ownership",
+        "P2TR change claiming our fingerprint on an internal key we do not derive.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.FORGED_OUTPUT_OWNERSHIP,
+    ),
+    Vector(
+        "TX-23.forged_input_claim", "ownership",
+        "An extra input derivation naming our fingerprint on a foreign key, "
+        "alongside the genuine one.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.FORGED_INPUT_OWNERSHIP,
+    ),
+    Vector(
+        "TX-23.forged_input_claim_V2", "ownership",
+        "BIP-370 twin of TX-23.forged_input_claim.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.FORGED_INPUT_OWNERSHIP,
+    ),
+
+    # ---------------------------------------------------------------- multisig
+    # Built against the suite's 2-of-3 wallet (MULTISIG_DESCRIPTOR). Parsed with
+    # the seed alone, as the flow does before a descriptor is loaded; the
+    # descriptor checks are in TestMultisigPolicy.
+    Vector(
+        "TX-04", "multisig",
+        "Mixed input script types in a multisig flow, carrying an invalid pubkey.",
+        Expect.REJECT_EMBIT,
+    ),
+    Vector(
+        "TX-13.duplicate", "multisig",
+        "Duplicated cosigner key: nominally 2-of-3, effectively 2-of-2.",
+        Expect.REJECT_EMBIT,
+    ),
+    Vector(
+        "TX-13.substitute", "multisig",
+        "One cosigner key swapped for an attacker's; ours is gone from the inputs.",
+        Expect.REJECT_PARSER,
+        input_amount=100_000, output_amount=99_000, num_outputs=2,
+        reject_code=RejectCode.SEED_CANNOT_SIGN,
+    ),
+    Vector(
+        "TX-13.threshold", "multisig",
+        "Change script reduced to 1-of-3. Only a registered descriptor can tell.",
+        Expect.PARSES,
+        input_amount=100_000, output_amount=99_000, num_outputs=2, owned_outputs=1,
+    ),
+    Vector(
+        "TX-13.reorder", "multisig",
+        "Cosigner keys reordered, which breaks sortedmulti. Only a registered "
+        "descriptor can tell.",
+        Expect.PARSES,
+        input_amount=100_000, output_amount=99_000, num_outputs=2, owned_outputs=1,
+    ),
+    Vector(
+        "TX-05", "multisig",
+        "Multisig change built from attacker-only xpubs. Must not be labelled change.",
+        Expect.PARSES,
+        input_amount=200_000, output_amount=199_000, num_outputs=2, owned_outputs=0,
+    ),
+    Vector(
+        "TX-21.honest_foreign_annotated_spend", "multisig",
+        "Negative control: an honest payment to a stranger's M-of-N, fully "
+        "annotated with their keys. An external payment, not an attack.",
+        Expect.PARSES,
+        input_amount=200_000, output_amount=199_000, num_outputs=2, owned_outputs=0,
+    ),
+    Vector(
+        "TX-21.ms_fp_relabeled", "multisig",
+        "Genuine multisig change with our cosigner entry relabelled to a foreign "
+        "fingerprint: our key, attributed to another wallet.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.MISLABELED_OUTPUT_OWNERSHIP,
+    ),
+    Vector(
+        "TX-21.ms_repointed_keys", "multisig",
+        "Change witness script swapped for a stranger's M-of-N while our "
+        "derivation entry stays: the script no longer contains our key.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.FORGED_OUTPUT_OWNERSHIP,
+    ),
+    Vector(
+        "TX-21.ms_repointed_spk", "multisig",
+        "Change scriptPubKey repointed while the supplied witness script stays "
+        "ours: the script no longer hashes to the output.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.FORGED_OUTPUT_OWNERSHIP,
+    ),
+    Vector(
+        "TX-22.ms_decoy_first", "multisig",
+        "Genuine multisig change with a decoy entry of ours listed first.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.FORGED_OUTPUT_OWNERSHIP,
+    ),
+    Vector(
+        "TX-22.ms_decoy_last", "multisig",
+        "The same decoy listed last, which a first-match check never reaches.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.FORGED_OUTPUT_OWNERSHIP,
+    ),
+
+    # ------------------------------------------ upstream-review follow-ups
+    Vector(
+        "XTRAS.PREV_TX_TXID_MISMATCH", "extras",
+        "Legacy input really spends 1,000,000 sats, but its previous tx was edited "
+        "to claim 201,000: the screen would show a 1,000-sat fee for an 800,000-sat "
+        "one. A legacy signature commits to no amount; only the previous tx's hash "
+        "catches it.",
+        Expect.REJECT_PARSER,
+        num_outputs=2,
+        reject_code=RejectCode.UTXO_MISMATCH,
+    ),
+    Vector(
+        "XTRAS.PREV_TX_TXID_MISMATCH_V2", "extras",
+        "BIP-370 twin of XTRAS.PREV_TX_TXID_MISMATCH.",
+        Expect.REJECT_PARSER,
+        num_outputs=2,
+        reject_code=RejectCode.UTXO_MISMATCH,
+    ),
+    Vector(
+        "XTRAS.OP_RETURN_DIRECT_PUSH", "extras",
+        "Negative control: a zero-value OP_RETURN whose 40-byte payload is pushed "
+        "directly, as Bitcoin Core writes it. Must be shown byte-for-byte.",
+        Expect.PARSES,
+        input_amount=200_000, output_amount=199_000, num_outputs=3, owned_outputs=1,
+    ),
+    Vector(
+        "XTRAS.OP_RETURN_DIRECT_PUSH_V2", "extras",
+        "BIP-370 twin of XTRAS.OP_RETURN_DIRECT_PUSH.",
+        Expect.PARSES,
+        input_amount=200_000, output_amount=199_000, num_outputs=3, owned_outputs=1,
+    ),
+    Vector(
+        "XTRAS.LEGACY_P2SH_WITNESS_ONLY", "multisig",
+        "Legacy P2SH multisig input described only by a witness_utxo: an amount a "
+        "legacy signature never commits to, with no previous tx to prove it.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.INVALID_WITNESS_UTXO,
+    ),
+    Vector(
+        "TX-24.xpub_fingerprint_mismatch", "multisig",
+        "One cosigner's global xpub relabelled to a foreign fingerprint while its "
+        "derivation entries keep the real one: the psbt contradicts itself.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2,
+        reject_code=RejectCode.INCONSISTENT_FINGERPRINTS,
+    ),
+    Vector(
+        "TX-21.ms_foreign_quorum", "multisig",
+        "Change paid to a different 2-of-3 that still contains our key (one "
+        "cosigner swapped for a stranger's). The global xpubs do not derive the "
+        "stranger, so it is a payment.",
+        Expect.PARSES,
+        input_amount=200_000, output_amount=199_000, num_outputs=2, owned_outputs=0,
+    ),
+    Vector(
+        "TX-21.ms_foreign_quorum_no_xpubs", "multisig",
+        "The same foreign 2-of-3 with the global xpubs withheld. Nothing ties its "
+        "keys to the inputs' wallet, so it stays a payment -- even once a "
+        "descriptor is loaded, since that descriptor does not own it.",
+        Expect.PARSES,
+        input_amount=200_000, output_amount=199_000, num_outputs=2, owned_outputs=0,
+    ),
+    Vector(
+        "TX-21.ms_honest_change_no_xpubs", "multisig",
+        "Negative control: genuine multisig change from a coordinator that omits "
+        "global xpubs. A payment until the descriptor identifies it as change.",
+        Expect.PARSES,
+        input_amount=200_000, output_amount=199_000, num_outputs=2, owned_outputs=0,
+    ),
 ]
 
 VECTORS_BY_NAME = {v.name: v for v in VECTORS}
@@ -544,6 +978,18 @@ REJECT_EMBIT_VECTORS = [v for v in VECTORS if v.expect == Expect.REJECT_EMBIT]
 REJECT_PARSER_VECTORS = [v for v in VECTORS if v.expect == Expect.REJECT_PARSER]
 
 NORMAL_VECTORS = [v for v in VECTORS if v.category == "normal"]
+
+MULTISIG_VECTORS = [v for v in VECTORS if v.category == "multisig"]
+
+# The suite's 2-of-3 wallet, from psbt_test_suite/test_vectors.json ("multisig").
+# The corpus seed is the 73c5da0a cosigner.
+MULTISIG_DESCRIPTOR = (
+    "wsh(sortedmulti(2,"
+    "[73c5da0a/48h/0h/0h/2h]xpub6DkFAXWQ2dHxq2vatrt9qyA3bXYU4ToWQwCHbf5XB2mSTexcHZCeKS1VZYcPoBd5X8yVcbXFHJR9R8UCVpt82VX1VhR28mCyxUFL4r6KFrf/<0;1>/*,"
+    "[28645006/48h/0h/0h/2h]xpub6DnEBNkSJKBYQmsbhS1sP9cNdtU5c9PLFGCjTJmxicxc13WB8zNNGQazabQpyFAGW5bV9tMko4uBxDxjUKL6dSAcx1tEbgEHtgSqyRsekh6/<0;1>/*,"
+    "[3f635a63/48h/0h/0h/2h]xpub6FHZCoNb3tg3o1GAJQxSwgFNF8mLRtTk2GgkF7n5rwzoxBhUEdFWa8cyZRHqytAzKZWsKz8627cQEMCCfR5GDSv6yXegqirpgDUX41Pxybr/<0;1>/*"
+    "))"
+)
 
 # Vectors whose sighash flag is anything other than SIGHASH_ALL; signing must be
 # refused outright rather than producing a partial signature.

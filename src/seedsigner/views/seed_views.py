@@ -4813,9 +4813,17 @@ class MultisigWalletDescriptorView(View):
             return Destination(BackStackView)
 
         elif button_data[selected_menu_num] == self.RETURN:
+            self.controller.resume_main_flow = None
+            psbt_parser = self.controller.psbt_parser
+            if psbt_parser and psbt_parser.unidentified_change_outputs:
+                # The descriptor decides which outputs are change, so the psbt has to be
+                # read again with it; the review restarts from the overview.
+                from seedsigner.views.psbt_views import PSBTOverviewView
+                self.controller.psbt_parser = None
+                return Destination(PSBTOverviewView, skip_current_view=True)
+
             # Jump straight back to PSBT change verification
             from seedsigner.views.psbt_views import PSBTChangeDetailsView
-            self.controller.resume_main_flow = None
             return Destination(PSBTChangeDetailsView, view_args=dict(change_address_num=0))
 
         elif button_data[selected_menu_num].button_label.startswith(_(self.VERIFY_ADDR.button_label)):

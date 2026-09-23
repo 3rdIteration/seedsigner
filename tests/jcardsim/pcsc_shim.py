@@ -17,6 +17,7 @@
     ``(data, sw1, sw2)`` shape.
 """
 
+import hashlib
 from contextlib import ExitStack, contextmanager
 from unittest.mock import patch
 
@@ -42,7 +43,26 @@ class SimulatedConnection:
         self.connected = False
 
     def transmit(self, apdu, protocol=None):
+        # GlobalPlatform GET DATA for CPLC/IIN/CIN: jcardsim's card OS answers these
+        # with 6E00/empty (like a reader that does not provide them), which would make
+        # every simulated card derive the empty-hash id da39a3ee5e6b4b0d. Serve
+        # deterministic per-card data instead, modelling a well-behaved reader --
+        # pysatochip hashes exactly these three responses into UID_SHA1, and real
+        # readers do return them (intermittently, on some hardware).
+        head = list(apdu[:4])
+        if head == [0x80, 0xCA, 0x9F, 0x7F]:      # CPLC
+            return (self._gp_data(0), 0x90, 0x00)
+        if head == [0x80, 0xCA, 0x00, 0x42]:      # IIN
+            return (self._gp_data(1), 0x90, 0x00)
+        if head == [0x80, 0xCA, 0x00, 0x45]:      # CIN
+            return (self._gp_data(2), 0x90, 0x00)
         return self._card.transmit(apdu)
+
+    def _gp_data(self, part: int) -> list[int]:
+        """Deterministic per simulated-card instance; distinct across the three parts."""
+        seed = id(self._card) & 0xFFFFFFFF
+        digest = hashlib.sha1(bytes([part]) + seed.to_bytes(4, "big")).digest()
+        return list(digest[:8])
 
     def getATR(self):
         return list(SIMULATED_ATR)

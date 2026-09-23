@@ -50,7 +50,10 @@ from seedsigner.models.seed import Seed, Slip39Seed
 from seedsigner.models.settings import Settings
 from seedsigner.models.settings_definition import SettingsConstants, SettingsDefinition
 from seedsigner.views import (MainMenuView, PowerOptionsView, RestartView, RemoveMicroSDWarningView, NotYetImplementedView, UnhandledExceptionView, 
-    psbt_views, seed_views, settings_views, tools_views, scan_views)
+    psbt_views, seed_views, settings_views, tools_views, scan_views,
+    smartcard_views, password_generator_views, microsd_views, gpg_views)
+from seedsigner.views import resign_views
+from seedsigner.helpers import secure_boot_tools
 from seedsigner.views.screensaver import OpeningSplashView
 from seedsigner.views.view import CameraConnectionErrorView, NetworkMismatchErrorView, OptionDisabledView, PowerOffView
 
@@ -124,6 +127,18 @@ seed_24_w_passphrase = Seed(mnemonic=mnemonic_24, passphrase="some-PASS*phrase9"
 
 MULTISIG_WALLET_DESCRIPTOR = """wsh(sortedmulti(1,[22bde1a9/48h/1h/0h/2h]tpubDFfsBrmpj226ZYiRszYi2qK6iGvh2vkkghfGB2YiRUVY4rqqedHCFEgw12FwDkm7rUoVtq9wLTKc6BN2sxswvQeQgp7m8st4FP8WtP8go76/{0,1}/*,[73c5da0a/48h/1h/0h/2h]tpubDFH9dgzveyD8zTbPUFuLrGmCydNvxehyNdUXKJAQN8x4aZ4j6UZqGfnqFrD4NqyaTVGKbvEW54tsvPTK2UoSbCC1PJY8iCNiwTL3RWZEheQ/{0,1}/*))#3jhtf6yx"""
 
+# A coordinator that includes PSBT_GLOBAL_XPUB, which is what lets PSBTParser tie the
+# multisig change's cosigner keys to the inputs' wallet. Without them the change stays
+# a payment until a descriptor identifies it (see PSBTIdentifyChangeView).
+def add_global_xpubs(base64_psbt: str, descriptor_str: str) -> str:
+    from embit.psbt import DerivationPath
+    psbt = PSBT.from_base64(base64_psbt)
+    for key in embit.descriptor.Descriptor.from_string(descriptor_str).keys:
+        psbt.xpubs[key.key] = DerivationPath(key.origin.fingerprint, key.origin.derivation)
+    return psbt.to_string()
+
+BASE64_MULTISIG_PSBT_WITH_XPUBS = add_global_xpubs(BASE64_MULTISIG_PSBT, MULTISIG_WALLET_DESCRIPTOR)
+
 # Grab the most recent release version info for the "release build" splash screenshots.
 (latest_release_version_name, latest_release_version_timestamp) = VersionUtils._fetch_latest_seedsigner_release_tag()
 if not latest_release_version_name or not latest_release_version_timestamp:
@@ -166,8 +181,14 @@ def generate_screenshots(locale):
         When the `Renderer` instance is needed, we patch in our own test-only
         `ScreenshotRenderer`.
     """
-    # Prep the ScreenshotRenderer that will be patched over the normal Renderer
-    screenshot_root = os.path.join(os.getcwd(), "seedsigner-screenshots")
+    # Prep the ScreenshotRenderer that will be patched over the normal Renderer.
+    # SEEDSIGNER_SCREENSHOT_ROOT lets the fork's documentation generator write the
+    # curated images straight into docs/ without touching the upstream screenshot
+    # submodule; unset it keeps the historical behaviour.
+    screenshot_root = os.environ.get(
+        "SEEDSIGNER_SCREENSHOT_ROOT",
+        os.path.join(os.getcwd(), "seedsigner-screenshots"),
+    )
     ScreenshotRenderer.configure_instance()
     screenshot_renderer: ScreenshotRenderer = ScreenshotRenderer.get_instance()
 
@@ -184,6 +205,16 @@ def generate_screenshots(locale):
 
         controller.settings.set_value(SettingsConstants.SETTING__SIG_TYPES, [attr for attr, name in SettingsConstants.ALL_SIG_TYPES])
         controller.settings.set_value(SettingsConstants.SETTING__SCRIPT_TYPES, [attr for attr, name in SettingsConstants.ALL_SCRIPT_TYPES])
+
+        # The fork's smartcard menus only appear when their feature toggles are on.
+        for setting in (
+            SettingsConstants.SETTING__SMARTCARD_SUPPORT,
+            SettingsConstants.SETTING__SATOCHIP_SUPPORT,
+            SettingsConstants.SETTING__KEYCARD_SUPPORT,
+            SettingsConstants.SETTING__SPECTER_DIY_SUPPORT,
+            SettingsConstants.SETTING__SLIP39_SEEDS,
+        ):
+            controller.settings.set_value(setting, SettingsConstants.OPTION__ENABLED)
 
         controller.storage.seeds.append(seed_12)
         controller.storage.seeds.append(seed_12b)
@@ -291,7 +322,7 @@ def generate_screenshots(locale):
             decoder.add_data(base64_psbt)
             with patch.object(controller, 'psbt', decoder.get_psbt()):
                 with patch.object(controller, 'psbt_seed', seed):
-                    with patch.object(controller, 'psbt_parser', PSBTParser(p=controller.psbt, seed=seed)):
+                    with patch.object(controller, 'psbt_parser', PSBTParser(p=controller.psbt, seed=seed, multisig_descriptor=controller.multisig_wallet_descriptor)):
                         yield
 
 
@@ -303,6 +334,12 @@ def generate_screenshots(locale):
 
         @contextmanager
         def mock_multisig_psbt_loaded():
+            with mock_load_psbt(BASE64_MULTISIG_PSBT_WITH_XPUBS):
+                yield
+
+
+        @contextmanager
+        def mock_multisig_psbt_without_xpubs_loaded():
             with mock_load_psbt(BASE64_MULTISIG_PSBT):
                 yield
 
@@ -315,8 +352,16 @@ def generate_screenshots(locale):
 
         @contextmanager
         def mock_multisig_psbt_and_descriptor_loaded():
-            with mock_multisig_psbt_loaded():
-                with mock_multisig_wallet_descriptor_loaded():
+            # Descriptor first: the parser is built with whatever descriptor is loaded.
+            with mock_multisig_wallet_descriptor_loaded():
+                with mock_multisig_psbt_loaded():
+                    yield
+
+
+        @contextmanager
+        def mock_multisig_psbt_without_xpubs_and_descriptor_loaded():
+            with mock_multisig_wallet_descriptor_loaded():
+                with mock_multisig_psbt_without_xpubs_loaded():
                     yield
 
 
@@ -407,6 +452,116 @@ def generate_screenshots(locale):
                 with patch("seedsigner.models.settings.Settings.HOSTNAME", Settings.SEEDSIGNER_OS):
                     yield
 
+
+        # --- Luckfox Build Tools -------------------------------------------------
+        # A card holding a release folder. Only the file names matter to the picker
+        # and the confirmation screen, so empty placeholders are enough. Created once
+        # so its path can be baked into the ConfirmView's view_kwargs.
+        import tempfile
+        resign_card = pathlib.Path(tempfile.mkdtemp(prefix="ss-screenshot-card-"))
+        resign_release = resign_card / "seedsigner-luckfox-pico-max-nand-files"
+        resign_release.mkdir()
+        for name in ("idblock.img", "download.bin", "uboot.img", "boot.img",
+                     "rootfs.img", "rootfs.img.size"):
+            (resign_release / name).write_bytes(b"")
+
+        @contextmanager
+        def mock_microsd_with_release(inserted: bool = True):
+            microsd = Mock(is_inserted=inserted)
+            with patch.object(MicroSD, "get_instance", Mock(return_value=microsd)),                  patch.object(MicroSD, "get_microsd_dir", staticmethod(lambda: resign_card)):
+                yield
+
+        @contextmanager
+        def mock_microsd_absent():
+            with mock_microsd_with_release(inserted=False):
+                yield
+
+        @contextmanager
+        def mock_luckfox_build_tools_enabled():
+            # Both gates open: the setting (default off) and the OS-provided tools
+            # (absent on a desktop / CI). Restore the setting afterwards so no other
+            # screenshot sees the extra menu entry.
+            attr = SettingsConstants.SETTING__LUCKFOX_BUILD_TOOLS
+            previous = controller.settings.get_value(attr)
+            controller.settings.set_value(attr, SettingsConstants.OPTION__ENABLED)
+            try:
+                with patch.object(secure_boot_tools, "is_available", Mock(return_value=True)):
+                    yield
+            finally:
+                controller.settings.set_value(attr, previous)
+
+        from seedsigner.helpers import resign_release as rr_helper
+        resign_flow = dict(action=resign_views.ACTION__RESIGN, seed_num=0, rsa_index=0, ed_index=0)
+        release_dir = str(resign_release)
+
+        @contextmanager
+        def mock_release_helpers(force_state=False, provision=None):
+            """The few helper calls a screen needs, answered without the OS tools."""
+            inspect = dict(folder=release_dir, rootfs=os.path.join(release_dir, "rootfs.img"),
+                           files=["idblock.img", "download.bin", "uboot.img", "boot.img"],
+                           rootfs_in_boot=True, current_rsa_modulus=None, update_img=True)
+            chk = provision or dict(
+                problems=[], fixable=[], overwrite=False, in_place=False,
+                files=["sd_update.txt", "env.img", "idblock.img", "uboot.img", "boot.img",
+                       "oem.img", "userdata.img", "rootfs.img"],
+                bytes=112 << 20, identity=dict(model="Luckfox Pico Pro Max"), warnings=[])
+            with mock_microsd_with_release(), \
+                 patch.object(rr_helper, "inspect_release", Mock(return_value=inspect)), \
+                 patch.object(rr_helper, "force_rootfs_state", Mock(return_value=force_state)), \
+                 patch.object(rr_helper, "provision_check", Mock(return_value=chk)):
+                yield
+
+        # Key files a user might bring on the card for Resign Release.
+        (resign_card / "keys").mkdir(exist_ok=True)
+        for name in ("release-rsa.pem", "rootfs-minisign.key"):
+            (resign_card / "keys" / name).write_bytes(b"placeholder")
+
+        @contextmanager
+        def mock_seedkeeper_with_keys():
+            from seedsigner.helpers import seedkeeper_utils
+            card = Mock()
+            card.seedkeeper_list_secret_headers.return_value = [
+                dict(id=1, type=0xC0, label="release-rsa"),
+                dict(id=2, type=0xC0, label="rootfs-ed25519"),
+                dict(id=3, type=0xC0, label="notes"),
+            ]
+            card.card_get_status.return_value = (b"", 0x90, 0x00, dict(protocol_minor_version=2))
+            with patch.object(seedkeeper_utils, "init_satochip", Mock(return_value=card)):
+                yield
+
+        @contextmanager
+        def mock_force_on():
+            with mock_release_helpers(force_state=True):
+                yield
+
+        @contextmanager
+        def mock_provision_warnings():
+            with mock_release_helpers(provision=dict(
+                    problems=[], fixable=["boot.img: the script writes 0x313200 of 0x374400 bytes"],
+                    overwrite=True, in_place=False, files=["sd_update.txt"], bytes=1 << 20,
+                    identity=dict(model="Luckfox Pico Pro Max"),
+                    warnings=["Signed with the PUBLISHED dev keys: anyone could "
+                              "have signed it."])):
+                yield
+
+        sample_check_text = "\n".join([
+            "VALID: every signature checks out.", "",
+            "Hardware", "Luckfox Pico Pro Max", "Medium: nand", "Rootfs: ubifs (writable)",
+            "Serial console: off", "DDR blob: 1.15", "",
+            "Signatures", "idblock.img: OK", "download.bin: OK", "uboot.img: OK",
+            "boot.img: OK", "uboot.img key: OK", "rootfs.img: OK", "",
+            "Keys", "Boot key:", "3f0a26d1c9e8b4f2", "",
+            "Rootfs key:", "FB935B80871B6C36", "PUBLISHED DEV KEY", "",
+            "Forced rootfs check: off", "", "eFuse burn armed: no"])
+        sample_resign_text = "\n".join([
+            "Done:",
+            "- idblock.img: key re-embedded, header re-signed",
+            "- download.bin: key re-embedded, header re-signed",
+            "- uboot.img: key re-embedded (1), re-signed",
+            "- rootfs.img: signed with key 2251599AA9CD5177 (the signature is stored in boot.img)",
+            "- boot.img: re-signed",
+            "- sd_update.txt: write lengths corrected for boot.img", "",
+            "Verified afterwards: idblock.img, download.bin, uboot.img, boot.img, rootfs.img"])
 
         screenshot_sections = {
             "Main Menu Views": [
@@ -507,6 +662,8 @@ def generate_screenshots(locale):
                 ScreenshotConfig(psbt_views.PSBTUnsupportedScriptTypeWarningView),
                 ScreenshotConfig(psbt_views.PSBTNoChangeWarningView),
                 ScreenshotConfig(psbt_views.PSBTRiskWarningView, mock_context_manager=mock_psbt_with_risk_warnings_loaded),
+                ScreenshotConfig(psbt_views.PSBTIdentifyChangeView, screenshot_name="PSBTIdentifyChangeView_no_descriptor", mock_context_manager=mock_multisig_psbt_without_xpubs_loaded),
+                ScreenshotConfig(psbt_views.PSBTIdentifyChangeView, screenshot_name="PSBTIdentifyChangeView_descriptor_mismatch", mock_context_manager=mock_multisig_psbt_without_xpubs_and_descriptor_loaded),
                 ScreenshotConfig(psbt_views.PSBTMathView, mock_context_manager=mock_multisig_psbt_loaded),
                 ScreenshotConfig(psbt_views.PSBTAddressDetailsView, dict(address_num=0), mock_context_manager=mock_multisig_psbt_loaded),
 
@@ -552,6 +709,51 @@ def generate_screenshots(locale):
                 ScreenshotConfig(tools_views.ToolsTextQRTextEntryView, dict(initial_keyboard=ToolsTextQRTextEntryScreen.KEYBOARD__SYMBOLS_1_BUTTON_TEXT), screenshot_name="ToolsTextQRTextEntryView_symbols_1"),
                 ScreenshotConfig(tools_views.ToolsTextQRTextEntryView, dict(initial_keyboard=ToolsTextQRTextEntryScreen.KEYBOARD__SYMBOLS_2_BUTTON_TEXT), screenshot_name="ToolsTextQRTextEntryView_symbols_2"),
             ],
+            "Luckfox Build Tools Views": [
+                ScreenshotConfig(tools_views.ToolsMenuView, screenshot_name="ToolsMenuView_luckfox_build_tools", mock_context_manager=mock_luckfox_build_tools_enabled),
+                ScreenshotConfig(resign_views.ToolsLuckfoxBuildToolsMenuView, mock_context_manager=mock_microsd_with_release),
+                ScreenshotConfig(resign_views.ToolsLuckfoxBuildToolsMenuView, screenshot_name="ToolsLuckfoxBuildToolsMenuView_no_microsd", mock_context_manager=mock_microsd_absent),
+                ScreenshotConfig(resign_views.ToolsLuckfoxSelectFolderView, dict(flow=dict(action=resign_views.ACTION__CHECK)), mock_context_manager=mock_microsd_with_release),
+                ScreenshotConfig(resign_views.ToolsLuckfoxResultView, dict(title="Check Release", text=sample_check_text, finish="back"), screenshot_name="ToolsLuckfoxResultView_check_release"),
+                ScreenshotConfig(resign_views.ToolsLuckfoxResultView, dict(title="Cannot continue", text="This release's rootfs verifier predates the forced check, so it cannot be turned on. Use a newer build.", finish="back"), screenshot_name="ToolsLuckfoxResultView_refused"),
+                ScreenshotConfig(resign_views.ToolsResignReleaseStartView),
+                ScreenshotConfig(resign_views.ToolsLuckfoxKeySourceView, dict(flow=dict(action=resign_views.ACTION__RESIGN))),
+                ScreenshotConfig(resign_views.ToolsLuckfoxKeyFileView, dict(flow=dict(action=resign_views.ACTION__RESIGN, source=resign_views.KEY_SOURCE__MICROSD)), mock_context_manager=mock_microsd_with_release),
+                ScreenshotConfig(resign_views.ToolsLuckfoxSeedKeeperKeysView, dict(flow=dict(action=resign_views.ACTION__RESIGN, source=resign_views.KEY_SOURCE__SEEDKEEPER)), mock_context_manager=mock_seedkeeper_with_keys),
+                ScreenshotConfig(resign_views.ToolsLuckfoxSelectSeedView, dict(flow=dict(action=resign_views.ACTION__RESIGN, source=resign_views.KEY_SOURCE__BIP85))),
+                ScreenshotConfig(resign_views.ToolsLuckfoxRsaIndexView, dict(flow=dict(action=resign_views.ACTION__RESIGN, seed_num=0))),
+                ScreenshotConfig(resign_views.ToolsLuckfoxEd25519IndexView, dict(flow=dict(action=resign_views.ACTION__RESIGN, seed_num=0, rsa_index=0))),
+                ScreenshotConfig(resign_views.ToolsResignConfirmView, dict(flow=dict(resign_flow, folder=release_dir)), mock_context_manager=mock_release_helpers),
+                ScreenshotConfig(resign_views.ToolsLuckfoxUpdateImgDeletedView, dict(title="Resign Release", text=sample_resign_text)),
+                ScreenshotConfig(resign_views.ToolsLuckfoxResultView, dict(title="Resign Release", text=sample_resign_text), screenshot_name="ToolsLuckfoxResultView_resign_all"),
+                ScreenshotConfig(resign_views.ToolsRekeyMenuView),
+                ScreenshotConfig(resign_views.ToolsLuckfoxResultView, dict(
+                    title="Re-Key: Export Pubkeys",
+                    text=("Public halves on the card (seedsigner-release-keys):\n"
+                          "- release-rsa.pub\n- release-rootfs.pub\n\n"
+                          "RSA fingerprint:\nbbeea6c72f9a1019db70d087ba3b180a\n\n"
+                          "Rootfs key id:\nD5D9A7B90222B827\n\n"
+                          "On the PC, with the card mounted:\n"
+                          "  airgap-sign.py rekey <bundle> --card <mount>\n"
+                          "  airgap-sign.py digests <bundle> --card <mount> --only rootfs\n\n"
+                          "Then take the card back here and run Round 1."),
+                    finish="main"),
+                    screenshot_name="ToolsLuckfoxResultView_rekey_export"),
+                ScreenshotConfig(resign_views.ToolsLuckfoxProvisionView, dict(flow=dict(action=resign_views.ACTION__PROVISION, folder=release_dir)), mock_context_manager=mock_release_helpers),
+                ScreenshotConfig(resign_views.ToolsLuckfoxProvisionView, dict(flow=dict(action=resign_views.ACTION__PROVISION, folder=release_dir)), screenshot_name="ToolsLuckfoxProvisionView_warnings", mock_context_manager=mock_provision_warnings),
+                ScreenshotConfig(resign_views.ToolsLuckfoxProvisionDoneView),
+                ScreenshotConfig(resign_views.ToolsLuckfoxForceInfoView, dict(page=1), screenshot_name="ToolsLuckfoxForceInfoView_1"),
+                ScreenshotConfig(resign_views.ToolsLuckfoxForceInfoView, dict(page=2), screenshot_name="ToolsLuckfoxForceInfoView_2"),
+                ScreenshotConfig(resign_views.ToolsLuckfoxForceStateView, dict(flow=dict(action=resign_views.ACTION__FORCE, folder=release_dir)), screenshot_name="ToolsLuckfoxForceStateView_off", mock_context_manager=mock_release_helpers),
+                ScreenshotConfig(resign_views.ToolsLuckfoxForceStateView, dict(flow=dict(action=resign_views.ACTION__FORCE, folder=release_dir)), screenshot_name="ToolsLuckfoxForceStateView_on", mock_context_manager=mock_force_on),
+                ScreenshotConfig(resign_views.ToolsSignDigestStartView),
+                ScreenshotConfig(resign_views.ToolsLuckfoxDangerZoneView),
+                ScreenshotConfig(resign_views.ToolsLuckfoxArmWarningView),
+                # Not screenshotted: the views that derive an RSA-2048 key or run the
+                # OS tools before they show anything but a loading screen (Check
+                # Release, Export, Resign/Force/Arm run). Their result screens are
+                # covered above through ToolsLuckfoxResultView.
+            ],
             "Settings Views": settings_views_list + [
                 ScreenshotConfig(settings_views.IOTestView),
                 ScreenshotConfig(settings_views.DonateView),
@@ -560,6 +762,39 @@ def generate_screenshots(locale):
                 ScreenshotConfig(settings_views.SettingsIngestSettingsQRView, dict(data=settingsqr_data_persistent),     screenshot_name="SettingsIngestSettingsQRView_persistent"),
                 ScreenshotConfig(settings_views.SettingsIngestSettingsQRView, dict(data=settingsqr_data_not_persistent), screenshot_name="SettingsIngestSettingsQRView_not_persistent"),
                 ScreenshotConfig(settings_views.SettingsSelectionRequiredWarningView, dict(attr_name=SettingsConstants.SETTING__SCRIPT_TYPES)),
+            ],
+            "Smartcard Views": [
+                ScreenshotConfig(smartcard_views.ToolsSmartcardMenuView),
+                ScreenshotConfig(smartcard_views.ToolsSeedkeeperView),
+                ScreenshotConfig(smartcard_views.ToolsSeedkeeperCardSettingsView),
+                ScreenshotConfig(smartcard_views.ToolsCommonNdefView),
+                ScreenshotConfig(smartcard_views.ToolsSatochipView),
+                ScreenshotConfig(smartcard_views.ToolsSatochipCardSettingsView),
+                ScreenshotConfig(smartcard_views.ToolsSatochipAdvancedView),
+                ScreenshotConfig(smartcard_views.ToolsKeycardView),
+                ScreenshotConfig(smartcard_views.ToolsKeycardAdvancedView),
+                ScreenshotConfig(smartcard_views.ToolsSatodimeView),
+                ScreenshotConfig(smartcard_views.ToolsSatodimeCardSettingsView),
+                ScreenshotConfig(smartcard_views.ToolsSpecterDIYView),
+                ScreenshotConfig(smartcard_views.ToolsSatochipDIYView),
+                ScreenshotConfig(smartcard_views.ToolsJavacardKeysView),
+                ScreenshotConfig(smartcard_views.SatochipExportXpubSigTypeView),
+                ScreenshotConfig(smartcard_views.SatochipExportXpubScriptTypeView, dict(sig_type=SettingsConstants.SINGLE_SIG)),
+                ScreenshotConfig(smartcard_views.SatochipLoadDescriptorScriptTypeView),
+            ],
+            "Password Generator Views": [
+                ScreenshotConfig(password_generator_views.ToolsPasswordGeneratorTypeView),
+                ScreenshotConfig(password_generator_views.ToolsPasswordStrengthView, dict(password_type=password_generator_views.PASSWORD_TYPE_DICEWARE_BIP39)),
+                ScreenshotConfig(password_generator_views.ToolsPasswordEntropySourceView, dict(password_type=password_generator_views.PASSWORD_TYPE_DICEWARE_BIP39, strength_bits=128)),
+                ScreenshotConfig(password_generator_views.ToolsPasswordReviewView, dict(password="correct horse battery staple")),
+                ScreenshotConfig(password_generator_views.ToolsPasswordSaveView, dict(password="correct horse battery staple")),
+            ],
+            "MicroSD Views": [
+                ScreenshotConfig(microsd_views.ToolsMicroSDMenuView),
+                ScreenshotConfig(microsd_views.ToolsMicroSDFlashView),
+                ScreenshotConfig(microsd_views.ToolsMicroSDVerifyWarningView),
+                ScreenshotConfig(microsd_views.ToolsMicroSDWipeZeroView),
+                ScreenshotConfig(microsd_views.ToolsMicroSDWipeRandomView),
             ],
             "Misc Error Views": [
                 ScreenshotConfig(NotYetImplementedView),

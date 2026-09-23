@@ -1,45 +1,61 @@
 ## Debugging a Crash for Advanced (Technical) Users
 
-These instructions are intended to help users of SeedSigner provide crash exception and traceback logs to developers to aid in troubleshooting and resolving bugs.
+These instructions help users provide crash exception and traceback logs to developers
+to aid troubleshooting.
 
 ### Testnet vs Mainnet
 
-Whenever possible, recreate a crash in testnet. This will help avoid accidentally revealing private information about yourself, your Bitcoin transactions, or losing any funds.
+Whenever possible, recreate a crash in testnet. This avoids accidentally revealing
+private information about yourself, your Bitcoin transactions, or losing funds.
 
 ### Network-Connected SeedSigner
 
-If you are using SeedSigner for development and testing, then we recommend network access via SSH to view crash logs. Follow [these](https://github.com/SeedSigner/seedsigner/blob/main/docs/usb_relay.md) instructions to set up a USB relay for internet access. You can also connect your SeedSigner to WiFi if you have a Raspberry Pi Zero W with WiFi.
+For development and testing, we recommend network access via SSH to view crash logs.
+Follow [these](usb_relay.md) instructions to set up a USB relay for internet access. On
+a Raspberry Pi Zero W you can also connect to WiFi.
 
 ### Airgapped Debugging Setup
 
-If you are using SeedSigner for mainnet transactions, then do not connect your device to a network or the internet. Instead, connect your SeedSigner to an HDMI display (without internet) and a USB keyboard. This will require an HDMI adapter and a micro USB to USB A adapter. Plug in the HDMI display and keyboard before powering on SeedSigner. The password for the SeedSigner pi user is `raspberry`.
+For mainnet use, do not connect your device to a network. Instead connect an HDMI
+display (no internet) and a USB keyboard. This requires an HDMI adapter and a micro
+USB-to-USB-A adapter. Plug both in before powering on SeedSigner. The password for the
+SeedSigner `pi` user is `raspberry`.
 
 ### Debugging Steps
 
-At this point, you should be signed into the pi user either on an HDMI display (via command line) or an SSH connection.
+Once signed in as `pi` (HDMI or SSH):
 
-Follow these steps to set up a debug session:
+1. Enable the **debug** setting. This fork stores settings in `settings.json`, not the
+   old `settings.ini`.
 
-1. Navigate to the source directory:
-   ```bash
-   cd seedsigner/src
-   ```
+   - On SeedSigner OS the file lives under the writable data directory, e.g.
+     `/mnt/microsd/settings.json` (Pi-style builds) or `/mnt/sdcard/settings.json`
+     (Luckfox). On a development checkout it is `settings.json` in the source
+     directory.
+   - Set `"debug": "E"`:
 
-2. Edit the settings file:
-   ```bash
-   nano settings.ini
-   ```
+     ```json
+     "debug": "E"
+     ```
 
-3. In the nano editor, change `debug = False` to `debug = True` (case sensitive). Save and exit settings.ini.
+   - You can also flip it through a SettingsQR. Save a copy and then restart the app.
 
-4. Stop the SeedSigner systemd process:
+2. Stop the SeedSigner systemd process:
+
    ```bash
    sudo systemctl stop seedsigner.service
    ```
 
-5. Start the Python app manually:
+3. Start the Python app manually from the source directory:
+
    ```bash
+   cd seedsigner/src
    python3 main.py
    ```
 
-SeedSigner should now be up and running. Keep it connected to the display and keyboard. Recreate the steps to cause the crash. The traceback log and exception will be displayed on the HDMI display.
+SeedSigner should now be running with debug logging. Keep it connected to the display
+and keyboard, recreate the crash, and the traceback will be shown on the HDMI display
+(and written to the logs).
+
+> The fork also has a **Test hardening** and **Memory info** screen under
+> Settings → Hardware for additional diagnostics.

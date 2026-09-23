@@ -204,6 +204,14 @@ When reviewing test results, focus on **new** failures compared to the baseline.
 
 **Note:** The `_msys2_path()` helper in `test_gpg_message.py` auto-detects whether the installed GPG binary is from Git-for-Windows (needs MSYS2-style `/c/...` paths) or native Windows Gpg4win (needs native `C:\...` paths). If GPG tests fail on Windows with a "no writable keyring found" error, check that `_msys2_path()` correctly identifies the installed GPG variant.
 
+### jcardsim RAM guard
+
+Every simulated card is its own JVM (`tests/jcardsim/simulator.py`, ~250-400MB RSS each). CI runners are fresh VMs running one pytest at a time, but on a developer machine the suite shares RAM with everything else — and several pytests run in parallel will page the whole machine to a freeze. `SimulatedCard.start()` therefore refuses to spawn a JVM when free physical RAM is below **3GB** (measured via `GlobalMemoryStatusEx` / `/proc/meminfo`, no new dependency) and raises `JCardSimUnavailable`, which every jcardsim test already turns into a clean skip. The threshold is overridable with `SEEDSIGNER_JCARDSIM_MIN_FREE_RAM_MB`.
+
+Consequences:
+- On a low-memory machine, jcardsim tests may **skip** with "insufficient free RAM for a jcardsim JVM" — that is expected, not a regression.
+- Run only **one pytest process at a time** on a dev machine; the guard makes parallel runs safe (they skip instead of OOMing) but they also make each other slower and less useful.
+
 ### Hardware-in-the-loop smartcard tests
 
 `tests/test_smartcard_hardware.py` and `tests/test_flows_smartcard_hardware.py` are **local-only** — no CI job runs them. They self-skip when `pygp` is missing or no reader/card is present, so they are safe to leave in the default suite.

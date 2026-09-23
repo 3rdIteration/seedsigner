@@ -232,15 +232,23 @@ class SettingPBKDF2IterationsView(View):
     def run(self):
         ret_value = settings_screens.SettingPBFDK2IterationsScreen(initial_value=self.initial_value).display()
 
+        min_value = self.settings_entry.min_value
+        max_value = self.settings_entry.max_value
+
         if ret_value == RET_CODE__BACK_BUTTON:
             return Destination(SettingsMenuView)
 
-        elif not 1 <= int(ret_value) <= 50:
+        try:
+            iter_value = int(ret_value)
+        except (TypeError, ValueError):
+            iter_value = None
+
+        if iter_value is None or not min_value <= iter_value <= max_value:
             WarningScreen(
                 title="PBKDF2 Iterations Error",
                 show_back_button=False,
                 status_headline=f"out of range",
-                text=f"Value must be between 1 and 50",
+                text=f"Value must be between {min_value} and {max_value}",
                 button_data=[ButtonOption("Try Again")]
             ).display()
 
@@ -252,7 +260,7 @@ class SettingPBKDF2IterationsView(View):
 
         self.settings.set_value(
             attr_name=self.settings_entry.attr_name,
-            value = int(ret_value)
+            value = iter_value
         )
 
         return Destination(
@@ -468,27 +476,34 @@ class SettingsSelectionRequiredWarningView(View):
 
 class SettingsIngestSettingsQRView(View):
     def __init__(self, data: str):
-        from seedsigner.hardware.microsd import MicroSD
         super().__init__()
 
         # May raise an Exception which will bubble up to the Controller to display to the
         # user.
-        self.config_name, settings_update_dict = Settings.parse_settingsqr(data)
+        self.config_name, self.settings_update_dict = Settings.parse_settingsqr(data)
 
-        changes_display_driver = (
-            SettingsConstants.SETTING__DISPLAY_CONFIGURATION in settings_update_dict and
-            self.settings.get_value(SettingsConstants.SETTING__DISPLAY_CONFIGURATION) != settings_update_dict[SettingsConstants.SETTING__DISPLAY_CONFIGURATION])
-        changes_color_inverted = (
-            SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED in settings_update_dict and
-            self.settings.get_value(SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED) != settings_update_dict[SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED])
+        self.changes_display_driver = (
+            SettingsConstants.SETTING__DISPLAY_CONFIGURATION in self.settings_update_dict and
+            self.settings.get_value(SettingsConstants.SETTING__DISPLAY_CONFIGURATION) != self.settings_update_dict[SettingsConstants.SETTING__DISPLAY_CONFIGURATION])
+        self.changes_color_inverted = (
+            SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED in self.settings_update_dict and
+            self.settings.get_value(SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED) != self.settings_update_dict[SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED])
 
-        self.settings.update(settings_update_dict)
 
-        if changes_display_driver:
+    def _apply_settings(self):
+        """
+        Applies the parsed SettingsQR values. Only called after the user confirms
+        on the review screen so a scanned QR never mutates settings on its own.
+        """
+        from seedsigner.hardware.microsd import MicroSD
+
+        self.settings.update(self.settings_update_dict)
+
+        if self.changes_display_driver:
             # initialize_display() also re-applies the saved inversion state.
             self.renderer.initialize_display()
-        elif changes_color_inverted:
-            self.renderer.disp.set_color_inversion(settings_update_dict[SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED] == SettingsConstants.OPTION__ENABLED)
+        elif self.changes_color_inverted:
+            self.renderer.disp.set_color_inversion(self.settings_update_dict[SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED] == SettingsConstants.OPTION__ENABLED)
 
         if MicroSD.get_instance().is_inserted and self.settings.get_value(SettingsConstants.SETTING__PERSISTENT_SETTINGS) == SettingsConstants.OPTION__ENABLED:
             self.status_message = _("Persistent Settings enabled. Settings saved to SD card.")
@@ -497,7 +512,21 @@ class SettingsIngestSettingsQRView(View):
 
 
     def run(self):
-        from seedsigner.gui.screens.settings_screens import SettingsQRConfirmationScreen
+        from seedsigner.gui.screens.settings_screens import SettingsQRConfirmationScreen, SettingsQRReviewScreen
+
+        # TRANSLATOR_NOTE: Confirm before applying settings from a scanned SettingsQR
+        button_idx = self.run_screen(
+            SettingsQRReviewScreen,
+            title=_("Settings QR"),
+            config_name=self.config_name,
+        )
+
+        # Apply is the only affirmative button; Cancel or BACK discards the QR.
+        if button_idx != 0:
+            return Destination(MainMenuView)
+
+        self._apply_settings()
+
         self.run_screen(
             SettingsQRConfirmationScreen,
             title=_("Settings QR"),
@@ -505,7 +534,7 @@ class SettingsIngestSettingsQRView(View):
             status_message=self.status_message,
         )
 
-        # Only one exit point
+        # Only exit point after applying
         return Destination(MainMenuView)
 
 

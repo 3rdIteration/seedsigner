@@ -168,6 +168,115 @@ def simulated_keycard(monkeypatch, pin: str = "123456", puk: str = "987654321012
             yield connector
 
 
+@contextmanager
+def simulated_seedkeeper(monkeypatch, version: str = "seedkeeper_v02", pin: str = "1234"):
+    """
+    Put a *real* SeedKeeper applet behind `init_satochip`, running in jcardsim.
+
+    The sibling of ``simulated_satochip``: the connector the flows receive is
+    pysatochip talking to actual SeedKeeper bytecode, so secret labels, ids and free
+    space are the applet's own. The card is taken through ``card_setup`` and PIN
+    verification so write flows work immediately.
+
+    Skips (via JCardSimUnavailable) when Java or the applet sources are absent.
+    """
+    import sys
+    from unittest.mock import MagicMock as _MagicMock
+
+    for name in [m for m in sys.modules if m == "pysatochip" or m.startswith("pysatochip.")]:
+        if isinstance(sys.modules[name], _MagicMock):
+            del sys.modules[name]
+
+    from jcardsim import open_card
+    from jcardsim.pcsc_shim import patched_pcsc
+
+    from seedsigner.helpers import seedkeeper_utils
+
+    with open_card(version) as card:
+        card.select()
+        card.version = version
+        with patched_pcsc(card):
+            from pysatochip.CardConnector import CardConnector
+
+            connector = CardConnector(card_filter=["seedkeeper"])
+            connector.version = version
+            pin_bytes = list(pin.encode())
+            connector.card_setup(5, 1, pin_bytes, pin_bytes, 5, 1, pin_bytes, pin_bytes, 32, 32, 0x01, 0x01, 0x01)
+            connector.set_pin(0, pin_bytes)
+            connector.card_verify_PIN()
+
+            monkeypatch.setattr(seedkeeper_utils, "init_satochip", lambda *a, **kw: connector)
+            yield connector
+
+
+@contextmanager
+def simulated_satodime(monkeypatch):
+    """
+    Put a *real* Satodime applet behind `init_satochip`, running in jcardsim.
+
+    Unlike Satochip, Satodime needs no ``card_setup`` / PIN enrolment to answer status and
+    keyslot queries (it keys access off an ownership/unlock secret instead), so this fixture
+    stops at connector construction. Skips via JCardSimUnavailable when Java or the applet
+    sources are absent.
+    """
+    import sys
+    from unittest.mock import MagicMock as _MagicMock
+
+    for name in [m for m in sys.modules if m == "pysatochip" or m.startswith("pysatochip.")]:
+        if isinstance(sys.modules[name], _MagicMock):
+            del sys.modules[name]
+
+    from jcardsim import open_card
+    from jcardsim.pcsc_shim import patched_pcsc
+
+    from seedsigner.helpers import seedkeeper_utils
+
+    with open_card("satodime") as card:
+        card.select()
+        with patched_pcsc(card):
+            from pysatochip.CardConnector import CardConnector
+
+            connector = CardConnector(card_filter=["satodime"])
+            monkeypatch.setattr(
+                seedkeeper_utils, "init_satochip", lambda *a, **kw: connector
+            )
+            yield connector
+
+
+@contextmanager
+def simulated_satodime_raw(applet="satodime", protocol=None):
+    """
+    Put a real Satodime applet behind PC/SC and leave ``init_satochip`` alone.
+
+    ``simulated_satodime`` hands the view a ready-made connector, which means every
+    line of ``init_satochip`` -- card detection, setup-state handling, PIN policy --
+    is skipped. That is exactly where the Satodime PIN-prompt bug lived (a factory-
+    fresh Satodime reports ``setup_done`` False, and the shared setup branch used to
+    prompt for a PIN the applet does not have). Patching only PC/SC means the views
+    run the same client code they run on a real card.
+
+    ``protocol`` is the medium the applet sees via ``APDU.getProtocol()``: None keeps
+    jcardsim's contact default; pass e.g. ``"T=CL,TYPE_A,T0"`` to simulate an ISO 14443
+    Type A contactless card, which is the only medium on which Satodime enforces its
+    ownership-key check (counter + HMAC) on state-changing APDUs.
+
+    Yields the ``SimulatedCard`` so a test can reason about the applet directly.
+    """
+    import sys
+    from unittest.mock import MagicMock as _MagicMock
+
+    for name in [m for m in sys.modules if m == "pysatochip" or m.startswith("pysatochip.")]:
+        if isinstance(sys.modules[name], _MagicMock):
+            del sys.modules[name]
+
+    from jcardsim import open_card
+    from jcardsim.pcsc_shim import patched_pcsc
+
+    with open_card(applet, protocol=protocol) as card:
+        card.select()
+        with patched_pcsc(card):
+            yield card
+
 
 class FakePyGP:
     """

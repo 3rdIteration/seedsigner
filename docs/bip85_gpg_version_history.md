@@ -174,5 +174,5 @@ Brainpool ✗                P-256 only          ✓                 ✓
 ## See also
 
 - [`docs/gpg_tools.md`](gpg_tools.md) — user-facing GPG feature documentation
-- [`tools/bip85_pgp.py`](../tools/bip85_pgp.py) — standalone CLI tool
+- [`tools/bip85_pgp.py`](https://github.com/3rdIteration/seedsigner/blob/dev/tools/bip85_pgp.py) — standalone CLI tool
 - [bipsea test vectors](https://github.com/3rdIteration/bipsea/blob/main/test_vectors.md)

@@ -225,7 +225,9 @@ class Settings(Singleton):
                 # explicitly set; user settings take priority.
                 for key, value in platform_defaults.items():
                     loaded.setdefault(key, value)
-                settings.update(loaded, persist=False)
+                # validate=True: settings.json on disk is untrusted input
+                # (tampered/corrupted SD card); skip invalid option values.
+                settings.update(loaded, persist=False, validate=True)
             else:
                 # No settings file — apply platform defaults over code
                 # defaults directly.
@@ -455,13 +457,18 @@ class Settings(Singleton):
                 self._do_write_to_disk()
 
 
-    def update(self, new_settings: dict, persist: bool = True):
+    def update(self, new_settings: dict, persist: bool = True, validate: bool = False):
         """
             Replaces the current settings with the incoming dict.
 
             If a setting is missing from `new_settings`:
                 * Hidden settings that have a value remain as-is.
                 * All other missing settings are set to their default value.
+
+            If `validate` is True, values that are not members of the setting's
+            selection_options are skipped (the current value is retained) instead
+            of being applied. Used when loading settings from disk (a tampered or
+            corrupted settings.json must not be able to inject an invalid value).
         """
         for entry in SettingsDefinition.settings_entries:
             if entry.attr_name not in new_settings:
@@ -493,6 +500,24 @@ class Settings(Singleton):
                         new_settings[entry.attr_name] = entry.default_value
 
         for key, value in new_settings.items():
+            if validate:
+                # PERSISTENT_SETTINGS is exempt: its selection_options are dynamically
+                # restricted to DISABLED-only whenever no writable storage is mounted,
+                # yet a settings.json that exists on (writable) storage legitimately
+                # contains ENABLED. handle_microsd_state_change() forces it back to
+                # DISABLED when there is nowhere to persist anyway.
+                if key == SettingsConstants.SETTING__PERSISTENT_SETTINGS:
+                    entry = None
+                else:
+                    entry = SettingsDefinition.get_settings_entry(key)
+                if entry and entry.selection_options:
+                    valid_values = [opt[0] if type(opt) == tuple else opt for opt in entry.selection_options]
+                    incoming = value if isinstance(value, list) else [value]
+                    if any(v not in valid_values for v in incoming):
+                        # Invalid value from an untrusted source; keep the current value.
+                        logger.info("Ignoring invalid value for setting %s: %r", key, value)
+                        continue
+
             # Defer writing to disk until all values have been applied to avoid
             # repeatedly touching the microSD card during initialization or
             # bulk updates.
@@ -520,6 +545,27 @@ class Settings(Singleton):
             # Settings entry may be unavailable on this platform
             logger.debug("Setting %s not found. Ignoring.", attr_name)
             return
+
+        # Enforce numeric bounds on free-entry settings (e.g. pbkdf2_iterations).
+        # Values from untrusted inputs (SettingsQR, a tampered settings.json)
+        # must not silently weaken or break dependent crypto operations; reject
+        # non-integers and out-of-range values, keeping the current value.
+        if settings_entry.min_value is not None or settings_entry.max_value is not None:
+            if isinstance(value, bool) or not isinstance(value, (int, str)):
+                logger.info("Rejecting non-integer value for %s: %r", attr_name, value)
+                return
+            try:
+                numeric_value = int(str(value))
+            except ValueError:
+                logger.info("Rejecting non-numeric value for %s: %r", attr_name, value)
+                return
+            if settings_entry.min_value is not None and numeric_value < settings_entry.min_value:
+                logger.info("Rejecting %s=%r: below minimum %r", attr_name, value, settings_entry.min_value)
+                return
+            if settings_entry.max_value is not None and numeric_value > settings_entry.max_value:
+                logger.info("Rejecting %s=%r: above maximum %r", attr_name, value, settings_entry.max_value)
+                return
+            value = numeric_value
 
         if settings_entry.type == SettingsConstants.TYPE__MULTISELECT:
             if type(value) != list:
@@ -913,7 +959,9 @@ class Settings(Singleton):
                 settings = Settings.get_instance()
                 if settings.get_value(SettingsConstants.SETTING__PERSISTENT_SETTINGS) != SettingsConstants.OPTION__ENABLED:
                     with open(Settings.SETTINGS_FILENAME) as settings_file:
-                        settings.update(json.load(settings_file), persist=False)
+                        # validate=True: a tampered settings.json on the
+                        # just-inserted SD card must not inject invalid values.
+                        settings.update(json.load(settings_file), persist=False, validate=True)
 
         else:
             # Nowhere to persist to, so force Disabled rather than offer a setting

@@ -71,7 +71,16 @@ class PSBTSelectSeedView(View):
             raise Exception("No transaction currently loaded")
 
         if self.controller.psbt_seed:
-             if PSBTParser.has_matching_input_fingerprint(psbt=self.controller.psbt, seed=self.controller.psbt_seed, network=self.settings.get_value(SettingsConstants.SETTING__NETWORK)):
+             from seedsigner.models.wif import WIFKey
+
+             if isinstance(self.controller.psbt_seed, WIFKey):
+                 # A raw key has no BIP32 tree to fingerprint, and the psbt an Electrum
+                 # watch-only single-address wallet exports has no derivation fields at
+                 # all -- so the fingerprint check below always said "no" and quietly
+                 # dropped a key that signs the transaction fine.
+                 if PSBTParser.wif_can_sign_any_input(psbt=self.controller.psbt, wif_key=self.controller.psbt_seed):
+                     return Destination(PSBTOverviewView)
+             elif PSBTParser.has_matching_input_fingerprint(psbt=self.controller.psbt, seed=self.controller.psbt_seed, network=self.settings.get_value(SettingsConstants.SETTING__NETWORK)):
                  # skip the seed prompt if a seed was previously selected and has matching input fingerprint
                  return Destination(PSBTOverviewView)
 
@@ -505,6 +514,42 @@ REJECT_PRESENTATION = {
         button_label=_mft("Discard transaction"),
     ),
 
+    # Both are ownership claims that could not all be honest at once: several of
+    # this seed's keys on a single-key output, or the same seed named as both an
+    # ecdsa and a taproot key. Same threat as a forged output.
+    RejectCode.SURPLUS_DERIVATIONS: RejectPresentation(
+        screen=DireWarningScreen,
+        title=_mft("Suspicious Transaction"),
+        headline=_mft("Likely an Attack!"),
+        # TRANSLATOR_NOTE: A psbt's claims about which keys belong to this seed contradict each other
+        text=_mft("This transaction makes contradictory claims about which keys are yours."),
+        button_label=_mft("Discard transaction"),
+    ),
+
+    RejectCode.MIXED_DERIVATION_MAPS: RejectPresentation(
+        screen=DireWarningScreen,
+        title=_mft("Suspicious Transaction"),
+        headline=_mft("Likely an Attack!"),
+        text=_mft("This transaction makes contradictory claims about which keys are yours."),
+        button_label=_mft("Discard transaction"),
+    ),
+
+    RejectCode.MISLABELED_OUTPUT_OWNERSHIP: RejectPresentation(
+        screen=WarningScreen,
+        title=_mft("Transaction Problem"),
+        # TRANSLATOR_NOTE: A psbt labels an output that really pays this seed as another wallet's
+        text=_mft("An output that pays this seed is labelled as another wallet's. The transaction misdescribes itself."),
+        button_label=_mft("Discard transaction"),
+    ),
+
+    RejectCode.INCONSISTENT_FINGERPRINTS: RejectPresentation(
+        screen=WarningScreen,
+        title=_mft("Transaction Problem"),
+        # TRANSLATOR_NOTE: Two records in the psbt disagree about which wallet a key comes from
+        text=_mft("This transaction's records disagree about which wallet a key comes from."),
+        button_label=_mft("Discard transaction"),
+    ),
+
     RejectCode.FORGED_INPUT_OWNERSHIP: RejectPresentation(
         screen=WarningScreen,
         # TRANSLATOR_NOTE: Title of the screen shown when a psbt misstates who owns an input
@@ -661,6 +706,7 @@ class PSBTOverviewView(View):
                     network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
                     reference_time=getattr(self.controller, "psbt_source_time", None),
                     block_anchor=(_Controller.RELEASE_BLOCK_HEIGHT, _Controller.RELEASE_BLOCK_TIME),
+                    multisig_descriptor=self.controller.multisig_wallet_descriptor,
                 )
             except InvalidPSBTError as e:
                 # A deliberate refusal, not a crash: the psbt is parseable but unsafe to
@@ -682,10 +728,11 @@ class PSBTOverviewView(View):
         """
             change_data = [
                 {
-                    'address': 'bc1q............', 
-                    'amount': 397621401, 
-                    'claimed_fingerprints': ['22bde1a9', '73c5da0a'], 
-                    'claimed_derivation_paths': ['m/48h/1h/0h/2h/1/0', 'm/48h/1h/0h/2h/1/0']
+                    'output_index': 0,
+                    'address': 'bc1q............',
+                    'amount': 397621401,
+                    'verified_derivation_path':
+                        [2147483696, 2147483649, 2147483648, 2147483650, 1, 0],
                 }, {},
             ]
         """
@@ -694,8 +741,7 @@ class PSBTOverviewView(View):
         for change_output in change_data:
             # PSBTParser has already rejected any derivation a wallet could not
             # scan for, so all that's left here is which branch it sits on.
-            path_ints = bip32.parse_path(change_output["claimed_derivation_paths"][0])
-            if PSBTParser.is_change_branch(path_ints):
+            if PSBTParser.is_change_branch(change_output["verified_derivation_path"]):
                 num_change_outputs += 1
             else:
                 num_self_transfer_outputs += 1
@@ -717,19 +763,76 @@ class PSBTOverviewView(View):
             self.controller.psbt_seed = None
             return Destination(BackStackView)
 
-        if psbt_parser.risk_warnings - RiskWarning.INFORMATIONAL:
-            return Destination(PSBTRiskWarningView)
+        if psbt_parser.unidentified_change_outputs:
+            return Destination(PSBTIdentifyChangeView)
 
-        # expecting p2sh (legacy multisig) and p2pkh to have no policy set
-        # skip change warning and psbt math view
-        if psbt_parser.policy == None:
-            return Destination(PSBTUnsupportedScriptTypeWarningView)
-        
-        elif psbt_parser.change_amount == 0:
-            return Destination(PSBTNoChangeWarningView)
+        return post_overview_destination(psbt_parser)
 
+
+
+def post_overview_destination(psbt_parser: PSBTParser, skip_current_view: bool = False) -> Destination:
+    """Where review continues once the overview (and any interstitial after it) is done."""
+    if psbt_parser.risk_warnings - RiskWarning.INFORMATIONAL:
+        return Destination(PSBTRiskWarningView, skip_current_view=skip_current_view)
+
+    # expecting p2sh (legacy multisig) and p2pkh to have no policy set
+    # skip change warning and psbt math view
+    if psbt_parser.policy == None:
+        return Destination(PSBTUnsupportedScriptTypeWarningView, skip_current_view=skip_current_view)
+
+    elif psbt_parser.change_amount == 0:
+        return Destination(PSBTNoChangeWarningView, skip_current_view=skip_current_view)
+
+    else:
+        return Destination(PSBTMathView, skip_current_view=skip_current_view)
+
+
+
+class PSBTIdentifyChangeView(View):
+    """
+    Some output looks like this multisig wallet's change, but the psbt carries no global
+    xpubs to tie its other cosigner keys to the inputs' wallet. A different wallet that
+    shares our key would look the same, so PSBTParser shows it as a payment. Only the
+    wallet's descriptor can identify it as change.
+    """
+    LOAD_DESCRIPTOR = ButtonOption("Load descriptor")
+    # TRANSLATOR_NOTE: Review the unidentified output as a payment, without loading a descriptor
+    CONTINUE_AS_PAYMENT = ButtonOption("Continue as payment")
+    CONTINUE = ButtonOption("Continue")
+
+    def run(self):
+        psbt_parser: PSBTParser = self.controller.psbt_parser
+        if not psbt_parser:
+            # Should not be able to get here
+            return Destination(MainMenuView)
+
+        if self.controller.multisig_wallet_descriptor:
+            # TRANSLATOR_NOTE: A loaded multisig descriptor did not match an output that looked like change
+            text = _("The loaded descriptor doesn't identify it. Shown as a payment.")
+            button_data = [self.CONTINUE]
         else:
-            return Destination(PSBTMathView)
+            # TRANSLATOR_NOTE: Multisig change can't be told apart from a payment without the wallet descriptor
+            text = _("Load descriptor to identify change.")
+            button_data = [self.LOAD_DESCRIPTOR, self.CONTINUE_AS_PAYMENT]
+
+        selected_menu_num = self.run_screen(
+            WarningScreen,
+            # TRANSLATOR_NOTE: Headline when multisig change cannot be identified
+            status_headline=_("Change Not Identified"),
+            text=text,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if button_data[selected_menu_num] == self.LOAD_DESCRIPTOR:
+            from seedsigner.controller import Controller
+            from seedsigner.views.seed_views import LoadMultisigWalletDescriptorView
+            self.controller.resume_main_flow = Controller.FLOW__PSBT
+            return Destination(LoadMultisigWalletDescriptorView)
+
+        return post_overview_destination(psbt_parser, skip_current_view=True)
 
 
 
@@ -752,6 +855,9 @@ class PSBTRiskWarningView(View):
         # TRANSLATOR_NOTE: BIP-68 relative timelock; the delay runs from when the
         # input confirmed, so no fixed date can be shown.
         RiskWarning.RELATIVE_TIMELOCK: _mft("An input is time-locked and cannot be spent yet."),
+        # TRANSLATOR_NOTE: An output's script (CLTV/CSV) locks the funds it
+        # receives, so whoever gets them cannot spend them until later.
+        RiskWarning.SCRIPT_TIMELOCK: _mft("An output is time-locked by its script; those funds cannot be spent until later."),
         RiskWarning.RBF: _mft("This transaction is marked replaceable (RBF)."),
     }
 
@@ -960,17 +1066,19 @@ class PSBTChangeDetailsView(View):
         """
             change_data:
             {
-                'address': 'bc1q............', 
-                'amount': 397621401, 
-                'claimed_fingerprints': ['22bde1a9', '73c5da0a'], 
-                'claimed_derivation_paths': ['m/48h/1h/0h/2h/1/0', 'm/48h/1h/0h/2h/1/0']
+                'output_index': 0,
+                'address': 'bc1q............',
+                'amount': 397621401,
+                'verified_derivation_path':
+                    [2147483696, 2147483649, 2147483648, 2147483650, 1, 0],
             }
         """
 
-        # Single-sig verification is easy. We expect to find a single fingerprint
-        # and derivation path.
-        claimed_fingerprints = change_data.get("claimed_fingerprints") or []
-        claimed_derivation_paths = change_data.get("claimed_derivation_paths") or []
+        # The parser proved this derivation path belongs to this seed before recording
+        # the output as change, so the view reads the verified path rather than the
+        # coordinator's claimed fingerprint/derivation strings.
+        verified_derivation_path = change_data.get("verified_derivation_path")
+        path_ints = list(verified_derivation_path) if verified_derivation_path else []
 
         if self.controller.psbt_seed:
             seed_fingerprint = self.controller.psbt_seed.get_fingerprint(
@@ -980,28 +1088,10 @@ class PSBTChangeDetailsView(View):
             master_fp = getattr(psbt_parser, "master_fingerprint", None)
             seed_fingerprint = hexlify(master_fp).decode() if master_fp else None
 
-        if seed_fingerprint:
-            if seed_fingerprint not in claimed_fingerprints:
-                # TODO: Something is wrong with this psbt(?). Reroute to warning?
-                return Destination(NotYetImplementedView)
-            index = claimed_fingerprints.index(seed_fingerprint)
-        else:
-            index = 0 if claimed_fingerprints else None
-            if index is not None:
-                seed_fingerprint = claimed_fingerprints[index]
-
-        claimed_derivation_path = ""
-        if index is not None and index < len(claimed_derivation_paths):
-            claimed_derivation_path = claimed_derivation_paths[index]
-
         # 'm/84h/1h/0h/1/0' would be a change addr while 'm/84h/1h/0h/0/0' is a self-receive.
-        # Safe to read from the claim here: PSBTParser has already refused any path whose
-        # prefix does not match one the inputs demonstrate, so an output that reaches this
-        # point sits where this wallet actually keeps its keys.
-        if claimed_derivation_path:
-            path_ints = bip32.parse_path(claimed_derivation_path)
-        else:
-            path_ints = []
+        # Safe to read from the verified path here: PSBTParser has already refused any
+        # path whose prefix does not match one the inputs demonstrate, so an output that
+        # reaches this point sits where this wallet actually keeps its keys.
         is_change_derivation_path = PSBTParser.is_change_branch(path_ints)
         derivation_path_addr_index = path_ints[-1] & 0x7FFFFFFF if path_ints else 0
 
@@ -1016,7 +1106,6 @@ class PSBTChangeDetailsView(View):
 
         is_change_addr_verified = False
         if psbt_parser.is_multisig:
-            print("isMultisig")
             # if the known-good multisig descriptor is already onboard:
             if self.controller.multisig_wallet_descriptor:
                 is_change_addr_verified = psbt_parser.verify_multisig_output(
@@ -1051,7 +1140,6 @@ class PSBTChangeDetailsView(View):
 
         else:
             # Single sig
-            print("isSinglesig")
             try:
                 from embit import script
                 from embit.networks import NETWORKS
@@ -1124,7 +1212,7 @@ class PSBTChangeDetailsView(View):
             amount=change_data.get("amount"),
             is_multisig=psbt_parser.is_multisig,
             fingerprint=seed_fingerprint or "",
-            derivation_path=claimed_derivation_path or "",
+            derivation_path=bip32.path_to_str(path_ints) if path_ints else "",
             is_change_derivation_path=is_change_derivation_path,
             derivation_path_addr_index=derivation_path_addr_index,
             is_change_addr_verified=is_change_addr_verified,

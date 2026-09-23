@@ -1,11 +1,12 @@
 from binascii import a2b_base64
 from unittest.mock import Mock
 
-from embit.psbt import PSBT
+from embit import bip32, script
+from embit.psbt import PSBT, DerivationPath
 
 from base import BaseTest, FlowTest, FlowStep
 from psbt_testing_util import (PSBTTestData, claim_seed_owns_key, create_output,
-    foreign_public_key)
+    foreign_public_key, root_for_seed)
 
 from seedsigner.controller import Controller
 from seedsigner.views.view import MainMenuView
@@ -520,6 +521,101 @@ class TestPSBTOwnershipClaimRouting(FlowTest):
             FlowStep(psbt_views.PSBTSelectSeedView, screen_return_value=0),
             FlowStep(psbt_views.PSBTOverviewView, is_redirect=True),
             FlowStep(psbt_views.PSBTInputOwnershipClaimFailedView, button_data_selection=psbt_views.PSBTInputOwnershipClaimFailedView.DISCARD),
+            FlowStep(MainMenuView),
+        ])
+
+
+    def test_surplus_derivation_paths_terminate_signing_flow(self):
+        """
+        When an output names more derivation paths than its script can use, nothing in
+        the psbt says which key it actually pays, so parsing refuses it.
+
+        The parser tests cover why that shape is refusable. This one covers what the user
+        gets: a warning that ends the flow, rather than a crash, and without first being
+        walked through the details of a transaction about to be discarded.
+        """
+        other_root = root_for_seed(PSBTTestData.recipient_seed)
+
+        psbt = PSBT.parse(a2b_base64(PSBTTestData.SINGLE_SIG_NATIVE_SEGWIT_2_INPUTS))
+
+        # Output 2 pays a stranger and carries no derivation path entries of its own.
+        # Give it two, so nothing in the psbt says which key it pays.
+        for i in range(2):
+            derivation_path = bip32.parse_path(f"m/84h/1h/0h/0/{i}")
+            psbt.outputs[2].bip32_derivations[other_root.derive(derivation_path).get_public_key()] = \
+                DerivationPath(other_root.my_fingerprint, derivation_path)
+
+        self._load_psbt_for_signing(psbt, seed=PSBTTestData.two_input_seed)
+
+        self.run_sequence([
+            FlowStep(psbt_views.PSBTSelectSeedView, screen_return_value=0),
+            FlowStep(psbt_views.PSBTOverviewView, is_redirect=True),
+            FlowStep(psbt_views.PSBTRefusalView, button_data_selection=0),
+            FlowStep(MainMenuView),
+        ])
+
+
+    def test_output_ownership_contradiction_terminates_signing_flow(self):
+        """
+        When a psbt marks an output as paying us while its script pays a stranger, the
+        two cannot both be true, so parsing refuses it.
+
+        The parser tests cover which shapes qualify. This one covers what the user gets:
+        a warning that ends the flow, before any transaction detail is rendered.
+        """
+        psbt = PSBT.parse(a2b_base64(PSBTTestData.SINGLE_SIG_NATIVE_SEGWIT_2_INPUTS))
+
+        # Output 0 is the wallet's own change. Repoint its script at a stranger but leave
+        # its derivation path entry in place, so the psbt still names a key this seed
+        # owns on an output that no longer pays it. Note that psbt.tx is rebuilt on every
+        # access, so the scriptPubKey has to be set on the output scope itself.
+        psbt.outputs[0].script_pubkey = script.p2wpkh(foreign_public_key())
+
+        self._load_psbt_for_signing(psbt, seed=PSBTTestData.two_input_seed)
+
+        self.run_sequence([
+            FlowStep(psbt_views.PSBTSelectSeedView, screen_return_value=0),
+            FlowStep(psbt_views.PSBTOverviewView, is_redirect=True),
+            # The fork folds the contradiction case into FORGED_OUTPUT_OWNERSHIP, whose
+            # refusal view is PSBTOutputOwnershipClaimFailedView.
+            FlowStep(psbt_views.PSBTOutputOwnershipClaimFailedView,
+                     button_data_selection=psbt_views.PSBTOutputOwnershipClaimFailedView.DISCARD),
+            FlowStep(MainMenuView),
+        ])
+
+
+    def test_mixed_derivation_path_types_terminate_signing_flow(self):
+        """
+        An input or output filling both derivation path maps at once is refused. The
+        check lives in the ownership scan, which runs over inputs as well as outputs, so
+        this one plants the shape on an input, the side the parser tests do not cover.
+
+        The fork refuses the shape when both maps name this seed: a script is one type or
+        the other, so claiming this seed as both an ecdsa and a taproot key is a
+        contradiction. (Upstream refused any scope with both maps populated, even when
+        only one named this seed.) It ends the flow at its own warning before any
+        transaction detail is rendered.
+        """
+        root = root_for_seed(PSBTTestData.two_input_seed)
+
+        psbt = PSBT.parse(a2b_base64(PSBTTestData.SINGLE_SIG_NATIVE_SEGWIT_2_INPUTS))
+
+        # Input 0 already carries a segwit-v0 entry naming this seed. Add a taproot entry
+        # beside it that also names this seed, so the two claims contradict each other.
+        taproot_path = "m/86h/1h/0h/0/0"
+        claim_seed_owns_key(
+            psbt.inputs[0], taproot_path,
+            root.derive(taproot_path).get_public_key(),
+            seed=PSBTTestData.two_input_seed,
+            is_taproot=True, leaf_hashes=[],
+        )
+
+        self._load_psbt_for_signing(psbt, seed=PSBTTestData.two_input_seed)
+
+        self.run_sequence([
+            FlowStep(psbt_views.PSBTSelectSeedView, screen_return_value=0),
+            FlowStep(psbt_views.PSBTOverviewView, is_redirect=True),
+            FlowStep(psbt_views.PSBTRefusalView, button_data_selection=0),
             FlowStep(MainMenuView),
         ])
 
