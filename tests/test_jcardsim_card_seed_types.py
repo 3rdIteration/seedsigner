@@ -28,7 +28,6 @@ for _name in [m for m in sys.modules if m == "pysatochip" or m.startswith("pysat
     if isinstance(sys.modules[_name], MagicMock):
         del sys.modules[_name]
 
-from embit import bip32
 from jcardsim import JCardSimUnavailable, SimulatedCard, resolve_applet, why_unavailable
 from jcardsim.pcsc_shim import patched_pcsc
 
