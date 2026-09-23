@@ -70,6 +70,10 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 log_level = "DEBUG"
 addopts = "-p pytest_order"
+# Dump every thread's stack if a test runs longer than this. The Windows CI legs
+# occasionally stall for ~40 minutes and then lose the runner, which leaves no usable
+# log; a dump names the hanging test while the log is still being streamed.
+faulthandler_timeout = 300
 
 [project.optional-dependencies]
 dev = [

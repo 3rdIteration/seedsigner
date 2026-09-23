@@ -449,7 +449,11 @@ def test_keycard_import_seed_falls_back_to_extended_ecc_on_6985(monkeypatch):
     assert connector._card.load_calls[0][0] == MockConstants.LoadKeyType.BIP39_SEED
     assert connector._card.load_calls[1][0] == MockConstants.LoadKeyType.BIP39_SEED
     assert connector._card.load_calls[2][0] == MockConstants.LoadKeyType.EXTENDED_ECC
-    assert len(connector._card.load_calls[2][1]["public_key"]) == 65
+    # The public key must NOT be supplied: the applet stores a provided point verbatim,
+    # after which hardened derivations still match but non-hardened ones do not (they need
+    # the parent public key for serP). Omitting it lets the applet derive the point from
+    # the private key; see TestKeycardSeedTypes in tests/test_jcardsim_card_seed_types.py.
+    assert "public_key" not in connector._card.load_calls[2][1]
     assert len(connector._card.load_calls[2][1]["private_key"]) == 32
     assert len(connector._card.load_calls[2][1]["chain_code"]) == 32
 

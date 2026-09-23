@@ -31,6 +31,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 LAUNCHER_SRC = Path(__file__).resolve().parent / "java" / "SimLauncher.java"
+# Source patches that shadow single jcardsim classes from the jar (see the .java headers).
+PATCH_SRC = Path(__file__).resolve().parent / "java" / "patches"
 
 # Where a sibling checkout of the applet/simulator repos is expected when the
 # environment does not say otherwise.
@@ -80,8 +82,8 @@ _MIN_FREE_RAM_MB_ENV = "SEEDSIGNER_JCARDSIM_MIN_FREE_RAM_MB"
 _DEFAULT_MIN_FREE_RAM_MB = 3072
 
 
-def _free_physical_ram_mb() -> int | None:
-    """Free physical RAM in MB, or None where it cannot be determined cheaply."""
+def _memory_mb() -> tuple[int, int] | None:
+    """(available, total) physical RAM in MB, or None where it cannot be measured cheaply."""
     if os.name == "nt":
         import ctypes
 
@@ -102,27 +104,51 @@ def _free_physical_ram_mb() -> int | None:
         status.dwLength = ctypes.sizeof(_MemoryStatusEx)
         if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
             return None
-        return int(status.ullAvailPhys // (1024 * 1024))
+        return (
+            int(status.ullAvailPhys // (1024 * 1024)),
+            int(status.ullTotalPhys // (1024 * 1024)),
+        )
 
     try:
+        available = total = None
         for line in Path("/proc/meminfo").read_text(encoding="ascii").splitlines():
             if line.startswith("MemAvailable:"):
-                return int(line.split()[1]) // 1024
+                available = int(line.split()[1]) // 1024
+            elif line.startswith("MemTotal:"):
+                total = int(line.split()[1]) // 1024
+        if available is not None and total is not None:
+            return available, total
     except (OSError, ValueError, IndexError):
         pass
     return None
 
 
+def available_ram_mb() -> int | None:
+    """Free physical RAM in MB, or None where it cannot be determined cheaply."""
+    measured = _memory_mb()
+    return measured[0] if measured else None
+
+
+def total_ram_mb() -> int | None:
+    """Total physical RAM in MB, or None where it cannot be determined cheaply."""
+    measured = _memory_mb()
+    return measured[1] if measured else None
+
+
+def min_free_ram_mb() -> int:
+    """The free-RAM floor below which SimulatedCard refuses to start a JVM."""
+    try:
+        return int(os.environ.get(_MIN_FREE_RAM_MB_ENV, _DEFAULT_MIN_FREE_RAM_MB))
+    except ValueError:
+        return _DEFAULT_MIN_FREE_RAM_MB
+
+
 def _why_under_provisioned() -> str | None:
     """A reason to skip on memory grounds, or None if there is headroom."""
-    try:
-        threshold_mb = int(os.environ.get(_MIN_FREE_RAM_MB_ENV, _DEFAULT_MIN_FREE_RAM_MB))
-    except ValueError:
-        threshold_mb = _DEFAULT_MIN_FREE_RAM_MB
-
-    free_mb = _free_physical_ram_mb()
+    free_mb = available_ram_mb()
     if free_mb is None:
         return None  # cannot measure; do not block the suite on a guess
+    threshold_mb = min_free_ram_mb()
     if free_mb < threshold_mb:
         return (
             f"insufficient free RAM for a jcardsim JVM ({free_mb}MB free, "
@@ -145,6 +171,35 @@ def _launcher_classes() -> Path:
     )
     if result.returncode != 0:
         raise JCardSimUnavailable(f"could not compile SimLauncher: {result.stderr.strip()}")
+    return out
+
+
+def _patched_classes() -> Path | None:
+    """
+    Compile the jcardsim source patches once; returns their classes directory, or None.
+
+    A couple of jcardsim bugs are fixed by shadowing a single class from the jar with a
+    patched copy placed ahead of it on the classpath -- see the patch sources' headers for
+    what and why. Compiled rather than shipped as a jar so the fix stays reviewable.
+    """
+    sources = sorted(PATCH_SRC.rglob("*.java")) if PATCH_SRC.is_dir() else []
+    if not sources:
+        return None
+
+    out = REPO_ROOT / "tests" / "jcardsim" / "build" / "patches"
+    stamp = out / ".stamp"
+    fingerprint = "\n".join(f"{s.name}:{s.stat().st_mtime_ns}" for s in sources)
+    if stamp.is_file() and stamp.read_text(encoding="utf-8") == fingerprint:
+        return out
+
+    out.mkdir(parents=True, exist_ok=True)
+    result = subprocess.run(
+        ["javac", "-cp", str(jcardsim_jar()), "-d", str(out), *map(str, sources)],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        raise JCardSimUnavailable(f"could not compile jcardsim patches: {result.stderr.strip()}")
+    stamp.write_text(fingerprint, encoding="utf-8")
     return out
 
 
@@ -194,7 +249,9 @@ class SimulatedCard:
 
         cmd = [
             "java", "-noverify",
-            "-cp", os.pathsep.join([str(_launcher_classes()), str(jcardsim_jar())]),
+            "-cp", os.pathsep.join(
+                [str(p) for p in [_launcher_classes(), _patched_classes(), jcardsim_jar()] if p]
+            ),
             "SimLauncher",
             "--port", str(self.port),
             "--classes", os.pathsep.join(

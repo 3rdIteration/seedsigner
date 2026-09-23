@@ -48,6 +48,12 @@ class AppletSpec:
     # a prebuilt JavaCard library the repo ships with no sources.
     extra_classpath_rel: tuple[str, ...] = ()
     env_var: str = ""              # per-applet override for the repo location
+    # One-off source edits applied after the revision is exported (or before compiling
+    # from the working tree). Each entry is (file relative to sources_rel, old text, new
+    # text); the build fails if the old text does not occur exactly once. This stands in
+    # for GNU patch, which is not available on every dev machine or CI runner: SmartPGP's
+    # rsa-4096.patch is a single constant bump that their own CI applies this way.
+    source_edits: tuple[tuple[str, str, str], ...] = ()
 
     @property
     def repo_env_var(self) -> str:
@@ -111,13 +117,18 @@ APPLETS: dict[str, AppletSpec] = {
         aid="5361746F44696D6500",
         sources_rel="applets/satodime/src/org/satodime/applet",
     ),
+    # Pinned to the release this fork ships as javacard-cap/Keycard_v3.2.cap, not the
+    # repo's working tree: master has since moved on (SecureChannelV2, an IdentApplet
+    # certificate gate in process(), BIP85) and would test code that is not what users
+    # have on their cards. `git archive` exports the tag without touching a contributor's
+    # checkout of status-keycard.
     "keycard": AppletSpec(
         name="keycard",
         repo="status-keycard",
         applet_class="im.status.keycard.KeycardApplet",
         aid="A000000804000101",
         sources_rel="src/main/java/im/status/keycard",
-        prebuilt_classes_rel="build/classes/java/main",
+        revision="3.2",
         extra_classpath_rel=("keycard-math/keycard-math.jar",),
         install_style="aid_only",
         install_aid="A0000008040001",  # package AID; the block carries the instance AID
@@ -125,18 +136,43 @@ APPLETS: dict[str, AppletSpec] = {
     # Only the built CAPs ship in javacard-cap/; the source has to be cloned from
     # ANSSI-FR/SmartPGP (named in docs/gpg_tools.md).
     #
-    # Not currently simulatable: its sources import javacard.security.NamedParameterSpec
-    # and XECKey, which are JavaCard 3.1, and jcardsim 3.0.5 implements 3.0.x and has
-    # neither class. Kept here so the plumbing is ready for a jcardsim with 3.1 support
-    # or an older SmartPGP revision -- see test_jcardsim_keycard.py.
+    # Pinned to the JavaCard 3.0.4 release, not the repo's default 3.1 branch: jcardsim
+    # implements the 3.0.x API and has neither NamedParameterSpec nor XECKey, which the
+    # 3.1 sources import. The 3.0.4 tag compiles cleanly against jc304_kit -- the same kit
+    # its own ant build (build.xml) points at.
+    #
+    # source_edits applies their .github/workflows/rsa-4096.patch: bumping the transient
+    # buffer from 0x3B0 to 0x730 so a full RSA-4096 CRT key import (1819 chained PUT DATA
+    # bytes) fits. Without it, importing keys above 2048 bits fails with SW=6581.
     "smartpgp": AppletSpec(
         name="smartpgp",
         repo="SmartPGP",
         applet_class="fr.anssi.smartpgp.SmartPGPApplet",
         aid="D276000124010304AFAF000000000000",
-        install_aid="D27600012401",
         sources_rel="src/fr/anssi/smartpgp",
-        sdk_rel="oracle_javacard_sdks/jc310r20210706_kit/lib/api_classic.jar",
+        sdk_rel="oracle_javacard_sdks/jc304_kit/lib/api_classic.jar",
+        revision="v1.23.2.0-javacard-3.0.4",
+        # install() reads [aidLen][AID] out of its parameters and registers under that AID;
+        # anything after the AID is ignored (their GP LOAD control data included).
+        install_style="aid_only",
+        source_edits=(
+            ("Constants.java", "(short)0x3b0;", "(short)0x730;"),
+        ),
+    ),
+    # SpecterDIY is the MemoryCardApplet from specter-javacard: an encrypted data store
+    # behind a secp256k1 ECDH secure channel. The whole toys package compiles together
+    # (MemoryCardApplet needs Secure*, Crypto, PinCode, DataEntry and friends); only the
+    # registered applet is live in jcardsim. Pinned to 0.1-pytest: master is one commit
+    # ahead of it and that commit only adds py/, so a plain clone compiles identical
+    # bytecode either way; install() takes [aidLen][AID] like Keycard's.
+    "specterdij": AppletSpec(
+        name="specterdij",
+        repo="specter-javacard",
+        applet_class="toys.MemoryCardApplet",
+        aid="B00B5111CB01",
+        sources_rel="src/main/java/toys",
+        revision="0.1-pytest",
+        install_style="aid_only",
     ),
 }
 
@@ -173,7 +209,12 @@ def _export_revision(repo: Path, revision: str, dest: Path) -> None:
         )
     dest.mkdir(parents=True, exist_ok=True)
     with tarfile.open(fileobj=BytesIO(result.stdout)) as tar:
-        tar.extractall(dest)
+        try:
+            # The archive is a `git archive` of a pinned revision we trust outright.
+            tar.extractall(dest, filter="fully_trusted")
+        except TypeError:
+            # Python < 3.10.13 has no filter argument.
+            tar.extractall(dest)
 
 
 def _java_sources(root: Path) -> list[str]:
@@ -252,9 +293,17 @@ def resolve_applet(name: str) -> tuple[AppletSpec, Path]:
         if (prebuilt / Path(spec.applet_class.replace(".", "/") + ".class")).is_file():
             return spec, prebuilt
 
+    if spec.source_edits and not spec.revision:
+        raise JCardSimUnavailable(
+            f"{spec.name}: source_edits require a pinned revision so the edits apply to an "
+            f"export, never the repo's working tree"
+        )
+
     out = BUILD_CACHE / spec.name / "classes"
     marker = out / ".built"
-    stamp = f"{spec.revision or 'worktree'}\n"
+    # The stamp covers both inputs that change what gets compiled: the revision and any
+    # source edits layered on top of it.
+    stamp = f"{spec.revision or 'worktree'}\n{repr(spec.source_edits)}\n"
     if marker.is_file() and marker.read_text(encoding="utf-8") == stamp:
         return spec, out
 
@@ -278,6 +327,16 @@ def resolve_applet(name: str) -> tuple[AppletSpec, Path]:
         raise JCardSimUnavailable(
             f"JavaCard SDK jar not at {sdk_jar} (is the repo's sdks/ submodule checked out?)"
         )
+
+    for rel, old, new in spec.source_edits:
+        path = sources_root / rel
+        text = path.read_text(encoding="utf-8")
+        if text.count(old) != 1:
+            raise JCardSimUnavailable(
+                f"source edit for {spec.name}/{rel}: expected exactly one occurrence of "
+                f"{old!r}, found {text.count(old)}"
+            )
+        path.write_text(text.replace(old, new), encoding="utf-8")
 
     _compile(sources_root, sdk_jar, out, extra_classpath(spec, repo))
     marker.write_text(stamp, encoding="utf-8")

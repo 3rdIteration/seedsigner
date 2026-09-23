@@ -245,10 +245,25 @@ class ToolsMicroSDVerifyView(View):
     def run(self):
         from subprocess import run
 
+        microsd_dev = find_sd_card_device()
+
+        # Nothing to read without a card. Say so rather than running dd against "if=None"
+        # -- which on a desktop without dd/sudo/sha256sum is a hard crash (Windows), and
+        # on Linux quietly produces an empty checksum and a misleading "unfamiliar
+        # checksum" warning.
+        if microsd_dev is None:
+            self.run_screen(
+                WarningScreen,
+                title="No MicroSD Card",
+                status_headline=None,
+                text="No MicroSD card detected.",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(MainMenuView)
+
         self.loading_screen = LoadingScreenThread(text="Reading MicroSD\n\n\n\n\n\n")
         self.loading_screen.start()
-
-        microsd_dev = find_sd_card_device()
 
         dd_cmd = ["dd", f"if={microsd_dev}", "of=/tmp/img.img", "bs=1M", "count=26"]
         if platform.uname()[1] != "seedsigner-os":

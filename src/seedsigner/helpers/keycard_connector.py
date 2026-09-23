@@ -476,6 +476,15 @@ class KeycardSatochipConnector:
         return self._pin_failure_sw()
 
     def _refresh_uid(self) -> None:
+        # Never re-SELECT the applet once a secure session is open. On real hardware a
+        # redundant SELECT of the already-selected applet is a no-op, but jcardsim runs
+        # a full deselect+select cycle for every SELECT APDU and Keycard's selectApplet()
+        # wipes the secure channel and PIN validation state in response -- so a mid-session
+        # re-SELECT would silently kill the session (SW=6985 on the next command). The UID
+        # cannot change mid-session anyway; card_get_status gets live key state from GET STATUS.
+        if self._secure_open:
+            return
+
         try:
             info = self._card.select()
             instance_uid = getattr(info, "instance_uid", None)
@@ -737,45 +746,55 @@ class KeycardSatochipConnector:
 
         seed = bytes(seed_bytes)
 
-        sw1, sw2 = self._load_key_with_sw(
-            self._constants.LoadKeyType.BIP39_SEED,
-            bip39_seed=seed,
-        )
-        if (sw1, sw2) == (0x90, 0x00):
-            return ([], 0x90, 0x00)
+        # BIP39_SEED takes exactly 64 bytes, and keycard-py raises a bare ValueError for
+        # anything else -- no status word, so it would never reach the EXTENDED_ECC
+        # fallback below that exists for exactly this case. A SLIP-39 or Aezeed master
+        # secret is 16 or 32 bytes, so send those straight to the root-material path.
+        if len(seed) == 64:
+            sw1, sw2 = self._load_key_with_sw(
+                self._constants.LoadKeyType.BIP39_SEED,
+                bip39_seed=seed,
+            )
+            if (sw1, sw2) == (0x90, 0x00):
+                return ([], 0x90, 0x00)
 
-        if (sw1, sw2) != (0x69, 0x85):
-            return ([], sw1, sw2)
-
-        # Some firmware reports a stale key state and requires a clear before
-        # accepting a new import, even when status looks unseeded.
-        try:
-            self._card.remove_key()
-        except Exception as remove_exc:
-            remove_sw = self._extract_status_word(remove_exc)
-            # Ignore "conditions not satisfied" while clearing state;
-            # still attempt import fallbacks below.
-            if remove_sw not in (None, 0x6985):
-                sw1, sw2 = self._sw_to_tuple(remove_sw)
+            if (sw1, sw2) != (0x69, 0x85):
                 return ([], sw1, sw2)
 
-        sw1, sw2 = self._load_key_with_sw(
-            self._constants.LoadKeyType.BIP39_SEED,
-            bip39_seed=seed,
-        )
-        if (sw1, sw2) == (0x90, 0x00):
-            return ([], 0x90, 0x00)
+            # Some firmware reports a stale key state and requires a clear before
+            # accepting a new import, even when status looks unseeded.
+            try:
+                self._card.remove_key()
+            except Exception as remove_exc:
+                remove_sw = self._extract_status_word(remove_exc)
+                # Ignore "conditions not satisfied" while clearing state;
+                # still attempt import fallbacks below.
+                if remove_sw not in (None, 0x6985):
+                    sw1, sw2 = self._sw_to_tuple(remove_sw)
+                    return ([], sw1, sw2)
 
-        if (sw1, sw2) != (0x69, 0x85):
-            return ([], sw1, sw2)
+            sw1, sw2 = self._load_key_with_sw(
+                self._constants.LoadKeyType.BIP39_SEED,
+                bip39_seed=seed,
+            )
+            if (sw1, sw2) == (0x90, 0x00):
+                return ([], 0x90, 0x00)
 
-        # Additional compatibility fallback: import root key material explicitly
-        # as EXTENDED_ECC at m.
+            if (sw1, sw2) != (0x69, 0x85):
+                return ([], sw1, sw2)
+
+        # Compatibility path for seeds that BIP39_SEED cannot carry, and for firmware
+        # that still refuses import: load the root key material explicitly as
+        # EXTENDED_ECC at m.
         root = bip32.HDKey.from_seed(seed)
-        uncompressed_pub = b"\x04" + root.key.get_public_key()._point
+        # Deliberately omit the public key. Supplying it makes the applet store the point
+        # verbatim, and then only hardened derivations match: non-hardened CKD needs the
+        # parent public key (for serP) and gets it wrong, while hardened steps use just the
+        # private key and chain code -- so the corruption hides behind whichever path is
+        # tested. With no public key the applet derives the point from the private key
+        # itself and every path matches HDKey.from_seed(seed).
         sw1, sw2 = self._load_key_with_sw(
             self._constants.LoadKeyType.EXTENDED_ECC,
-            public_key=uncompressed_pub,
             private_key=root.key.secret,
             chain_code=root.chain_code,
         )
@@ -828,8 +847,18 @@ class KeycardSatochipConnector:
         return ([], 0x90, 0x00)
 
     def card_bip32_get_authentikey(self):
-        key = self._card.ident()
-        wrapped = ECPubkeyCompat(key)
+        # Deliberately does NOT send IDENT. This adapter only needs the Satochip-style
+        # "authentikey" as a non-None marker (see satochip_signer._ensure_satochip_authentikey);
+        # nothing verifies against it. IDENT, however, expects the applet's identity
+        # certificate and is not a secure-messaging command, so sending it while the secure
+        # channel is open makes the applet reject it (SW=6982 on any card without a
+        # provisioned certificate) and leaves the session counters out of step with the
+        # applet's -- after which every later command fails with SW=6985. The public key
+        # from the SELECT response serves the marker role without touching the session.
+        raw_pub = getattr(self._card, "card_public_key", None)
+        if raw_pub is None:
+            return None
+        wrapped = ECPubkeyCompat(raw_pub)
         self.parser.authentikey = wrapped
         return wrapped
 
@@ -957,6 +986,15 @@ class KeycardSatochipConnector:
         except Exception:
             pass
         compact = getattr(sig, "signature", None)
+        if compact is not None and len(compact) == 64:
+            # keycard-py exposes r||s and the recovery id separately, not as a Bitcoin
+            # compact signature. Build header||r||s here: header is 27 + recovery id
+            # (+4 for a compressed key, which every Keycard derivation is). Without this
+            # the length check below never passed and message signing always returned the
+            # all-zero placeholder -- an invalid signature the sign-message QR would show.
+            recovery_id = getattr(sig, "recovery_id", None)
+            if recovery_id is not None:
+                compact = bytes([27 + recovery_id + 4]) + compact
         if not compact or len(compact) != 65:
             compact = b"\x1f" + b"\x00" * 64
         return (list(der), 0x90, 0x00, compact)
