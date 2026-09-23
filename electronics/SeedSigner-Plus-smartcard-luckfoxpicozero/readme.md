@@ -60,7 +60,7 @@ SeedSigner currently does not use the backlight PWM and drives the display CS lo
 | `SeedSigner Plus Pico Smartcard Case (Old Faceplate 1.0.0).stl` | Faceplate for the earlier board revision |
 | `SeedSigner Plus Pico Smartcard Case (Optional small camera cover).stl` | Optional camera cover |
 
-The case is designed for **low-profile** Pico Mini camera modules. The full-sized camera modules commonly sold for other Luckfox Pico boards will not fit.
+The case is designed for **low-profile** Pico Mini camera modules. In the photo at the top of this page the two smaller camera modules are the low-profile type the case fits; the larger one is the full-sized type commonly sold for other Luckfox Pico boards and will not fit.
 
 ## Related hardware
 
