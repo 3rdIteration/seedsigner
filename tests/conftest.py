@@ -59,6 +59,30 @@ class DummyBatteryHat(MagicMock):
 sys.modules['seedsigner.hardware.battery_hat'] = MagicMock(BatteryHat=DummyBatteryHat)
 
 
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """
+    Report "the simulator cannot run here" as a skip wherever it is raised.
+
+    jcardsim's SimulatedCard refuses to start under memory pressure and raises
+    JCardSimUnavailable. That happens inside a fixture or a context manager's __enter__ --
+    outside the test's own try/except -- so it would otherwise be a hard failure even
+    though the suite is designed to skip when the simulator is unavailable (AGENTS.md).
+    """
+    outcome = yield
+    report = outcome.get_result()
+    if report.outcome != "failed" or call.excinfo is None:
+        return
+
+    from jcardsim import JCardSimUnavailable
+
+    if not call.excinfo.errisinstance(JCardSimUnavailable):
+        return
+
+    report.outcome = "skipped"
+    report.longrepr = (str(item.fspath), 0, str(call.excinfo.value))
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _base_module_single_identity():
     """Ensure tests/base.py executes at most once per pytest process.

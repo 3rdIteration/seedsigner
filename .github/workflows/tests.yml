@@ -130,6 +130,10 @@ jobs:
           export SEEDSIGNER_SPECTER_CARD_PY_PATH="$HOME/applet-repos/specter-javacard/py"
           # Resolved by seedsigner.helpers.secure_boot_tools; absent -> skip.
           export SEEDSIGNER_SECURE_BOOT_DIR="$HOME/seedsigner-os/opt/luckfox/secure-boot"
+          # The jcardsim memory guard exists so a developer's parallel pytest runs cannot
+          # freeze their machine; CI is one pytest process on a dedicated runner, where its
+          # 3 GB floor only skipped real-screen tests once page cache filled mid-run.
+          export SEEDSIGNER_JCARDSIM_MIN_FREE_RAM_MB=1024
           python -m pytest \
             --color=yes \
             --cov=seedsigner \
