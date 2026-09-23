@@ -59,6 +59,38 @@ class DummyBatteryHat(MagicMock):
 sys.modules['seedsigner.hardware.battery_hat'] = MagicMock(BatteryHat=DummyBatteryHat)
 
 
+def pytest_report_header(config):
+    """
+    Print the jcardsim preconditions and the runner's RAM at the top of the run.
+
+    Every simulated card is a JVM, so how much RAM is free decides whether the applet
+    suites run or skip; reporting it once is clearer than inferring it from mid-run skips.
+    """
+    try:
+        from jcardsim.simulator import (
+            available_ram_mb,
+            min_free_ram_mb,
+            total_ram_mb,
+            why_unavailable,
+        )
+    except Exception as exc:  # test-support import only; never break collection
+        return f"jcardsim: unavailable ({exc})"
+
+    reason = why_unavailable()
+    if reason:
+        return f"jcardsim: unavailable ({reason})"
+
+    available = available_ram_mb()
+    guard = min_free_ram_mb()
+    if available is None:
+        return f"jcardsim: available (free RAM unknown, JVM guard {guard}MB)"
+
+    total = total_ram_mb()
+    total_str = f" of {total}MB" if total is not None else ""
+    note = " -- below guard, JVM tests will skip" if available < guard else ""
+    return f"jcardsim: available ({available}MB free{total_str}, JVM guard {guard}MB){note}"
+
+
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     """
