@@ -123,11 +123,57 @@ class DecodeQR:
         return self.add_data(data)
 
 
+    def _try_seedqr_as_passphrase(self, data):
+        """Decode SeedQR as a canonical mnemonic-style BIP39 passphrase.
+
+        SeedQR intentionally does not preserve formatting such as capitalization
+        or custom separators. When used as a passphrase, reconstruct it as
+        lowercase BIP39 words separated by single ASCII spaces.
+
+        Plain UTF-8 passphrase QRs continue to preserve their exact text.
+        """
+        detected_type = DecodeQR.detect_segment_type(
+            data,
+            wordlist_language_code=self.wordlist_language_code,
+        )
+        if detected_type not in {
+            QRType.SEED__SEEDQR,
+            QRType.SEED__COMPACTSEEDQR,
+        }:
+            return None
+
+        seed_decoder = SeedQrDecoder(
+            wordlist_language_code=self.wordlist_language_code
+        )
+        status = seed_decoder.add(data, detected_type)
+        if status != DecodeQRStatus.COMPLETE:
+            # The payload was identified as SeedQR, so a decoding failure must
+            # remain invalid rather than falling through as plaintext or an
+            # empty passphrase.
+            self.qr_type = QRType.INVALID
+            self.decoder = None
+            self.complete = False
+            return DecodeQRStatus.INVALID
+
+        passphrase = " ".join(seed_decoder.get_seed_phrase())
+        self.qr_type = QRType.PASSPHRASE
+        self.decoder = PassphraseQrDecoder()
+
+        status = self.decoder.add(passphrase, QRType.PASSPHRASE)
+        if status == DecodeQRStatus.COMPLETE:
+            self.complete = True
+        return status
+
+
     def add_data(self, data):
         if data == None:
             return DecodeQRStatus.FALSE
 
         if self.is_passphrase:
+            seedqr_status = self._try_seedqr_as_passphrase(data)
+            if seedqr_status is not None:
+                return seedqr_status
+
             qr_type = QRType.PASSPHRASE
         elif self.is_encryptionkey:
             qr_type = QRType.ENCRYPTION_KEY
@@ -329,8 +375,9 @@ class DecodeQR:
 
 
     def get_passphrase(self):
-        if self.is_passphrase:
+        if self.is_passphrase and self.decoder is not None and self.complete:
             return self.decoder.get_passphrase()
+        return None
 
 
     def get_encryption_key(self):
