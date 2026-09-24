@@ -1,7 +1,10 @@
+import logging
 from typing import List
 from seedsigner.helpers.secure_delete import wipe_bytes, wipe_list
 from seedsigner.models.seed import Seed, ElectrumSeed, AezeedSeed, Slip39Seed, InvalidSeedException
 from seedsigner.models.settings_definition import SettingsConstants
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -37,9 +40,16 @@ class SeedStorage:
 
 
     def clear_pending_seed(self):
-        if self.pending_seed is not None:
-            self.pending_seed.wipe()
-        self.pending_seed = None
+        # Zeroing the secret material is best-effort, as in
+        # Controller.discard_seed(): a failed wipe must not leave the caller
+        # holding on to a seed it asked to drop.
+        try:
+            if self.pending_seed is not None:
+                self.pending_seed.wipe()
+        except Exception:
+            logger.debug("Error wiping pending seed", exc_info=True)
+        finally:
+            self.pending_seed = None
 
 
     def validate_mnemonic(self, mnemonic: List[str]) -> bool:
