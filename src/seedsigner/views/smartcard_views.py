@@ -46,6 +46,7 @@ from seedsigner.gui.screens.screen import ButtonOption
 from seedsigner.hardware.microsd import MicroSD
 from seedsigner.helpers import embit_utils, ndef_helper, satodime_coins, seedkeeper_utils
 from seedsigner.helpers.satochip_signer import (
+    CARD_TIMEOUTS,
     _call_with_timeout,
     _get_extended_key,
     format_path_string,
@@ -3150,11 +3151,14 @@ class ToolsKeycardBenchmarkMessageSignView(View):
                 digest = os.urandom(32)
                 start = time.monotonic()
                 try:
+                    # Name the key derived above: the connector needs one to
+                    # make the signature recoverable, and not every SIGN
+                    # response carries it.
                     response, sw1, sw2, _compsig = _call_with_timeout(
                         connector.card_sign_message,
                         timeout,
                         0xFF,
-                        None,
+                        expected_pubkey,
                         list(digest),
                     )
                 except Exception as exc:
@@ -3338,11 +3342,17 @@ class ToolsKeycardUnblockPinView(View):
             )
         else:
             if sw1 == 0x63 and (sw2 & 0xF0) == 0xC0:
-                seedkeeper_utils.show_incorrect_pin_warning(
-                    self,
-                    connector=connector,
-                    sw1=sw1,
-                    sw2=sw2,
+                # The PIN is already blocked here, so this is the card refusing
+                # the PUK, and the count is PUK tries. Running out of those
+                # blocks the card for good.
+                attempts_left = sw2 & 0x0F
+                attempt_word = "attempt" if attempts_left == 1 else "attempts"
+                self.run_screen(
+                    WarningScreen,
+                    title="Incorrect PUK",
+                    status_headline=None,
+                    text=f"PUK is incorrect.\n{attempts_left} {attempt_word} remaining.",
+                    show_back_button=True,
                 )
             else:
                 self.run_screen(
@@ -3642,6 +3652,11 @@ class ToolsSatochipBenchmarkSignView(View):
                     None,
                 )
                 durations.append(time.monotonic() - start)
+            except CARD_TIMEOUTS as e:
+                # Every sample after this one would only wait a full timeout
+                # behind the request the card is still on.
+                logger.warning("Benchmark signing timed out: %s", e)
+                break
             except Exception as e:
                 logger.warning("Benchmark signing failed: %s", e)
         loading.stop()

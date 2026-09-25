@@ -7,7 +7,10 @@ from pathlib import Path
 from types import SimpleNamespace
 import re
 
+import logging
+
 from embit import bip32, ec
+from embit.util import secp256k1
 
 
 _XPUB_HEADERS_MAINNET = {
@@ -303,6 +306,76 @@ def _path_from_indices(indices: list[int]) -> str:
     return "m/" + "/".join(parts)
 
 
+
+logger = logging.getLogger(__name__)
+
+
+def _pubkey_sec(pubkey) -> bytes | None:
+    """Compressed SEC bytes for any pubkey shape used around here, or None.
+
+    Callers hand this module four different things: an embit PublicKey, the
+    ECPubkeyCompat wrapper returned by card_bip32_get_extendedkey(), raw
+    bytes, and the uncompressed key a SIGN response carries. Assuming any one
+    of them silently turned every real message signature into a failure.
+    """
+    if pubkey is None:
+        return None
+    raw = None
+    if isinstance(pubkey, (bytes, bytearray, list)):
+        raw = bytes(pubkey)
+    else:
+        for attr, args in (("sec", ()), ("get_public_key_bytes", (True,))):
+            getter = getattr(pubkey, attr, None)
+            if callable(getter):
+                try:
+                    value = getter(*args)
+                except Exception:
+                    continue
+                if isinstance(value, (bytes, bytearray)):
+                    raw = bytes(value)
+                    break
+    if raw is None:
+        return None
+    try:
+        key = ec.PublicKey.parse(raw)
+    except Exception:
+        return None
+    # Recovery yields a compressed key; compare like with like.
+    key.compressed = True
+    return key.sec()
+
+
+def compact_signature_for(sig_der: bytes, digest: bytes, pubkey) -> bytes | None:
+    """Return the 65-byte compact signature for `sig_der`, or None.
+
+    A compact (recoverable) signature carries a recovery id so that a verifier
+    can recover the signer's pubkey from the message alone -- that is what makes
+    a signed message checkable. The recovery id is not in the DER encoding, so
+    it is found by trying each candidate and keeping the one that recovers this
+    card's pubkey. None means no candidate did: the signature is not this key's,
+    or it is malformed, and there is nothing honest to return.
+    """
+    expected = _pubkey_sec(pubkey)
+    if expected is None:
+        return None
+    try:
+        sig = ec.Signature.parse(sig_der)
+        compact64 = secp256k1.ecdsa_signature_serialize_compact(sig._sig)
+    except Exception:
+        return None
+
+    for recid in range(4):
+        try:
+            recsig = secp256k1.ecdsa_recoverable_signature_parse_compact(compact64, recid)
+            recovered = ec.PublicKey(secp256k1.ecdsa_recover(recsig, digest))
+            if recovered.sec() == expected:
+                # 27 marks a compact signature, +4 marks a compressed pubkey.
+                return bytes([27 + 4 + recid]) + compact64
+        except Exception:
+            continue
+    return None
+
+
 class ECPubkeyCompat:
     def __init__(self, raw_pub: bytes):
         self._raw_pub = _normalize_uncompressed_pubkey(raw_pub)
@@ -407,6 +480,19 @@ class KeycardSatochipConnector:
             return int(match.group(1), 16)
 
         return None
+
+    def _status_word_result(self, exc: Exception):
+        """Turn a card exception into an (data, sw1, sw2) result, or re-raise.
+
+        Callers of these APDU wrappers read sw1/sw2 to decide what to show; an
+        exception escaping instead reaches the View as an unhandled error, and
+        returning 0x9000 would report a refused change as done.
+        """
+        status_word = self._extract_status_word(exc)
+        if status_word is None:
+            raise exc
+        logger.info("Keycard refused the operation: SW=%04X", status_word)
+        return ([], (status_word >> 8) & 0xFF, status_word & 0xFF)
 
     def _pin_tries_from_status(self) -> int | None:
         try:
@@ -687,11 +773,18 @@ class KeycardSatochipConnector:
         self._ensure_secure_channel()
         old_text = _value_to_text(old_pin)
         new_text = _value_to_text(new_pin)
+        cached_pin = self.pin
         self.pin = list(old_text.encode("utf-8"))
         sw1, sw2 = self._verify_pin_sw()
         if (sw1, sw2) != (0x90, 0x00):
+            # The old PIN was wrong, so it is not the card's PIN and must not
+            # stay cached as though it were.
+            self.pin = cached_pin
             return ([], sw1, sw2)
-        self._card.change_pin(new_text)
+        try:
+            self._card.change_pin(new_text)
+        except Exception as exc:
+            return self._status_word_result(exc)
         self.pin = list(new_text.encode("utf-8"))
         return ([], 0x90, 0x00)
 
@@ -701,7 +794,10 @@ class KeycardSatochipConnector:
         self._ensure_secure_channel()
         self._ensure_pin_verified()
         new_text = _value_to_text(new_puk)
-        self._card.change_puk(new_text)
+        try:
+            self._card.change_puk(new_text)
+        except Exception as exc:
+            return self._status_word_result(exc)
         return ([], 0x90, 0x00)
 
     def card_unblock_PIN(self, pin_nbr, puk, new_pin=None):
@@ -714,7 +810,12 @@ class KeycardSatochipConnector:
             new_pin_text = _pin_to_text(self.pin)
         else:
             new_pin_text = _value_to_text(new_pin)
-        self._card.unblock_pin(puk_text, new_pin_text)
+        try:
+            self._card.unblock_pin(puk_text, new_pin_text)
+        except Exception as exc:
+            # A wrong PUK is an ordinary answer from the card, not a crash, and
+            # the cached PIN must not move to a PIN the card never accepted.
+            return self._status_word_result(exc)
         self.pin = list(new_pin_text.encode("utf-8"))
         return ([], 0x90, 0x00)
 
@@ -968,7 +1069,6 @@ class KeycardSatochipConnector:
         return (list(der), 0x90, 0x00)
 
     def card_sign_message(self, keynbr, pubkey, message, hmac=b"", altcoin=None):
-        _ = pubkey
         _ = hmac
         _ = altcoin
         self._ensure_secure_channel()
@@ -996,5 +1096,16 @@ class KeycardSatochipConnector:
             if recovery_id is not None:
                 compact = bytes([27 + recovery_id + 4]) + compact
         if not compact or len(compact) != 65:
-            compact = b"\x1f" + b"\x00" * 64
+            # The caller's key when it names one, else the key the card named
+            # in its SIGN response. Asking the card for it again would put a
+            # second round trip inside every sample the benchmark times.
+            expected = _pubkey_sec(pubkey)
+            if expected is None:
+                expected = _pubkey_sec(getattr(sig, "public_key", None))
+            compact = compact_signature_for(der, digest, expected)
+        if not compact:
+            # Returning a placeholder here used to produce a "signed message"
+            # the recipient could never verify, reported to the user as success.
+            logger.warning("Keycard message signature could not be made recoverable")
+            return (list(der), 0x6F, 0x00, None)
         return (list(der), 0x90, 0x00, compact)

@@ -127,6 +127,12 @@ def import_keys_with_smartpgp(
     else:
         all_keys = [(None, k) for k in all_keys]
     if not all_keys:
+        if subkeys:
+            # The caller named the subkeys it wanted and none of them are in
+            # this export. Importing the primary certification key instead
+            # would put a key on the card that nobody asked for.
+            logger.error('None of the requested subkeys are in the exported key')
+            return False
         all_keys = [(None, key)]
     logger.info('Preparing to import %d keys via SmartPGP', len(all_keys))
     fp_tags = {'sig': 0xC7, 'dec': 0xC8, 'auth': 0xC9}
@@ -147,6 +153,7 @@ def import_keys_with_smartpgp(
     }
 
     role_map = {'s': 'sig', 'e': 'dec', 'a': 'auth'}
+    imported = 0
     for flag, k in all_keys:
         if flag:
             role = role_map.get(flag)
@@ -261,7 +268,17 @@ def import_keys_with_smartpgp(
             )
             ctx.cmd_put_data(fp_tags[role], fp)
             ctx.cmd_put_data(ts_tags[role], ts)
+            imported += 1
         except Exception as e:
             logger.exception('Failed to import %s key via SmartPGP: %s', role, e)
             return False
+
+    # Every key can be skipped -- unsupported flags, a selection that matches
+    # nothing -- without a single exception being raised. Reporting success
+    # then puts "Key imported to card" in front of the user for a card that
+    # received no key material at all.
+    if imported == 0:
+        logger.error('SmartPGP import wrote no key material to the card')
+        return False
+    logger.info('SmartPGP import wrote %d key(s) to the card', imported)
     return True
