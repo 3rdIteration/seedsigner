@@ -27,6 +27,99 @@ logger = logging.getLogger(__name__)
 
 
 
+
+# How much a "Retry (higher timeout)" adds, in seconds.
+RETRY_TIMEOUT_STEP = 0.75
+
+
+def signing_timeout(controller, configured_timeout: float) -> float:
+    """The timeout this signing attempt should use."""
+    return getattr(controller, "_psbt_sign_retry_timeout", None) or configured_timeout
+
+
+def bump_retry_timeout(controller, used_timeout: float) -> float:
+    """Raise the retry timeout above the value that just timed out.
+
+    Raising it from the configured setting instead meant every retry landed on
+    the same value, so pressing "Retry (higher timeout)" a second time changed
+    nothing.
+    """
+    new_timeout = used_timeout + RETRY_TIMEOUT_STEP
+    controller._psbt_sign_retry_timeout = new_timeout
+    return new_timeout
+
+
+def clear_retry_timeout(controller) -> None:
+    """Forget the raised timeout, so the next PSBT starts from the setting."""
+    if hasattr(controller, "_psbt_sign_retry_timeout"):
+        delattr(controller, "_psbt_sign_retry_timeout")
+
+
+def account_path_for_inputs(psbt, master_fingerprint: bytes = None) -> list[int] | None:
+    """The hardened prefix of an input derivation, or None.
+
+    Every input is considered, not just the first: an input can legitimately
+    carry no ECDSA bip32 derivation -- taproot, or one another wallet has
+    already finished -- and reading input 0 alone raised a bare StopIteration
+    that surfaced as a crash rather than a refusal.
+
+    With `master_fingerprint`, only derivations claiming that key are read. A
+    psbt may spend from several wallets, and the account to export from a card
+    is the one that card's own fingerprint names: taking whichever input comes
+    first exports an account the card has nothing to do with, and then rejects
+    the input it could actually have signed. No input naming that fingerprint
+    means the card is not a signer here, which is a refusal, not a fallback.
+
+    A zero fingerprint is the one exception, read only when no derivation names
+    the card: a coordinator given only an xpub writes 00000000 for the master
+    it was never told. It proves nothing on its own. The parser backfills it
+    only where the card's key derives the input, and the card's fingerprint is
+    checked after that.
+    """
+    HARDENED_INDEX = 0x80000000
+    MISSING_FINGERPRINT = b"\x00" * 4
+
+    def hardened_prefix(derivation):
+        account_path = []
+        for idx in derivation:
+            if idx & HARDENED_INDEX:
+                account_path.append(idx)
+            else:
+                break
+        return account_path
+
+    unnamed = None
+    for inp in getattr(psbt, "inputs", None) or []:
+        for deriv in inp.bip32_derivations.values():
+            if master_fingerprint is None or deriv.fingerprint == master_fingerprint:
+                return hardened_prefix(deriv.derivation)
+            if unnamed is None and deriv.fingerprint == MISSING_FINGERPRINT:
+                unnamed = hardened_prefix(deriv.derivation)
+    return unnamed
+
+
+def build_psbt_parser(view: View, **key_material) -> PSBTParser:
+    """The parser for the controller's psbt, given the key material to parse with.
+
+    Everything else comes from the controller and the settings: the network,
+    the loaded multisig descriptor, and the clock the far-future locktime check
+    dates a psbt by. The card's single-sig parser is built in the signer menu
+    and the overview keeps it, and it was built there with the network alone:
+    a lock the seed flow warned about went unmentioned when a card signed. One
+    builder, so the two argument lists cannot drift apart again.
+    """
+    from seedsigner.controller import Controller
+
+    return PSBTParser(
+        view.controller.psbt,
+        network=view.settings.get_value(SettingsConstants.SETTING__NETWORK),
+        reference_time=getattr(view.controller, "psbt_source_time", None),
+        block_anchor=(Controller.RELEASE_BLOCK_HEIGHT, Controller.RELEASE_BLOCK_TIME),
+        multisig_descriptor=view.controller.multisig_wallet_descriptor,
+        **key_material,
+    )
+
+
 class PSBTSelectSeedView(View):
     SCAN_SEED = ButtonOption("Scan a seed", SeedSignerIconConstants.QRCODE)
     SATOCHIP = ButtonOption("Use Satochip card", SeedSignerIconConstants.FINGERPRINT)
@@ -145,6 +238,8 @@ class PSBTSelectSeedView(View):
             # User selected one of the n seeds
             if not ensure_microsd_seed_warning():
                 return Destination(PSBTSelectSeedView)
+            # Storing the seed is what ends any card flow that was entered and
+            # backed out of -- see Controller.psbt_seed.
             self.controller.psbt_seed = seeds[selected_menu_num]
             return Destination(PSBTOverviewView)
 
@@ -213,38 +308,60 @@ class PSBTSelectSeedView(View):
                 logger.debug("Unable to determine PSBT policy", exc_info=exc)
 
             if is_multisig_psbt:
-                try:
-                    parser = PSBTParser(
-                        psbt,
-                        network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
-                    )
-                    parser.parse()
-                except Exception as e:
-                    logger.exception("Failed to parse PSBT with %s data", card_label)
-                    self.run_screen(
-                        WarningScreen,
-                        title="Failed",
-                        status_headline=None,
-                        text=str(e),
-                    )
-                    return Destination(PSBTSelectSeedView, clear_history=True)
-
-                self.controller.psbt_parser = parser
+                # Leave the parser to PSBTOverviewView, the one place that builds
+                # it with the loaded descriptor, the network and the clock. With
+                # no key to derive from, the descriptor is all that can identify
+                # change, and a copy built here without it was kept by the
+                # overview: a descriptor loaded earlier then identified nothing.
+                self.controller.psbt_parser = None
                 self.controller.psbt_seed = None
                 self.controller.psbt_sign_with_satochip = True
+                # No key material on purpose: a multisig is reviewed against its
+                # descriptor, not against one cosigner's xpub. Say so rather than
+                # leaving it unset, so the overview parses without a card key
+                # instead of refusing for want of one.
+                self.controller.psbt_card_keys = {}
                 return Destination(PSBTOverviewView)
 
             network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
             is_mainnet = network == SettingsConstants.MAINNET
-            first_der = next(iter(self.controller.psbt.inputs[0].bip32_derivations.values())).derivation
-            account_path = []
-            HARDENED_INDEX = 0x80000000
-            for idx in first_der:
-                if idx & HARDENED_INDEX:
-                    account_path.append(idx)
-                else:
-                    break
 
+            # Ask the card who it is before reading the psbt's account paths. A
+            # psbt may spend from several wallets, and only the derivations
+            # naming this card's fingerprint say which account it holds; the
+            # first input's path can belong to a wallet the card has no part in.
+            # The master key's xtype only picks version bytes, and a fingerprint
+            # does not depend on those.
+            try:
+                master_xpub = connector.card_bip32_get_xpub("", "standard", is_mainnet)
+                master_fp = HDKey.from_base58(master_xpub).my_fingerprint
+            except Exception as e:
+                logger.exception("Failed to export master xpub from %s card", card_label)
+                self.run_screen(
+                    WarningScreen,
+                    title="Failed",
+                    status_headline=None,
+                    text=str(e),
+                )
+                return Destination(PSBTSelectSeedView, clear_history=True)
+
+            account_path = account_path_for_inputs(self.controller.psbt, master_fp)
+            if account_path is None:
+                # No input names a key for this card to derive: a taproot-only
+                # psbt, one whose ECDSA inputs another wallet already finished,
+                # or simply a psbt this card is not a signer on. Say so rather
+                # than raising StopIteration out of a next(iter(...)) on the
+                # first input, or exporting some other wallet's account.
+                self.run_screen(
+                    WarningScreen,
+                    title=_("Cannot sign"),
+                    status_icon_name=SeedSignerIconConstants.WARNING,
+                    status_headline=None,
+                    text=_("No input in this PSBT names a key this card can derive."),
+                )
+                return Destination(PSBTSelectSeedView, clear_history=True)
+
+            HARDENED_INDEX = 0x80000000
             account_path_str = "m"
             for i in account_path:
                 hardened = bool(i & HARDENED_INDEX)
@@ -267,7 +384,6 @@ class PSBTSelectSeedView(View):
             try:
                 try:
                     account_xpub = connector.card_bip32_get_xpub(account_path_str, xtype, is_mainnet)
-                    master_xpub = connector.card_bip32_get_xpub("", xtype, is_mainnet)
                 except Exception as e:
                     logger.exception("Failed to export xpub from %s card", card_label)
                     loading.stop()
@@ -281,16 +397,14 @@ class PSBTSelectSeedView(View):
                     return Destination(PSBTSelectSeedView, clear_history=True)
 
                 root_key = HDKey.from_base58(account_xpub)
-                master_fp = HDKey.from_base58(master_xpub).my_fingerprint
 
                 try:
-                    self.controller.psbt_parser = PSBTParser(
-                        self.controller.psbt,
+                    self.controller.psbt_parser = build_psbt_parser(
+                        self,
                         seed=None,
                         root=root_key,
                         root_path=account_path,
                         master_fingerprint=master_fp,
-                        network=network,
                     )
                 except InvalidPSBTError as e:
                     # A deliberate refusal. Card signing gets the same screens as
@@ -347,6 +461,15 @@ class PSBTSelectSeedView(View):
 
             self.controller.psbt_seed = None
             self.controller.psbt_sign_with_satochip = True
+            # The card, not a seed, holds the key. Keep what the parser was built
+            # from: anything that rebuilds it later (loading a descriptor, for
+            # one) has no seed to fall back on and would otherwise build a parser
+            # with no root, which can answer nothing about the transaction.
+            self.controller.psbt_card_keys = dict(
+                root=root_key,
+                root_path=account_path,
+                master_fingerprint=master_fp,
+            )
             return Destination(PSBTOverviewView)
 
         elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_15WORD, self.TYPE_18WORD, self.TYPE_21WORD, self.TYPE_24WORD]:
@@ -629,8 +752,12 @@ class PSBTRefusalView(View):
             self.controller.psbt = None
         self.controller.psbt_parser = None
         self.controller.psbt_seed = None
-        # Whichever signer was selected, it isn't signing this psbt.
+        # Whichever signer was selected, it isn't signing this psbt: the card's
+        # account xpub and any raised retry timeout belong to an attempt that is
+        # over, and the next psbt must not inherit either.
         self.controller.psbt_sign_with_satochip = False
+        self.controller.psbt_card_keys = None
+        clear_retry_timeout(self.controller)
 
         # Named rather than referenced directly so the table can sit above the Views it
         # points at. test_every_reject_code_has_a_reachable_destination resolves them all.
@@ -698,22 +825,49 @@ class PSBTOverviewView(View):
             self.loading_screen = LoadingScreenThread(text=_("Parsing PSBT..."))
             self.loading_screen.start()
                 
+            card_keys = getattr(self.controller, "psbt_card_keys", None)
+            if self.controller.psbt_sign_with_satochip and card_keys is None:
+                # Signing with a card but nothing to derive with: a parser built
+                # here would show an empty transaction and fail later. Refuse
+                # while the reason is still knowable.
+                self.loading_screen.stop()
+                self.loading_screen = None
+                self.set_redirect(refusal_destination(InvalidPSBTError(
+                    "Card key data is no longer available for this transaction.",
+                    code=RejectCode.SEED_CANNOT_SIGN,
+                )))
+                return
+
             try:
-                from seedsigner.controller import Controller as _Controller
-                self.controller.psbt_parser = PSBTParser(
-                    self.controller.psbt,
+                self.controller.psbt_parser = build_psbt_parser(
+                    self,
                     seed=self.controller.psbt_seed,
-                    network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
-                    reference_time=getattr(self.controller, "psbt_source_time", None),
-                    block_anchor=(_Controller.RELEASE_BLOCK_HEIGHT, _Controller.RELEASE_BLOCK_TIME),
-                    multisig_descriptor=self.controller.multisig_wallet_descriptor,
+                    **(card_keys or {}),
                 )
+                if not self.controller.psbt_parser.parsed:
+                    # A parser built without key material -- the card's multisig
+                    # flow, reviewed against a descriptor -- does not parse on
+                    # construction. Unparsed it reports no inputs, no outputs and
+                    # no fee, which the review screens show as a transaction that
+                    # moves nothing.
+                    self.controller.psbt_parser.parse()
             except InvalidPSBTError as e:
                 # A deliberate refusal, not a crash: the psbt is parseable but unsafe to
                 # present, or not this seed's to sign. Redirect to the View that renders
                 # this code -- see REJECT_PRESENTATION.
                 logger.info("Refusing psbt: %s (%s)", e, e.code)
                 self.set_redirect(refusal_destination(e))
+                return
+            except RuntimeError as e:
+                # parse() refuses a single-key psbt with no key to parse it with.
+                # Only the card's multisig flow gets here without key material, so
+                # this is a state that should not arise -- but it is a refusal
+                # either way, not a crash screen.
+                logger.info("Cannot parse psbt without a key: %s", e)
+                self.set_redirect(refusal_destination(InvalidPSBTError(
+                    "No key is available to review this transaction.",
+                    code=RejectCode.SEED_CANNOT_SIGN,
+                )))
                 return
             finally:
                 self.loading_screen.stop()
@@ -809,7 +963,10 @@ class PSBTIdentifyChangeView(View):
         if self.controller.multisig_wallet_descriptor:
             # TRANSLATOR_NOTE: A loaded multisig descriptor did not match an output that looked like change
             text = _("The loaded descriptor doesn't identify it. Shown as a payment.")
-            button_data = [self.CONTINUE]
+            # Loading the wrong descriptor is the ordinary way to arrive here, and
+            # offering only "Continue" left the right one unreachable: the user
+            # had to abandon the transaction to try again.
+            button_data = [self.LOAD_DESCRIPTOR, self.CONTINUE]
         else:
             # TRANSLATOR_NOTE: Multisig change can't be told apart from a payment without the wallet descriptor
             text = _("Load descriptor to identify change.")
@@ -1073,6 +1230,27 @@ class PSBTChangeDetailsView(View):
                     [2147483696, 2147483649, 2147483648, 2147483650, 1, 0],
             }
         """
+
+        if change_data is None:
+            # This output is no longer counted as change: the descriptor that
+            # identified it has been replaced by one that does not, which a
+            # rootless multisig parse depends on entirely. Reading on would crash
+            # on the missing dict.
+            if self.controller.multisig_wallet_descriptor:
+                self.controller.multisig_wallet_descriptor = None
+                self.run_screen(
+                    WarningScreen,
+                    title=_("Descriptor mismatch"),
+                    status_icon_name=SeedSignerIconConstants.WARNING,
+                    status_headline=_("Descriptor cleared"),
+                    text=_(
+                        "Loaded multisig wallet descriptor does not match this PSBT. "
+                        "Load the correct descriptor or skip verification to continue."
+                    ),
+                    show_back_button=False,
+                    button_data=[ButtonOption(_("OK"))],
+                )
+            return Destination(PSBTOverviewView)
 
         # The parser proved this derivation path belongs to this seed before recording
         # the output as change, so the view reads the verified path rather than the
@@ -1393,6 +1571,9 @@ class PSBTFinalizeView(View):
         )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
+            # This signing attempt is abandoned, so a timeout it raised is not
+            # owed to whatever is reviewed next.
+            clear_retry_timeout(self.controller)
             return Destination(BackStackView)
 
         sig_cnt = PSBTParser.sig_count(psbt)
@@ -1422,10 +1603,16 @@ class PSBTFinalizeView(View):
         loading.start()
         try:
             sign_result = None
+            retry_timeout = None
             if self.controller.psbt_sign_with_satochip:
                 is_keycard = getattr(connector, "is_keycard_backend", False)
                 # Track retry state on the controller so we can increase timeout across retries
-                retry_timeout = getattr(self.controller, "_psbt_sign_retry_timeout", None)
+                configured_timeout = (
+                    self.settings.get_value(SettingsConstants.SETTING__KEYCARD_SIGN_TIMEOUT)
+                    if is_keycard
+                    else self.settings.get_value(SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT)
+                )
+                retry_timeout = signing_timeout(self.controller, configured_timeout)
                 if is_keycard:
                     from seedsigner.helpers.keycard_signer import sign_psbt_with_keycard
                     sign_result = sign_psbt_with_keycard(psbt, connector, timeout=retry_timeout)
@@ -1480,18 +1667,17 @@ class PSBTFinalizeView(View):
                 "PSBTFinalizeView" if self.controller.psbt_sign_with_satochip else "PSBTSigningErrorView",
             )
             # Clean up retry state regardless of path taken
-            if hasattr(self.controller, "_psbt_sign_retry_timeout"):
-                delattr(self.controller, "_psbt_sign_retry_timeout")
+            used_timeout = retry_timeout
+            clear_retry_timeout(self.controller)
 
             if self.controller.psbt_sign_with_satochip:
                 # If a timeout occurred during signing, offer to retry with higher timeout
                 if sign_result and sign_result.timed_out:
                     is_keycard = getattr(connector, "is_keycard_backend", False)
-                    current_timeout = (
-                        self.settings.get_value(SettingsConstants.SETTING__KEYCARD_SIGN_TIMEOUT)
-                        if is_keycard
-                        else self.settings.get_value(SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT)
-                    )
+                    # The value that actually timed out, not the setting: after a
+                    # retry those differ, and quoting the setting told the user a
+                    # timeout they had already moved past.
+                    current_timeout = used_timeout
                     card_label = "Keycard" if is_keycard else "Satochip"
 
                     selected = self.run_screen(
@@ -1507,8 +1693,7 @@ class PSBTFinalizeView(View):
 
                     if selected == 0:
                         # Increase timeout by one step and retry
-                        new_timeout = current_timeout + 0.75
-                        self.controller._psbt_sign_retry_timeout = new_timeout
+                        new_timeout = bump_retry_timeout(self.controller, current_timeout)
                         logger.info(
                             "PSBTFinalize: user chose to retry with timeout=%.2fs", new_timeout
                         )
@@ -1520,6 +1705,9 @@ class PSBTFinalizeView(View):
         logger.info("PSBTFinalize: signatures added; routing=PSBTSignedQRDisplayView")
         self.controller.psbt = trimmed_psbt
         self.controller.psbt_sign_with_satochip = False
+        # A raised timeout belonged to this psbt only; the next one starts from
+        # the configured setting again.
+        clear_retry_timeout(self.controller)
         return Destination(PSBTSignedQRDisplayView)
 
 

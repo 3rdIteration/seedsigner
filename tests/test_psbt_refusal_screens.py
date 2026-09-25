@@ -301,21 +301,36 @@ class TestBlockAnchor:
         assert data["timestamp"] > 1_700_000_000
 
 
-class TestIdentifyChangeScreenFits:
-    """PSBTIdentifyChangeView's text shares the warning box with a headline and two buttons."""
+class TestIdentifyChangeScreenFits(base.BaseTest):
+    """
+    PSBTIdentifyChangeView's text shares the warning box with a headline and its
+    buttons. Measured on the screen the view asks for, not on a copy of its
+    arguments: a copy kept measuring one button after the view offered two.
+    """
 
-    @pytest.mark.parametrize("text,buttons", [
-        ("Load descriptor to identify change.", ["Load descriptor", "Continue as payment"]),
-        ("The loaded descriptor doesn't identify it. Shown as a payment.", ["Continue"]),
-    ])
-    def test_text_fits(self, text, buttons):
-        screen = WarningScreen(
-            status_headline="Change Not Identified",
-            text=text,
-            button_data=[ButtonOption(b) for b in buttons],
-            show_back_button=True,
-        )
+    @pytest.mark.parametrize("descriptor_loaded", [False, True])
+    def test_text_fits(self, descriptor_loaded):
+        from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON
+        from seedsigner.views.psbt_views import PSBTIdentifyChangeView
+
+        self.controller.psbt_parser = object()
+        self.controller.multisig_wallet_descriptor = object() if descriptor_loaded else None
+
+        view = PSBTIdentifyChangeView()
+        requested = []
+
+        def run_screen(screen_cls, **kwargs):
+            requested.append((screen_cls, kwargs))
+            return RET_CODE__BACK_BUTTON
+
+        view.run_screen = run_screen
+        view.run()
+
+        [(screen_cls, kwargs)] = requested
+        screen = screen_cls(**kwargs)
         text_area = [c for c in screen.components if c.__class__.__name__ == "TextArea"][-1]
         lines = len(text_area.text_lines)
         height = text_area.text_height_above_baseline * lines + text_area.line_spacing * (lines - 1)
-        assert height <= text_area.height, f"{lines} lines, {height}px in a {text_area.height}px box"
+        assert height <= text_area.height, (
+            f"{lines} lines, {height}px in a {text_area.height}px box: {kwargs['text']!r}"
+        )
