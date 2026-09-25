@@ -52,7 +52,7 @@ on:
           - EMMC
         default: SD_CARD
       build_variant:
-        description: 'non-dev = hardened/air-gapped (no serial login, no USB adb/RNDIS, no dev tools); dev = serial console + adb shell'
+        description: 'non-dev = hardened/air-gapped (no serial login, no USB adb/RNDIS, no dev tools); dev = adb shell (+ telnet if debug_network=on); serial console stripped on both variants unless disable_uart2_console_debug=false'
         required: true
         type: choice
         options:
@@ -79,7 +79,7 @@ on:
           - 'off'
         default: auto
       disable_uart2_console_debug:
-        description: 'Serial console (ttyFIQ0) override: auto follows build_variant (non-dev=off, dev=on)'
+        description: 'Serial console (ttyFIQ0) + FIQ debugger: auto/true strips on ALL variants (UART2 pins are shared with the SEC1210 smartcard reader; console log corrupts its AT-command stream). false keeps the console for bench debugging on boards with no reader attached'
         required: false
         type: choice
         options:
