@@ -1,0 +1,133 @@
+# Sidebar navigation structure for the GitHub Pages site (just-the-docs theme).
+#
+# Consumed by tools/docs_front_matter.py at Pages build time (docs-pages.yml);
+# the theme builds its collapsible sidebar from the injected front matter.
+# Markdown files themselves stay plain so they render nicely when browsed on
+# GitHub. Paths are relative to docs/ and files must exist, or the build fails.
+#
+#   title:        optional override; defaults to the page's first heading
+#   nav_exclude:  keep the page published but out of the sidebar
+#   desc:         optional one-liner shown on the generated section landing page
+
+sections:
+  - title: Home
+    path: README.md
+    # README.md stays the GitHub-browsable view; the build also generates
+    # docs/index.md (Home) from it so the Pages root does not depend on
+    # jekyll-readme-index's front-matter handling.
+    nav_exclude: true
+
+  - title: Quick starts
+    desc: Task walkthroughs, from flashing applets to backing up a seed.
+    pages:
+      - quickstarts/01-install-applets-diy-javacard.md
+      - quickstarts/02-mnemonic-seedkeeper.md
+      - quickstarts/03-multisig-descriptor-seedkeeper.md
+      - quickstarts/04-satochip-init-with-seed.md
+      - quickstarts/05-password-generator-seedkeeper.md
+      - quickstarts/06-diy-card-first-time.md
+      - quickstarts/07-slip39-backup.md
+      - quickstarts/08-bip85-child-seed.md
+      - quickstarts/09-seedqr-backup.md
+      - quickstarts/10-flash-microsd.md
+
+  - title: Smartcards
+    desc: JavaCard applets, readers and supported card types.
+    pages:
+      - javacard_applets.md
+      - smartcard_support_installation.md
+      - seedkeeper.md
+      - satochip.md
+      - keycard.md
+      - satodime.md
+      - specter_diy.md
+
+  - title: Seeds & backups
+    desc: Descriptors, SLIP-39, BIP85, SeedQR and seed recovery.
+    pages:
+      - multisig_descriptors.md
+      - slip39.md
+      - bip85.md
+      - seed_qr/README.md
+      - qr_formats.md
+      - dice_verification.md
+      - electrum.md
+      - wif_bip38.md
+      - recovery.md
+
+  - title: Tools
+    desc: Password generator, Text QR, MicroSD tools and GPG tools.
+    pages:
+      - password_generator.md
+      - text_qr.md
+      - microsd_tools.md
+      - gpg_tools.md
+      - gpg_trusted_signers.md
+      - bip85_gpg_version_history.md
+
+  - title: Hardware
+    desc: What to buy, assembly, platform support and wiring.
+    pages:
+      - shopping_list.md
+      - hardware.md
+      - hardware_platform_support.md
+      - io_config.md
+      - battery.md
+      - usb_relay.md
+      - legacy_hardware.md
+
+  - title: Building & development
+    desc: Building the app for Raspberry Pi OS, device setup and dev tips.
+    pages:
+      - building.md
+      - raspberry_pi_os_build_instructions.md
+      - dev_device_setup_instructions.md
+      - desktop_simulation.md
+      - repositories.md
+      - developer_tips.md
+      - code_structure.md
+      - debug_crash.md
+      - feature_roadmap.md
+
+  - title: SeedSigner OS
+    desc: >-
+      Documentation for SeedSigner OS — the minimal Linux image that runs on the
+      device — mirrored from the seedsigner-os repository at the pinned release
+      commit. Building and verifying images is user-facing; the deeper pages are
+      for OS development.
+    pages:
+      - path: os/building.md
+        title: Building an SD card image
+      - path: os/build_profiles.md
+      - path: os/reproducibility.md
+      - path: os/hwrng.md
+      - path: os/diy_tools.md
+      - path: os/structure.md
+      - path: os/dev_workflow.md
+      - path: os/without_docker.md
+      - path: os/customize_buildroot.md
+      - path: os/agents.md
+        nav_exclude: true
+      - title: Luckfox Pico
+        desc: >-
+          Build & development docs for the Luckfox Pico board family, including
+          secure boot and release verification.
+        pages:
+          - path: os/luckfox/README.md
+            title: Luckfox build & development
+          - path: os/luckfox/secure-boot.md
+          - path: os/luckfox/verifying-a-release.md
+          - path: os/luckfox/airgapped-signing.md
+          - path: os/luckfox/secure-boot-bench-procedure.md
+          - path: os/luckfox/soctoolkit-cli.md
+          - path: os/luckfox/OS-build-instructions.md
+          - path: os/luckfox/LUCKFOX_STARTUP_WORKFLOW.md
+          - path: os/luckfox/BUILD_REFERENCE.md
+          - path: os/luckfox/BUILD_FIX_LIBCAMERA.md
+          - path: os/luckfox/CAMERA_DEBUG.md
+          - path: os/luckfox/CAMERA_SERVICE_PLANNING.md
+          - path: os/luckfox/SMARTCARD_BUILD_FIX.md
+          - path: os/luckfox/SMARTCARD_PACKAGES.md
+          - path: os/luckfox/TOOLCHAIN_ANALYSIS.md
+          - path: os/luckfox/AGENTS.md
+            nav_exclude: true

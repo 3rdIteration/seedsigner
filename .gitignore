@@ -23,4 +23,6 @@ settings.json
 build/
 # SeedSigner OS docs mirrored into the Pages site at build time (docs-pages.yml)
 docs/os/
+# Generated section landing pages for the docs sidebar (docs_front_matter.py)
+docs/nav/
 *.FCBak

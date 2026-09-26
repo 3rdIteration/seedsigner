@@ -2,8 +2,27 @@ title: SeedSigner + Satochip Documentation
 description: >-
   User documentation for the SeedSigner + Satochip fork: smartcard applets,
   SeedKeeper/Satochip/Satodime/Keycard/Specter-DIY, password generator, GPG and
-  seed-backup quick starts.
-theme: jekyll-theme-minimal
+  seed-backup quick starts, plus the mirrored SeedSigner OS docs.
+remote_theme: just-the-docs/just-the-docs@v0.12.0
+plugins:
+  - jekyll-remote-theme
+  - jekyll-include-cache
+  - jekyll-relative-links
 
-# The docs reference files that live outside docs/ (source code, tests) via absolute
-# GitHub links, so no theme-specific plugin config is needed here.
+exclude:
+  - nav.yml  # build config consumed by tools/docs_front_matter.py, not a site asset
+
+# Sidebar tree comes from nav.yml, applied by tools/docs_front_matter.py in the
+# docs-pages.yml workflow (pages have no committed front matter so they still
+# read well when browsed on GitHub).
+search_provider: lunr
+lunr:
+  search_within_pages: true
+
+aux_links:
+  "Repository on GitHub":
+    - https://github.com/3rdIteration/seedsigner
+
+footer_content: >-
+  Released under the MIT License. The SeedSigner OS section is mirrored from the
+  seedsigner-os repository at the pinned release commit.

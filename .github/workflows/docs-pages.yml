@@ -74,6 +74,13 @@ jobs:
 
           echo "Mirrored seedsigner-os docs at $OS_SHA:"
           find docs/os -name '*.md' | sort
+      - name: Generate docs navigation front matter
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: |
+          python3 -m pip install --quiet pyyaml
+          python3 tools/docs_front_matter.py docs
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
       - name: Build with Jekyll
