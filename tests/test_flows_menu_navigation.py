@@ -1282,6 +1282,12 @@ class TestMenuNavigationFlows(FlowTest):
         self.settings.set_value(SettingsConstants.SETTING__CHESS, SettingsConstants.OPTION__ENABLED)
         assert tools_views.ToolsMenuView.CHESS in self._capture_tools_button_data()
 
+    def test_chess_start_mode_is_also_in_tools(self):
+        """With Chess set to start the device in the game, it is still offered in Tools."""
+        self._use_display(SettingsConstants.DISPLAY_CONFIGURATION__ST7789__320x240)
+        self.settings.set_value(SettingsConstants.SETTING__CHESS, SettingsConstants.CHESS__START)
+        assert tools_views.ToolsMenuView.CHESS in self._capture_tools_button_data()
+
     def test_chess_hidden_on_a_240x240_display(self):
         """The board is too small to play on 240x240, so Chess stays hidden even when on."""
         self._use_display(SettingsConstants.DISPLAY_CONFIGURATION__ST7789__240x240)

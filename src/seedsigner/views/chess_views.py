@@ -1,6 +1,12 @@
 """
 Tools → Chess: play the device, or a friend on the same device.
 
+With the setting at "Start in chess" the device also starts straight into a
+game, with no logo, no way out in the menus and no screensaver (it would show
+the logo). Holding KEY1 and KEY3 together on the board opens the wallet. This
+only hides what the device is from someone looking at the screen; the firmware
+on the device still says what it is.
+
 The game in progress lives in this module, in memory only, so leaving for the
 game menu and coming back resumes it. It holds no key material and is never
 written to disk.
@@ -12,10 +18,11 @@ from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, ButtonListScree
 from seedsigner.helpers.chess.game import ChessGame
 from seedsigner.models.settings_definition import SettingsConstants
 
-from .view import BackStackView, Destination, View
+from .view import BackStackView, Destination, MainMenuView, View, clear_boot_failover
 
-# The game in progress, or None.
-_state = {"game": None}
+# The game in progress, or None, and whether the KEY1 + KEY3 hold has opened
+# the wallet since power-on (after that, chess from Tools has its way out back).
+_state = {"game": None, "unlocked": False}
 
 
 # The board needs a 320x240 screen or larger: on 240x240 the pieces are too
@@ -31,8 +38,16 @@ LARGE_DISPLAYS = (
 def chess_available(settings) -> bool:
     """Chess is on in Settings and the display is large enough to play on."""
     return (
-        settings.get_value(SettingsConstants.SETTING__CHESS) == SettingsConstants.OPTION__ENABLED
+        settings.get_value(SettingsConstants.SETTING__CHESS) != SettingsConstants.OPTION__DISABLED
         and settings.get_value(SettingsConstants.SETTING__DISPLAY_CONFIGURATION) in LARGE_DISPLAYS
+    )
+
+
+def starts_in_chess(settings) -> bool:
+    """The device starts in the game, and the wallet is behind the KEY1 + KEY3 hold."""
+    return (
+        settings.get_value(SettingsConstants.SETTING__CHESS) == SettingsConstants.CHESS__START
+        and chess_available(settings)
     )
 
 
@@ -44,7 +59,30 @@ def set_game(game):
     _state["game"] = game
 
 
-class ChessMenuView(View):
+class ChessView(View):
+    """
+    Base for the chess views. Until the wallet is opened on a device that starts
+    in chess, the menus offer no way out and the screensaver stays off.
+    """
+    def __init__(self):
+        super().__init__()
+        self.hidden = starts_in_chess(self.settings) and not _state["unlocked"]
+        self.is_screensaver_allowed = not self.hidden
+
+
+class ChessBootView(ChessView):
+    """The first View when the device starts in chess: a new game against the device."""
+    def run(self):
+        # Home is never reached before the wallet is opened, so tell the boot
+        # failover here that the app started.
+        clear_boot_failover()
+        if current_game() is None:
+            set_game(ChessGame(human="w", level=1))
+        # It is the first View, so there is no history to skip it from.
+        return Destination(ChessGameView, clear_history=True)
+
+
+class ChessMenuView(ChessView):
     RESUME = ButtonOption("Resume game")
     NEW = ButtonOption("New game")
 
@@ -55,7 +93,10 @@ class ChessMenuView(View):
             button_data.append(self.RESUME)
         button_data.append(self.NEW)
 
-        selected_menu_num = self.run_screen(ButtonListScreen, title=_("Chess"), button_data=button_data)
+        selected_menu_num = self.run_screen(
+            ButtonListScreen, title=_("Chess"), button_data=button_data,
+            show_back_button=not self.hidden,
+        )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
@@ -64,7 +105,7 @@ class ChessMenuView(View):
         return Destination(ChessNewGameView)
 
 
-class ChessNewGameView(View):
+class ChessNewGameView(ChessView):
     WHITE = ButtonOption("Play white")
     BLACK = ButtonOption("Play black")
     TWO_PLAYERS = ButtonOption("Two players")
@@ -82,7 +123,7 @@ class ChessNewGameView(View):
         return Destination(ChessLevelView, view_args=dict(human=human))
 
 
-class ChessLevelView(View):
+class ChessLevelView(ChessView):
     # In LEVEL_SECONDS order.
     LEVELS = [ButtonOption("Easy"), ButtonOption("Medium"), ButtonOption("Hard")]
 
@@ -100,7 +141,7 @@ class ChessLevelView(View):
         return Destination(ChessGameView)
 
 
-class ChessGameView(View):
+class ChessGameView(ChessView):
     def run(self):
         game = current_game()
         if game is None:
@@ -108,12 +149,15 @@ class ChessGameView(View):
 
         ret = self.run_screen(ChessBoardScreen, game=game)
 
+        if ret == ChessBoardScreen.RET_UNLOCK:
+            _state["unlocked"] = True
+            return Destination(MainMenuView)
         if ret == ChessBoardScreen.RET_GAME_OVER:
             return Destination(ChessResultView, view_args=dict(text=game.result_text()))
         return Destination(ChessGameMenuView)
 
 
-class ChessGameMenuView(View):
+class ChessGameMenuView(ChessView):
     CONTINUE = ButtonOption("Continue")
     FLIP = ButtonOption("Flip board")
     RESIGN = ButtonOption("Resign")
@@ -128,7 +172,9 @@ class ChessGameMenuView(View):
         button_data = [self.CONTINUE, self.FLIP]
         if game.human is not None:
             button_data.append(self.RESIGN)
-        button_data.extend([self.NEW, self.EXIT])
+        button_data.append(self.NEW)
+        if not self.hidden:
+            button_data.append(self.EXIT)
 
         selected_menu_num = self.run_screen(ButtonListScreen, title=_("Game"), button_data=button_data)
 
@@ -146,7 +192,7 @@ class ChessGameMenuView(View):
         return Destination(ChessMenuView)
 
 
-class ChessResultView(View):
+class ChessResultView(ChessView):
     NEW = ButtonOption("New game")
     DONE = ButtonOption("Done")
 

@@ -1,4 +1,5 @@
 import logging
+import time
 
 from dataclasses import dataclass
 from gettext import gettext as _
@@ -23,6 +24,12 @@ LAST_MOVE_LIGHT = "#d9d98a"
 LAST_MOVE_DARK = "#aaa24c"
 SELECTED = "#f0e060"
 IN_CHECK = "#d04040"
+
+# Holding KEY1 and KEY3 together opens the wallet. The game only ever taps one
+# of them at a time, so the combination is never pressed by accident.
+UNLOCK_KEYS = (HardwareButtonsConstants.KEY1, HardwareButtonsConstants.KEY3)
+UNLOCK_HOLD_SECONDS = 2.0
+UNLOCK_PARTNER_WINDOW = 0.25  # the second key may land a moment after the first
 
 GLYPHS = {
     "K": FontAwesomeIconConstants.CHESS_KING,
@@ -54,11 +61,13 @@ class ChessBoardScreen(BaseScreen):
     """
     The board, full screen. Joystick moves the cursor, click picks a piece and
     drops it, KEY1 opens the game menu, KEY2 flips the board, KEY3 takes a move
-    back. Returns RET_MENU or RET_GAME_OVER; the move itself is recorded on
-    `game`, which outlives the screen.
+    back, and KEY1 with KEY3 held together opens the wallet. Returns RET_MENU,
+    RET_GAME_OVER or RET_UNLOCK; the move itself is recorded on `game`, which
+    outlives the screen.
     """
     RET_MENU = "menu"
     RET_GAME_OVER = "game over"
+    RET_UNLOCK = "unlock"
 
     game: ChessGame = None
 
@@ -218,8 +227,9 @@ class ChessBoardScreen(BaseScreen):
                 self._redraw()
                 return self.RET_GAME_OVER
             if self.game.device_to_move():
-                if self._device_turn() == self.RET_MENU:
-                    return self.RET_MENU
+                ret = self._device_turn()
+                if ret is not None:
+                    return ret
                 continue
             ret = self._human_input()
             if ret is not None:
@@ -235,10 +245,17 @@ class ChessBoardScreen(BaseScreen):
                 thread.join(timeout=0.05)
                 if not thread.is_alive():
                     break
-                if self.hw_inputs.check_for_low(key=HardwareButtonsConstants.KEY1):
-                    thread.stop()
-                    thread.join()
-                    return self.RET_MENU
+                menu = self.hw_inputs.check_for_low(key=HardwareButtonsConstants.KEY1)
+                if not menu and not self.hw_inputs.is_pressed(HardwareButtonsConstants.KEY3):
+                    continue
+                combo = self._unlock_combo(HardwareButtonsConstants.KEY1 if menu else HardwareButtonsConstants.KEY3)
+                if combo is None and not menu:
+                    continue  # KEY3 alone does nothing while the device thinks
+                if combo is False:
+                    continue  # both keys, let go too soon
+                thread.stop()
+                thread.join()
+                return self.RET_UNLOCK if combo else self.RET_MENU
         finally:
             self.thinking = False
         if thread.move is not None:
@@ -248,6 +265,13 @@ class ChessBoardScreen(BaseScreen):
 
     def _human_input(self):
         user_input = self.hw_inputs.wait_for(HardwareButtonsConstants.ALL_KEYS)
+
+        if user_input in UNLOCK_KEYS:
+            combo = self._unlock_combo(user_input)
+            if combo:
+                return self.RET_UNLOCK
+            if combo is False:
+                return None  # both keys, let go too soon: neither key's own action
 
         if self.promotion_choices:
             if user_input == HardwareButtonsConstants.KEY_LEFT:
@@ -287,6 +311,35 @@ class ChessBoardScreen(BaseScreen):
             self.game.cursor = self._index_at(row, col)
         self._redraw()
         return None
+
+    def _unlock_combo(self, first_key):
+        """
+        After `first_key` (KEY1 or KEY3) is pressed: None when the other key does
+        not join it, so the key keeps its own meaning; False when both were held
+        but let go before UNLOCK_HOLD_SECONDS; True once both have been held that
+        long. On True the screen goes blank at once, as the only sign, and this
+        returns after both keys are released so the next screen does not read
+        them as presses.
+        """
+        other = UNLOCK_KEYS[1] if first_key == UNLOCK_KEYS[0] else UNLOCK_KEYS[0]
+        is_pressed = self.hw_inputs.is_pressed
+        start = time.monotonic()
+        while not is_pressed(other):
+            if not is_pressed(first_key) or time.monotonic() - start > UNLOCK_PARTNER_WINDOW:
+                return None
+            time.sleep(0.01)
+
+        start = time.monotonic()
+        while is_pressed(first_key) and is_pressed(other):
+            if time.monotonic() - start >= UNLOCK_HOLD_SECONDS:
+                with self.renderer.lock:
+                    self.clear_screen()
+                    self.renderer.show_image()
+                while is_pressed(first_key) or is_pressed(other):
+                    time.sleep(0.02)
+                return True
+            time.sleep(0.02)
+        return False
 
     def _click(self):
         board = self.game.board
