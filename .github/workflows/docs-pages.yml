@@ -3,12 +3,18 @@ name: Deploy docs to GitHub Pages
 # Builds the docs/ markdown into a Jekyll site and publishes it to GitHub Pages.
 # Screenshots are committed files under docs/img/guide, so a push that updates them
 # (including the automated screenshot-refresh PR) republishes the site automatically.
+#
+# The SeedSigner OS documentation (seedsigner-os submodule) is mirrored into the site
+# under docs/os/ at build time: only that subfolder is sparse-cloned from GitHub at the
+# pinned submodule commit, so the submodule itself stays at update = none and the
+# nested Buildroot fork is never fetched.
 
 on:
   push:
     branches: [dev, main]
     paths:
       - "docs/**"
+      - "seedsigner-os"  # pinned submodule commit changed -> republish the mirrored OS docs
       - ".github/workflows/docs-pages.yml"
   workflow_dispatch:
 
@@ -26,6 +32,48 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Mirror SeedSigner OS docs into docs/os/
+        run: |
+          set -euo pipefail
+          # The pinned submodule commit (the gitlink), without checking the submodule out.
+          OS_SHA="$(git ls-tree HEAD seedsigner-os | awk '{print $3}')"
+          test -n "$OS_SHA"
+          OS_BLOB="https://github.com/3rdIteration/seedsigner-os/blob/$OS_SHA"
+
+          # Sparse-clone just the docs/ folder at that commit.
+          git init -q "$RUNNER_TEMP/seedsigner-os-docs"
+          git -C "$RUNNER_TEMP/seedsigner-os-docs" remote add origin https://github.com/3rdIteration/seedsigner-os.git
+          git -C "$RUNNER_TEMP/seedsigner-os-docs" sparse-checkout init --cone
+          git -C "$RUNNER_TEMP/seedsigner-os-docs" sparse-checkout set docs
+          git -C "$RUNNER_TEMP/seedsigner-os-docs" fetch -q --depth 1 --filter=blob:none origin "$OS_SHA"
+          git -C "$RUNNER_TEMP/seedsigner-os-docs" checkout -q FETCH_HEAD
+
+          rm -rf docs/os
+          mv "$RUNNER_TEMP/seedsigner-os-docs/docs" docs/os
+
+          # The mirrored docs link to files outside their folder with ../ relative paths;
+          # rewrite the ones that resolve above the mirror to absolute GitHub links at
+          # the same commit. ../ links that stay inside the mirror (e.g. luckfox/*.md ->
+          # ../hwrng.md) keep working as site-relative links.
+          OS_BLOB="$OS_BLOB" python3 - <<'PY'
+          import os, pathlib, re
+          base = os.environ["OS_BLOB"]
+          pat = re.compile(r"\]\((\.\.?/[^)#]*)(#[^)]*)?\)")
+          root = pathlib.Path("docs/os")        # mirror of seedsigner-os/docs/
+          outer = root.parent                   # resolve ../ paths as if inside the OS repo
+          for md in root.rglob("*.md"):
+              def repl(m):
+                  # resolved relative to the OS repo root: "opt/x" = OS file,
+                  # "os/x" = a file inside the mirrored section.
+                  resolved = os.path.normpath(os.path.join(md.parent.relative_to(outer), m.group(1)))
+                  if resolved == root.name or str(resolved).startswith(root.name + os.sep):
+                      return m.group(0)  # stays inside the mirrored section
+                  return "](%s/%s%s)" % (base, resolved, m.group(2) or "")
+              md.write_text(pat.sub(repl, md.read_text(encoding="utf-8")), encoding="utf-8")
+          PY
+
+          echo "Mirrored seedsigner-os docs at $OS_SHA:"
+          find docs/os -name '*.md' | sort
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
       - name: Build with Jekyll
