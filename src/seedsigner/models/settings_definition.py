@@ -468,6 +468,18 @@ class SettingsConstants:
         (MICROSD_TOAST_TIMER_FOREVER, _mft("Until SD removed"))
     ]
 
+    # Chess is off, offered under Tools, or also the screen the device starts on
+    # (the wallet then opens with a button combination; see chess_views).
+    CHESS__TOOLS = OPTION__ENABLED
+    CHESS__START = "S"
+    ALL_CHESS_OPTIONS = [
+        (OPTION__DISABLED, _mft("Disabled")),
+        # TRANSLATOR_NOTE: Chess setting - Chess is offered in the Tools menu
+        (CHESS__TOOLS, _mft("In Tools")),
+        # TRANSLATOR_NOTE: Chess setting - the device starts in the chess game instead of Home
+        (CHESS__START, _mft("Start in chess")),
+    ]
+
     WORDLIST_LANGUAGE__ENGLISH = "en"
     WORDLIST_LANGUAGE__CHINESE_SIMPLIFIED = "zh_Hans_CN"
     WORDLIST_LANGUAGE__CHINESE_TRADITIONAL = "zh_Hant_TW"
@@ -522,6 +534,7 @@ class SettingsConstants:
     SETTING__COMPACT_SEEDQR = "compact_seedqr"
     SETTING__BIP85_CHILD_SEEDS = "bip85_child_seeds"
     SETTING__SLIP39_SEEDS = "slip39_seeds"
+    SETTING__CHESS = "chess"
     SETTING__AEZEED_SEEDS = "aezeed_seeds"
     SETTING__SLIP39_EXTENDABLE = "slip39_extendable"
     SETTING__ELECTRUM_SEEDS = "electrum_seeds"
@@ -1316,6 +1329,15 @@ class SettingsDefinition:
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       selection_options=SettingsConstants.ALL_KEYCARD_TIMEOUTS,
                       default_value=SettingsConstants.DEFAULT_KEYCARD_TIMEOUT),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__CHESS,
+                      abbreviated_name="chess",
+                      display_name=_mft("Chess"),
+                      type=SettingsConstants.TYPE__SELECT_1,
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      selection_options=SettingsConstants.ALL_CHESS_OPTIONS,
+                      default_value=SettingsConstants.OPTION__DISABLED),
 
 
         # Hardware config

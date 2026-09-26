@@ -229,6 +229,33 @@ class Destination:
 
 
 
+def clear_boot_failover():
+    """
+    Reaching Home (or, when the device starts in chess, the game) is the
+    "healthy enough" signal for the Luckfox U-Boot boot-counter failover, which
+    runs once per boot. That counter is memory-backed (CONFIG_SYS_BOOTCOUNT_ADDR
+    = Rockchip GRF OS_REG scratch register 0xFF020218), so clearing it via
+    devmem writes no flash. This address is meaningless outside Rockchip's
+    memory map — on the La Frite (Amlogic S805X) it lands on live MMIO register
+    space and hangs the whole board, not just the app, the first time Home is
+    reached each boot. Must stay gated to Luckfox boards.
+    """
+    from seedsigner.controller import Controller
+    controller = Controller.get_instance()
+    if (
+        Settings.is_seedsigner_os()
+        and Settings.RUNTIME_PROFILE in PowerOptionsView.LUCKFOX_PROFILES
+        and not getattr(controller, "boot_failover_cleared", False)
+    ):
+        controller.boot_failover_cleared = True
+        try:
+            from subprocess import run as _run, DEVNULL as _DEVNULL
+            _run(["devmem", "0xFF020218", "32", "0"], stdout=_DEVNULL, stderr=_DEVNULL, check=False)
+        except Exception:
+            logger.debug("boot-counter clear skipped", exc_info=True)
+
+
+
 #########################################################################################
 #
 # Root level Views don't have a sub-module home so they live at the top level here.
@@ -262,24 +289,7 @@ class MainMenuView(View):
 
             signal_app_alive()
 
-            # Reaching Home is the "healthy enough" signal for the Luckfox U-Boot
-            # boot-counter failover, which runs once per boot. That counter is
-            # memory-backed (CONFIG_SYS_BOOTCOUNT_ADDR = Rockchip GRF OS_REG
-            # scratch register 0xFF020218), so clearing it via devmem writes no
-            # flash. This address is meaningless outside Rockchip's memory map —
-            # on the La Frite (Amlogic S805X) it lands on live MMIO register
-            # space and hangs the whole board, not just the app, the first time
-            # Home is reached each boot. Must stay gated to Luckfox boards.
-            if (
-                Settings.RUNTIME_PROFILE in PowerOptionsView.LUCKFOX_PROFILES
-                and not getattr(controller, "boot_failover_cleared", False)
-            ):
-                controller.boot_failover_cleared = True
-                try:
-                    from subprocess import run as _run, DEVNULL as _DEVNULL
-                    _run(["devmem", "0xFF020218", "32", "0"], stdout=_DEVNULL, stderr=_DEVNULL, check=False)
-                except Exception:
-                    logger.debug("boot-counter clear skipped", exc_info=True)
+        clear_boot_failover()
 
         controller.storage.discard_pending_slip39_shares()
         # Reaching Home ends any signing session: drop the cached BIP85
