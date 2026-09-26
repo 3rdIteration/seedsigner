@@ -21,4 +21,6 @@ jcardsim.jar
 settings.json
 /microsd
 build/
+# SeedSigner OS docs mirrored into the Pages site at build time (docs-pages.yml)
+docs/os/
 *.FCBak
