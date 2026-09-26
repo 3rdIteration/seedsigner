@@ -188,6 +188,7 @@ class TestMenuNavigationFlows(FlowTest):
             (SettingsConstants.SETTING__BIP85_CHILD_SEEDS,  SettingsConstants.OPTION__ENABLED),
             (SettingsConstants.SETTING__MESSAGE_SIGNING,    SettingsConstants.OPTION__ENABLED),
             (SettingsConstants.SETTING__PLAINTEXTQR,        SettingsConstants.OPTION__ENABLED),
+            (SettingsConstants.SETTING__CHESS,              SettingsConstants.OPTION__ENABLED),
         ]:
             self.settings.set_value(setting, value)
 
@@ -1265,6 +1266,38 @@ class TestMenuNavigationFlows(FlowTest):
     # ======================================================================
     #  CONDITIONAL GATING
     # ======================================================================
+
+    def _use_display(self, config):
+        self.settings.set_value(SettingsConstants.SETTING__DISPLAY_CONFIGURATION, config)
+
+    def test_chess_disabled(self):
+        """Chess is *hidden* in Tools while its setting is off (the default)."""
+        self._use_display(SettingsConstants.DISPLAY_CONFIGURATION__ST7789__320x240)
+        self.settings.set_value(SettingsConstants.SETTING__CHESS, SettingsConstants.OPTION__DISABLED)
+        assert tools_views.ToolsMenuView.CHESS not in self._capture_tools_button_data()
+
+    def test_chess_enabled(self):
+        """Chess is *visible* in Tools once its setting is on, on a 320x240 display."""
+        self._use_display(SettingsConstants.DISPLAY_CONFIGURATION__ST7789__320x240)
+        self.settings.set_value(SettingsConstants.SETTING__CHESS, SettingsConstants.OPTION__ENABLED)
+        assert tools_views.ToolsMenuView.CHESS in self._capture_tools_button_data()
+
+    def test_chess_hidden_on_a_240x240_display(self):
+        """The board is too small to play on 240x240, so Chess stays hidden even when on."""
+        self._use_display(SettingsConstants.DISPLAY_CONFIGURATION__ST7789__240x240)
+        self.settings.set_value(SettingsConstants.SETTING__CHESS, SettingsConstants.OPTION__ENABLED)
+        assert tools_views.ToolsMenuView.CHESS not in self._capture_tools_button_data()
+
+    def test_tools_chess(self):
+        """Tools -> Chess reaches the chess menu (a lazy import), and BACK returns to Tools."""
+        from seedsigner.views import chess_views
+        self._use_display(SettingsConstants.DISPLAY_CONFIGURATION__ST7789__320x240)
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.CHESS),
+            FlowStep(chess_views.ChessMenuView, screen_return_value=RET_CODE__BACK_BUTTON),
+            FlowStep(tools_views.ToolsMenuView),
+        ])
 
     def test_slip39_seeds_disabled(self):
         """SLIP39 menu items should be *hidden* when the setting is OFF."""

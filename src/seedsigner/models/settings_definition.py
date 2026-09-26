@@ -522,6 +522,7 @@ class SettingsConstants:
     SETTING__COMPACT_SEEDQR = "compact_seedqr"
     SETTING__BIP85_CHILD_SEEDS = "bip85_child_seeds"
     SETTING__SLIP39_SEEDS = "slip39_seeds"
+    SETTING__CHESS = "chess"
     SETTING__AEZEED_SEEDS = "aezeed_seeds"
     SETTING__SLIP39_EXTENDABLE = "slip39_extendable"
     SETTING__ELECTRUM_SEEDS = "electrum_seeds"
@@ -1316,6 +1317,13 @@ class SettingsDefinition:
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       selection_options=SettingsConstants.ALL_KEYCARD_TIMEOUTS,
                       default_value=SettingsConstants.DEFAULT_KEYCARD_TIMEOUT),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__CHESS,
+                      abbreviated_name="chess",
+                      display_name=_mft("Chess"),
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      default_value=SettingsConstants.OPTION__DISABLED),
 
 
         # Hardware config
