@@ -67,3 +67,25 @@ quick start below.
 - [Desktop simulation](./desktop_simulation.md)
 - [Developer tips](./developer_tips.md)
 - [Code structure](./code_structure.md)
+
+## SeedSigner OS documentation
+
+The operating system that runs on SeedSigner devices lives in the separate
+[seedsigner-os](https://github.com/3rdIteration/seedsigner-os) repository. Its docs are
+mirrored into this site at build time, pinned to the same OS commit this release is built
+against. They cover how OS images are built, verified and hardened — useful for users
+flashing or reproducing official images, and for OS development as a secondary focus.
+
+- [Building an SD card image](./os/building.md) — reproducible-build quickstart and board configs
+- [Build profiles](./os/build_profiles.md) — dev vs non-dev and smartcard profiles
+- [Reproducibility](./os/reproducibility.md) — verifying a build matches the published image
+- [DIY tools](./os/diy_tools.md)
+- [Hardware RNG (hwrng)](./os/hwrng.md) — how hardware entropy reaches the app
+- [Repository structure](./os/structure.md)
+- [Development workflow](./os/dev_workflow.md) — faster docker cycles, dev configs, SSH
+- [Building without Docker](./os/without_docker.md)
+- [Customizing Buildroot](./os/customize_buildroot.md)
+- [Luckfox Pico build & development](./os/luckfox/README.md) — including
+  [secure boot](./os/luckfox/secure-boot.md),
+  [verifying a release](./os/luckfox/verifying-a-release.md) and
+  [airgapped signing](./os/luckfox/airgapped-signing.md)
