@@ -277,6 +277,9 @@ class TestSecretWiping(BaseTest):
             "roll_data": "1234512345",
             "entropy_bytes": b"\x00\x01\x02\x03",
         }
+        # The card flow keeps the account xpub it built the parser from; that is
+        # wallet data and has no business outliving the wipe either.
+        controller.psbt_card_keys = {"root": object(), "root_path": [0], "master_fingerprint": b"\x00" * 4}
         toasts = []
         import seedsigner.gui.toast as gui_toast
         monkeypatch.setattr(controller, "activate_toast", lambda toast: toasts.append(toast))
@@ -288,5 +291,6 @@ class TestSecretWiping(BaseTest):
         assert controller.storage.seeds == []
         assert controller.password_generator_entropy_cache is None
         assert controller.psbt_seed is None
+        assert controller.psbt_card_keys is None
         assert controller.auto_wiped is True
         assert len(toasts) == 1

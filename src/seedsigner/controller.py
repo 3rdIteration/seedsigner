@@ -238,7 +238,10 @@ class Controller(Singleton):
     # TODO: Refactor these flow-related attrs that survive across multiple Screens.
     # TODO: Should all in-memory flow-related attrs get wiped on MainMenuView?
     psbt: PSBT = None
-    psbt_seed: Seed = None
+    # Behind the psbt_seed property. Tests patch this field, not the
+    # property: patch.object undoes a property patch by deleting it, and
+    # a property with no deleter refuses.
+    _psbt_seed: Seed = None
     psbt_parser: PSBTParser = None
     psbt_sign_with_satochip: bool = False
     psbt_from_microsd: bool = False
@@ -290,6 +293,40 @@ class Controller(Singleton):
     satodime_slot_cache: dict | None = None
     GPG_Admin_PIN = None
     javacard_keys: dict | None = None
+
+    # What the card flow's PSBTParser was built from (root, root_path,
+    # master_fingerprint). The card holds the key, so there is no seed to
+    # rebuild a parser from later. An empty dict means the parser was built
+    # without key material on purpose -- the multisig card flow, which reviews
+    # against a descriptor. None means no card flow is in progress.
+    psbt_card_keys: dict | None = None
+
+
+    @property
+    def psbt_seed(self) -> Seed:
+        return self._psbt_seed
+
+
+    @psbt_seed.setter
+    def psbt_seed(self, seed: Seed):
+        """
+        Storing a seed to sign with ends any card flow that was in progress.
+
+        Every view that picks a signer stores it here: the stored-seed list, a
+        scanned or typed seed, WIF and BIP38 keys and a Satodime slot among
+        them. Clearing the card flag in each of those views is a line the next
+        one added will miss -- and missing it signs with the card the user
+        navigated away from, or with a card that is no longer in the reader.
+        The flag has no meaning once a seed is chosen, so it is cleared where
+        the seed lands.
+
+        Clearing the seed is not choosing one: the card flow itself sets
+        psbt_seed = None on its way in, and must keep its own state.
+        """
+        self._psbt_seed = seed
+        if seed is not None:
+            self.psbt_sign_with_satochip = False
+            self.psbt_card_keys = None
 
     # Destination placeholder for when we need to jump out to a side flow but intend to
     # return navigation to the main flow (e.g. PSBT flow, load multisig descriptor,
@@ -387,13 +424,7 @@ class Controller(Singleton):
             controller.battery_hat.start()
 
         # Store one working psbt in memory
-        controller.psbt = None
-        controller.psbt_parser = None
-        controller.psbt_sign_with_satochip = False
-        controller.psbt_from_microsd = False
-        controller.psbt_microsd_save_path = None
-        controller.psbt_microsd_seed_warning_shown = False
-        controller.psbt_source_time = None
+        controller.reset_psbt_flow_state()
         controller.sign_message_with_satochip = False
 
         # Configure the Renderer
@@ -579,10 +610,7 @@ class Controller(Singleton):
                     # self.multisig_wallet_descriptor = None
                     self.unverified_address = None
                     self.address_explorer_data = None
-                    self.psbt = None
-                    self.psbt_parser = None
-                    self.psbt_seed = None
-                    self.psbt_sign_with_satochip = False
+                    self.reset_psbt_flow_state()
                     self.sign_message_with_satochip = False
 
                     # Clear camera entropy data so it cannot be used to
@@ -777,6 +805,31 @@ class Controller(Singleton):
         self.toast_notification_thread.start()
 
 
+    def reset_psbt_flow_state(self):
+        """
+        Drop everything the psbt signing flow accumulated.
+
+        Home, the inactivity wipe and start-up each used to clear their own
+        subset of this list, so state added later reached only some of them:
+        the card's account xpub and the raised retry timeout both outlived
+        Home and the wipe. The xpub of a card the user had walked away from
+        stayed in memory, and the next psbt began with another transaction's
+        timeout. One list, called from all three.
+        """
+        self.psbt = None
+        self.psbt_parser = None
+        self.psbt_seed = None
+        self.psbt_sign_with_satochip = False
+        self.psbt_card_keys = None
+        self.psbt_from_microsd = False
+        self.psbt_microsd_save_path = None
+        self.psbt_microsd_seed_warning_shown = False
+        self.psbt_source_time = None
+        # Set by the "Retry (higher timeout)" path in psbt_views.
+        if hasattr(self, "_psbt_sign_retry_timeout"):
+            del self._psbt_sign_retry_timeout
+
+
     def handle_wipe_timeout(self):
         from seedsigner.gui.toast import InfoToast
         from seedsigner.views import MainMenuView
@@ -801,10 +854,7 @@ class Controller(Singleton):
         # survive the inactivity wipe either.
         self.password_generator_entropy_cache = None
 
-        self.psbt = None
-        self.psbt_parser = None
-        self.psbt_seed = None
-        self.psbt_sign_with_satochip = False
+        self.reset_psbt_flow_state()
         self.sign_message_with_satochip = False
         self.multisig_wallet_descriptor = None
         self.unverified_address = None

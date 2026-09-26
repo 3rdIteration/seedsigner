@@ -325,6 +325,17 @@ class PSBTParser():
         self.verified_input_derivation_paths: List[List[int] | None] = []
         self.verified_output_derivation_paths: List[List[int] | None] = []
 
+        # With no BIP32 tree, the derivation the loaded descriptor matched on each
+        # output it identified as change, keyed by output index. It stands in for
+        # the seed's verified path: the change screen reads it, and every other
+        # entry on the output is held to it. See _parse_outputs.
+        self.descriptor_output_derivation_paths: dict[int, List[int]] = {}
+
+        # Whether a successful parse has run. Constructing without key material
+        # leaves every total at zero, which reads exactly like a transaction that
+        # moves nothing -- see PSBTOverviewView, which has to finish the job.
+        self.parsed: bool = False
+
         if self.seed is not None or self.root is not None:
             self.parse()
 
@@ -489,6 +500,7 @@ class PSBTParser():
         # one reported.
         self._reject_inconsistent_fingerprints(child_key_derivation_cache)
 
+        self.parsed = True
         return True
 
 
@@ -1084,29 +1096,63 @@ class PSBTParser():
         return True
 
 
+    def _change_derivations_to_check(self, index: int, out: OutputScope) -> list[list[int]]:
+        """
+        The derivations on a change output that the binding checks apply to.
+
+        Only this seed's own path decides whether our change is reachable: the
+        prefixes it is measured against were gathered from the inputs this seed
+        owns, and a cosigner's path was never a candidate to match them. A
+        multisig whose cosigners keep the wallet at different account indices --
+        m/48h/0h/0h/2h here, m/48h/0h/1h/2h there, routine across vendors -- is
+        perfectly ordinary, and judging our change by their prefix refused it
+        outright, leaving the psbt unsignable.
+
+        What a cosigner's path still has to do is agree with ours on the last two
+        levels. A multisig address is built from every cosigner's key at once, so
+        the wallet only reproduces it by scanning all of them at the same branch
+        and index; a cosigner moved to 1/9999 while we sit at 1/0 yields an
+        address that no member's change scan will ever generate, and the funds are
+        gone even though our own path reads as ordinary. The account prefix above
+        those two levels is each cosigner's own business -- that is the part this
+        fixes -- but the branch and index are shared or the output is unreachable.
+
+        So this narrows what is checked, never what is required: our own path is
+        still measured against the inputs, and every other path on the output is
+        still held to ours. With no BIP32 tree, ours is the path the loaded
+        descriptor matched. Where neither could be established, every derivation
+        is checked against the inputs, exactly as before.
+        """
+        derivations = self._scope_derivations(out)
+        if self.can_verify_derivations:
+            own_derivation = (
+                self.verified_output_derivation_paths[index]
+                if index < len(self.verified_output_derivation_paths)
+                else None
+            )
+        else:
+            own_derivation = self.descriptor_output_derivation_paths.get(index)
+        if not own_derivation:
+            return derivations
+
+        suffix = list(own_derivation[-2:])
+        for derivation in derivations:
+            if list(derivation[-2:]) != suffix:
+                raise InvalidPSBTError(
+                    f"Change path {bip32.path_to_str(list(derivation))} does not "
+                    f"share this wallet's change index.",
+                    code=RejectCode.UNREACHABLE_CHANGE_PATH,
+                )
+
+        return [own_derivation]
+
+
     @staticmethod
     def _scope_derivations(scope: InputScope | OutputScope) -> list[list[int]]:
         """Every claimed bip32 derivation on a scope, taproot and non-taproot alike."""
         derivations = [d.derivation for d in scope.bip32_derivations.values()]
         derivations += [d.derivation for _, d in scope.taproot_bip32_derivations.values()]
         return derivations
-
-
-    @staticmethod
-    def _first_claimed_derivation_path(scope: InputScope | OutputScope) -> list[int] | None:
-        """
-        The first coordinator-claimed derivation path on a scope, or None.
-
-        Only used when there is no BIP32 tree to verify against (the seedless
-        multisig pre-parse), where the change_data has to carry some path for the
-        view to display and the descriptor check is what ultimately verifies the
-        output.
-        """
-        for derivation_path_obj in scope.bip32_derivations.values():
-            return list(derivation_path_obj.derivation)
-        for _leaf_hashes, derivation_path_obj in scope.taproot_bip32_derivations.values():
-            return list(derivation_path_obj.derivation)
-        return None
 
 
     @staticmethod
@@ -1417,11 +1463,53 @@ class PSBTParser():
                             # Seedless pre-parse (the smartcard multisig flow) or
                             # WIF/BIP38 signing: there is no BIP32 tree to prove this
                             # seed's participation with. The rebuilt script already
-                            # matched the output's scriptPubKey, so the output is taken
-                            # as change provisionally, exactly as the fork classified it
-                            # before ownership proofs were added. The descriptor check in
-                            # PSBTChangeDetailsView is what verifies it.
+                            # matched the output's scriptPubKey, so the output is a
+                            # candidate for change, and no more than that.
                             is_presumed_change = True
+
+                            if self.root is not None and not PSBTParser._multisig_script_contains_key(multisig_script, self.root.get_public_key()):
+                                # WIF / BIP38 has no tree, but it does hold one key, and
+                                # that key either is a cosigner of this script or is
+                                # not. Nothing has to be derived to answer it, so it is
+                                # answered: a multisig this key cannot sign for is a
+                                # payment, however standard its shape.
+                                is_presumed_change = False
+
+                            if is_presumed_change:
+                                # Nothing derivable ties the script's other keys to the
+                                # inputs' wallet. Any cosigners the psbt's global xpubs
+                                # resolve are the word of whoever wrote the psbt, and a
+                                # different wallet sharing our key -- the same m-of-n
+                                # with one cosigner swapped for an attacker's -- looks
+                                # identical; in a 1-of-2 it is one the attacker alone
+                                # can spend. So it stays a payment unless the known-good
+                                # descriptor the user loaded identifies it, which is the
+                                # whole point of the card's multisig flow;
+                                # PSBTIdentifyChangeView offers to load one.
+                                descriptor_paths = (
+                                    self._descriptor_derivations(self.multisig_descriptor, i)
+                                    if self.multisig_descriptor is not None
+                                    else []
+                                )
+                                if not descriptor_paths:
+                                    is_presumed_change = False
+                                    self.unidentified_change_outputs.append(i)
+                                else:
+                                    # The descriptor stands in for the seed, so the
+                                    # output answers to what a seeded parse asks once
+                                    # it finds our key: no more entries than the
+                                    # script has keys, and every entry on the branch
+                                    # and index of the path the descriptor matched
+                                    # (see _change_derivations_to_check). That path
+                                    # is also the one shown. The first entry listed
+                                    # may name none of the descriptor's keys, and so
+                                    # was never checked.
+                                    if len(out.bip32_derivations) > self.policy["n"]:
+                                        raise InvalidPSBTError(
+                                            f"Output {i} claims more keys than its script uses.",
+                                            code=RejectCode.SURPLUS_DERIVATIONS,
+                                        )
+                                    self.descriptor_output_derivation_paths[i] = descriptor_paths[0]
 
                         elif verified_derivation_path is None:
                             # No entry claimed this seed's fingerprint, but we already
@@ -1546,7 +1634,7 @@ class PSBTParser():
                 # output "your change" while the funds land somewhere the wallet
                 # can never find them. Refuse rather than relabel -- a psbt that
                 # tried to deceive the display should not be signed at all.
-                derivations = self._scope_derivations(out)
+                derivations = self._change_derivations_to_check(i, out)
                 unreachable = [
                     d for d in derivations
                     if not PSBTParser.is_reachable_derivation(
@@ -1600,12 +1688,11 @@ class PSBTParser():
                 # receive.
                 addr = vout[i].script_pubkey.address(NETWORKS[SettingsConstants.map_network_to_embit(self.network)])
                 # With no BIP32 tree to verify against (the seedless multisig
-                # pre-parse), fall back to the coordinator's claimed path so the
-                # view has something to display; the descriptor check verifies it.
+                # flow, WIF/BIP38), the path the loaded descriptor matched.
                 verified_path = (
                     self.verified_output_derivation_paths[i]
                     if self.can_verify_derivations
-                    else PSBTParser._first_claimed_derivation_path(out)
+                    else self.descriptor_output_derivation_paths.get(i)
                 )
                 self.change_data.append({
                     "output_index": i,
@@ -1890,10 +1977,20 @@ class PSBTParser():
         that output's cosigners fail to resolve, and the output then stops matching the
         inputs' policy. Shape comes from the scriptPubKey and the supplied script, and the
         caller proves ownership rather than assuming it.
+
+        A script-hash policy with no m-of-n has no shape to compare: its script was not
+        supplied, or is not a multisig, and _get_policy recorded only the type. Two such
+        policies would match however different their scripts, and the caller can only
+        prove ownership of an m-of-n. A key's bytes appearing in the script is no proof:
+        `<our key> OP_DROP <their key> OP_CHECKSIG` pushes our key only to throw it away.
+        So such a policy matches nothing, and the output is an external spend.
         """
         for field in ("type", "m", "n"):
             if policy_a.get(field) != policy_b.get(field):
                 return False
+
+        if policy_a.get("type") in ("p2wsh", "p2sh-p2wsh", "p2sh") and "m" not in policy_a:
+            return False
 
         return True
 
@@ -2635,16 +2732,30 @@ class PSBTParser():
     def _descriptor_owns_output(self, descriptor: Descriptor, i: int) -> bool:
         """See verify_multisig_output; takes an output index rather than a change number."""
         output = self.psbt.outputs[i]
-        script_pubkey = self.psbt.tx.vout[i].script_pubkey
 
         if not output.bip32_derivations:
             # Taproot descriptors carry their claims in the taproot map instead.
             return descriptor.owns(output)
 
-        if script_pubkey.script_type() != descriptor.scriptpubkey_type():
-            return False
+        return bool(self._descriptor_derivations(descriptor, i))
 
-        matched = False
+
+    def _descriptor_derivations(self, descriptor: Descriptor, i: int) -> list[list[int]]:
+        """
+        The derivations on output i that the descriptor checked, or [] unless it owns
+        the output.
+
+        Only entries naming one of the descriptor's keys are checked, and every one of
+        them has to hold up (see verify_multisig_output). An entry naming none of its
+        keys is skipped, and so is not returned: nothing vouches for its path.
+        """
+        output = self.psbt.outputs[i]
+        script_pubkey = self.psbt.tx.vout[i].script_pubkey
+
+        if script_pubkey.script_type() != descriptor.scriptpubkey_type():
+            return []
+
+        matched = []
         for public_key, derivation_path_obj in output.bip32_derivations.items():
             res = descriptor.check_derivation(derivation_path_obj)
             if res is None:
@@ -2652,16 +2763,16 @@ class PSBTParser():
             idx, branch_idx = res
             derived = descriptor.derive(idx, branch_index=branch_idx)
             if derived.script_pubkey().data != script_pubkey.data:
-                return False
+                return []
             committed = derived.witness_script() or derived.redeem_script()
             if committed is not None:
                 if committed.script_type() == "p2wpkh":
                     # sh(wpkh): the script holds the key's hash, not the key.
                     if script.p2wpkh(public_key).data != committed.data:
-                        return False
+                        return []
                 elif public_key.sec() not in committed.data:
-                    return False
-            matched = True
+                    return []
+            matched.append(list(derivation_path_obj.derivation))
         return matched
 
 
