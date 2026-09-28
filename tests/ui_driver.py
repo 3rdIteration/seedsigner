@@ -486,6 +486,11 @@ class ScriptedHardwareButtons(MagicMock):
                 continue
             return key
 
+    def is_pressed(self, key):
+        # Script entries are single presses, so no key stays held down unless a
+        # test replaces this to simulate a hold.
+        return False
+
     def check_for_low(self, key=None, keys=None):
         if not self._polls:
             raise ScriptExhaustedError(

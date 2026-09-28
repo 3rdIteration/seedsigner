@@ -504,6 +504,10 @@ class Controller(Singleton):
         # U-Boot boot-counter clear stays at Home, where it belongs.
         signal_app_alive()
 
+        # Starting in chess shows no logo and nothing else that names the device.
+        from seedsigner.views.chess_views import starts_in_chess
+        chess_boot = starts_in_chess(Settings.get_instance())
+
         startup_error_destination = None
         if not skip_startup_interstitials:
             # Flow tests start from an expected first interactive screen (usually MainMenu).
@@ -514,7 +518,8 @@ class Controller(Singleton):
                 # error) would otherwise escape main() and crash the process. Guard
                 # them and route any error into the normal error-handling flow.
                 try:
-                    OpeningSplashView().run()
+                    if not chess_boot:
+                        OpeningSplashView().run()
                     if is_seedsigner_os_dev_build():
                         DeveloperOSWarningView().run()
                     if self.settings.get_value(SettingsConstants.SETTING__DISPLAY_CONFIGURATION).startswith("desktop"):
@@ -554,11 +559,12 @@ class Controller(Singleton):
             elif initial_destination:
                 next_destination = initial_destination
             else:
-                next_destination = Destination(MainMenuView)
+                next_destination = self.startup_destination()
             
             # Skip the "remove SD card" tip on Luckfox, where removable media
-            # handling and expected workflows differ from SeedSigner OS defaults.
-            if Settings.RUNTIME_PROFILE not in {"luckfox_22", "luckfox_40", "luckfox_pi", "desktop"}:
+            # handling and expected workflows differ from SeedSigner OS defaults,
+            # and when starting in chess, where it would name the device.
+            if not chess_boot and Settings.RUNTIME_PROFILE not in {"luckfox_22", "luckfox_40", "luckfox_pi", "desktop"}:
                 # Set up our one-time toast notification tip to remove the SD card
                 if self.settings.get_value(SettingsConstants.SETTING__MICROSD_TOAST_TIMER) == SettingsConstants.MICROSD_TOAST_TIMER_FIVE_SECONDS:
                     self.activate_toast(RemoveSDCardToastManagerThread())
@@ -721,6 +727,15 @@ class Controller(Singleton):
                 Renderer.get_instance().display_blank_screen()
             else:
                 logger.info("Exiting due to an unhandled error; leaving screen as-is")
+
+
+    def startup_destination(self) -> Destination:
+        """The first View after power-on: Home, or the game when the device starts in chess."""
+        from seedsigner.views import MainMenuView
+        from seedsigner.views.chess_views import ChessBootView, starts_in_chess
+        if starts_in_chess(Settings.get_instance()):
+            return Destination(ChessBootView)
+        return Destination(MainMenuView)
 
 
     @property

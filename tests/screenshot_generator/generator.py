@@ -52,7 +52,7 @@ from seedsigner.models.settings_definition import SettingsConstants, SettingsDef
 from seedsigner.views import (MainMenuView, PowerOptionsView, RestartView, RemoveMicroSDWarningView, NotYetImplementedView, UnhandledExceptionView, 
     psbt_views, seed_views, settings_views, tools_views, scan_views,
     smartcard_views, password_generator_views, microsd_views, gpg_views)
-from seedsigner.views import resign_views
+from seedsigner.views import chess_views, resign_views
 from seedsigner.helpers import secure_boot_tools
 from seedsigner.views.screensaver import OpeningSplashView
 from seedsigner.views.view import CameraConnectionErrorView, NetworkMismatchErrorView, OptionDisabledView, PowerOffView
@@ -477,6 +477,35 @@ def generate_screenshots(locale):
                 yield
 
         @contextmanager
+        def mock_chess_enabled():
+            # The setting is off by default; restore it so no other screenshot sees
+            # the extra Tools entry.
+            # Chess is only offered on 320x240 and larger displays.
+            attr, display = SettingsConstants.SETTING__CHESS, SettingsConstants.SETTING__DISPLAY_CONFIGURATION
+            previous = controller.settings.get_value(attr), controller.settings.get_value(display)
+            controller.settings.set_value(attr, SettingsConstants.OPTION__ENABLED)
+            controller.settings.set_value(display, SettingsConstants.DISPLAY_CONFIGURATION__ST7789__320x240)
+            try:
+                yield
+            finally:
+                controller.settings.set_value(attr, previous[0])
+                controller.settings.set_value(display, previous[1])
+
+        @contextmanager
+        def mock_chess_game_in_progress():
+            from seedsigner.helpers.chess.board import Board, square_index
+            from seedsigner.helpers.chess.game import ChessGame
+            # An Italian opening, White to move, the knight on f3 picked up.
+            game = ChessGame(human="w", board=Board("r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 2 3"))
+            game.last_move = (square_index("b8"), square_index("c6"), "")
+            game.cursor = square_index("f3")
+            chess_views.set_game(game)
+            try:
+                yield
+            finally:
+                chess_views.set_game(None)
+
+        @contextmanager
         def mock_luckfox_build_tools_enabled():
             # Both gates open: the setting (default off) and the OS-provided tools
             # (absent on a desktop / CI). Restore the setting afterwards so no other
@@ -708,6 +737,15 @@ def generate_screenshots(locale):
                 ScreenshotConfig(tools_views.ToolsTextQRTextEntryView, dict(initial_keyboard=ToolsTextQRTextEntryScreen.KEYBOARD__DIGITS_BUTTON_TEXT),    screenshot_name="ToolsTextQRTextEntryView_digits"),
                 ScreenshotConfig(tools_views.ToolsTextQRTextEntryView, dict(initial_keyboard=ToolsTextQRTextEntryScreen.KEYBOARD__SYMBOLS_1_BUTTON_TEXT), screenshot_name="ToolsTextQRTextEntryView_symbols_1"),
                 ScreenshotConfig(tools_views.ToolsTextQRTextEntryView, dict(initial_keyboard=ToolsTextQRTextEntryScreen.KEYBOARD__SYMBOLS_2_BUTTON_TEXT), screenshot_name="ToolsTextQRTextEntryView_symbols_2"),
+            ],
+            "Chess Views": [
+                ScreenshotConfig(tools_views.ToolsMenuView, screenshot_name="ToolsMenuView_chess", mock_context_manager=mock_chess_enabled),
+                ScreenshotConfig(chess_views.ChessMenuView, mock_context_manager=mock_chess_game_in_progress),
+                ScreenshotConfig(chess_views.ChessNewGameView),
+                ScreenshotConfig(chess_views.ChessLevelView, dict(human="w")),
+                ScreenshotConfig(chess_views.ChessGameView, mock_context_manager=mock_chess_game_in_progress),
+                ScreenshotConfig(chess_views.ChessGameMenuView, mock_context_manager=mock_chess_game_in_progress),
+                ScreenshotConfig(chess_views.ChessResultView, dict(text="Checkmate. You win!")),
             ],
             "Luckfox Build Tools Views": [
                 ScreenshotConfig(tools_views.ToolsMenuView, screenshot_name="ToolsMenuView_luckfox_build_tools", mock_context_manager=mock_luckfox_build_tools_enabled),

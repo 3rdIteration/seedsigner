@@ -369,12 +369,15 @@ class ToolsMenuView(View):
     LUCKFOX_BUILD_TOOLS = ButtonOption("Luckfox Build Tools")
     CLEAR_DESCRIPTOR = ButtonOption("Clear Multisig Descriptor")
     NETWORK_INFO = ButtonOption("Network Info")
+    CHESS = ButtonOption("Chess", FontAwesomeIconConstants.CHESS)
 
     def __init__(self, include_password_generator: bool = True):
         super().__init__()
         self.include_password_generator = include_password_generator
 
     def run(self):
+        from seedsigner.views.chess_views import chess_available
+
         button_data = [self.IMAGE, self.DICE]
 
         if getattr(self, "include_password_generator", True):
@@ -411,6 +414,7 @@ class ToolsMenuView(View):
             self.NETWORK_INFO if Path("/usr/bin/network-info").is_file() else None,
             self.GPG,
             self.CLEAR_DESCRIPTOR,
+            self.CHESS if chess_available(self.settings) else None,
         ])
         button_data = [button for button in button_data if button is not None]
 
@@ -463,6 +467,10 @@ class ToolsMenuView(View):
         
         elif button_data[selected_menu_num] == self.MICROSD:
             return Destination(ToolsMicroSDMenuView)
+
+        elif button_data[selected_menu_num] == self.CHESS:
+            from seedsigner.views.chess_views import ChessMenuView
+            return Destination(ChessMenuView)
 
         elif button_data[selected_menu_num] == self.BATTERY_CALIBRATION:
             return Destination(ToolsBatteryCalibrationView)
