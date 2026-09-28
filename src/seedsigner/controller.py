@@ -12,6 +12,7 @@ from embit.psbt import PSBT
 from PIL.Image import Image
 
 from seedsigner.gui.toast import BaseToastOverlayManagerThread
+from seedsigner.helpers.secure_delete import wipe_dict, wipe_private_key, wipe_value
 from seedsigner.models.psbt_parser import PSBTParser
 from seedsigner.models.seed import Seed
 from seedsigner.models.seed_storage import SeedStorage
@@ -20,6 +21,7 @@ from seedsigner.models.settings import Settings
 from seedsigner.models.settings import SettingsConstants
 from seedsigner.models.singleton import Singleton
 from seedsigner.models.threads import BaseThread
+from seedsigner.models.wif import WIFKey
 from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.views.screensaver import ScreensaverScreen
 from seedsigner.views.view import Destination, View
@@ -135,13 +137,23 @@ class WipeTimerThread(BaseThread):
         controller = Controller.get_instance()
         buttons = HardwareButtons.get_instance()
         while self.keep_running:
-            wipe_minutes = controller.settings.get_value(SettingsConstants.SETTING__WIPE_TIMER)
-            if wipe_minutes and wipe_minutes != SettingsConstants.WIPE_TIMER__DISABLED:
-                controller.wipe_timer_ms = wipe_minutes * 60 * 1000
-                cur = int(time.time() * 1000)
-                if controller.wipe_timer_ms and cur - buttons.last_input_time > controller.wipe_timer_ms:
-                    controller.handle_wipe_timeout()
-                    buttons.update_last_input_time()
+            # This thread is the only thing that runs the inactivity wipe. An
+            # exception that ended it would turn the wipe off, without a word,
+            # for the rest of the session.
+            try:
+                wipe_minutes = controller.settings.get_value(SettingsConstants.SETTING__WIPE_TIMER)
+                if wipe_minutes and wipe_minutes != SettingsConstants.WIPE_TIMER__DISABLED:
+                    controller.wipe_timer_ms = wipe_minutes * 60 * 1000
+                    cur = int(time.time() * 1000)
+                    if controller.wipe_timer_ms and cur - buttons.last_input_time > controller.wipe_timer_ms:
+                        try:
+                            controller.handle_wipe_timeout()
+                        finally:
+                            # A failed wipe is retried after the next full
+                            # interval, not every second.
+                            buttons.update_last_input_time()
+            except Exception:
+                logger.exception("Inactivity wipe failed; the timer keeps running")
             time.sleep(1)
 
 
@@ -573,6 +585,10 @@ class Controller(Singleton):
                 if next_destination.View_cls == MainMenuView:
                     # Home always wipes the back_stack
                     self.clear_back_stack()
+
+                    # A WIF or BIP38 key never enters SeedStorage: once the
+                    # psbt state below drops it, nothing else can zero it.
+                    self.wipe_psbt_wif_keys()
                     
                     # Home always wipes the back_stack/state of temp vars
                     self.resume_main_flow = None
@@ -793,12 +809,69 @@ class Controller(Singleton):
             except Exception:
                 logger.debug("Error wiping seed on auto-wipe", exc_info=True)
         self.storage.seeds = []
-        self.storage.clear_pending_seed()
+        # A half-finished seed entry keeps its words in SeedStorage rather than
+        # in a Seed, so those buffers need clearing too. Each clear is looked up
+        # and called on its own: whatever one of them does, the wipe still has
+        # to finish.
+        for clear_buffer in ("clear_pending_seed", "discard_pending_mnemonic",
+                             "discard_pending_slip39_shares"):
+            clear = getattr(self.storage, clear_buffer, None)
+            if clear is None:
+                logger.warning("Storage has no %s; those buffers stay", clear_buffer)
+                continue
+            try:
+                clear()
+            except Exception:
+                logger.debug("Error in %s on auto-wipe", clear_buffer, exc_info=True)
         if self._storage2:
+            # The key typed or scanned to decrypt an EncryptedQR.
+            encryptedqr = self._storage2.encryptedqr
+            self._wipe_step("the EncryptedQR key", wipe_value,
+                            getattr(encryptedqr, "encryption_key", None))
             self._storage2.clear_encryptedqr()
 
+        # psbt_seed can hold a WIFKey, which never enters storage.seeds and so
+        # is missed by the loop above. The parser can hold one that psbt_seed
+        # has already let go of: Back from the overview and a signature that
+        # did not verify both clear psbt_seed alone. Wiped here, before
+        # anything below lets go of the references.
+        parser = self.psbt_parser
+        signers = [self.psbt_seed]
+        parser_seed = getattr(parser, "seed", None)
+        if parser_seed is not self.psbt_seed:
+            signers.append(parser_seed)
+        for signer in signers:
+            if signer is None:
+                continue
+            try:
+                signer.wipe()
+            except Exception:
+                logger.debug("Error wiping a psbt signer on auto-wipe", exc_info=True)
+
+        # The parser also keeps a root key of its own. From a BIP-39 seed it is
+        # a new HDKey, which wiping the seed does not reach. Zeroed here only:
+        # an XprvSeed hands the parser its own root, and a route that keeps
+        # the seed, such as Home, must leave that intact.
+        if parser is not None:
+            self._wipe_step("the psbt parser's root key", wipe_private_key,
+                            getattr(parser, "root", None))
+
+        # GlobalPlatform card master keys: plaintext ENC/MAC/DEK that can
+        # re-key or unlock a JavaCard, so they cannot outlive the session.
+        # Only the keys are secret; the "type" tag is a code constant.
+        self._wipe_step("the JavaCard keys", wipe_dict, self.javacard_keys,
+                        ("key", "enc", "mac", "dek"))
+        self.javacard_keys = None
+
+        self._wipe_step("the smartcard session secrets",
+                        self._wipe_smartcard_session_secrets)
+
         # Raw password-generator entropy (dice rolls / BIP85 bytes) must not
-        # survive the inactivity wipe either.
+        # survive the inactivity wipe either. The password type and entropy
+        # source next to it are code constants, not secrets.
+        self._wipe_step("the password entropy", wipe_dict,
+                        self.password_generator_entropy_cache,
+                        ("roll_data", "entropy_bytes"))
         self.password_generator_entropy_cache = None
 
         self.psbt = None
@@ -832,6 +905,55 @@ class Controller(Singleton):
 
         # Ensure any running screens break out of wait loops
         HardwareButtons.get_instance().trigger_override()
+
+
+    @staticmethod
+    def _wipe_step(what: str, wipe, *args) -> None:
+        """Run one zeroing step of the inactivity wipe, logging a failure.
+
+        Every secret has to be zeroed even when zeroing another one fails, so
+        no step may raise into the ones after it.
+        """
+        try:
+            wipe(*args)
+        except Exception:
+            logger.debug("Error wiping %s on auto-wipe", what, exc_info=True)
+
+
+    def _wipe_smartcard_session_secrets(self):
+        """Zero the smartcard session secrets where they are held.
+
+        The card PINs and the Satodime unlock secrets are lists of ints, and
+        the OpenPGP admin PIN is a str. Setting the attributes to None only
+        drops the references. The connector's own copy of the PIN goes back
+        to None rather than an empty list: pysatochip reuses a cached PIN
+        that is not None, and an empty one would cost a PIN try.
+        """
+        connector = self.Satochip_Connector
+        for secret in (self.Satochip_PIN, getattr(connector, "pin", None), self.GPG_Admin_PIN):
+            wipe_value(secret)
+        for secret in (self.Satodime_unlock_secrets or {}).values():
+            wipe_value(secret)
+        for _card_id, secret in (self.Satodime_unlock_nicknames or {}).values():
+            wipe_value(secret)
+        if connector is not None:
+            connector.pin = None
+
+
+    def wipe_psbt_wif_keys(self):
+        """Zero any WIF key the psbt flow holds, in psbt_seed or in the parser.
+
+        Back from the overview and a signature that did not verify clear
+        psbt_seed alone, so the parser can be the last holder. A stored seed
+        is left alone: it outlives the flow, and an XprvSeed shares its root
+        key with the parser.
+        """
+        for signer in (self.psbt_seed, getattr(self.psbt_parser, "seed", None)):
+            if isinstance(signer, WIFKey):
+                try:
+                    signer.wipe()
+                except Exception:
+                    logger.debug("Error wiping a WIF key", exc_info=True)
 
 
     def handle_exception(self, e) -> Destination:
@@ -888,6 +1010,9 @@ class Controller(Singleton):
             - The current active view allows screensaver activity.
         """
         from seedsigner.views import MainMenuView
-        # Confusingly, the top item in the `BackStack` is actually the *current* View
-        active_view = self.back_stack[-1].view if self.back_stack else MainMenuView()
+        # Confusingly, the top item in the `BackStack` is actually the *current* View.
+        # A Destination has no view until it has run, and the inactivity wipe
+        # leaves one for the main menu that the loop has yet to run.
+        top = self.back_stack[-1] if self.back_stack else None
+        active_view = getattr(top, "view", None) or MainMenuView()
         return not self.is_screensaver_running and active_view.is_screensaver_allowed

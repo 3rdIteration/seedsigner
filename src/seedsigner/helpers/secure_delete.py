@@ -77,14 +77,19 @@ _WORDLIST_IDS: frozenset = _collect_wordlist_ids()
 def _is_shared(obj) -> bool:
     """Return True if *obj* appears to be shared or immortal.
 
-    Two detection mechanisms are used:
+    Three detection mechanisms are used:
 
     1. **Wordlist-ID check**: if ``id(obj)`` is in the pre-computed set of
        BIP-39 / SLIP-39 wordlist entry IDs the string is always considered
        shared.  This is reliable on all CPython versions because the wordlist
        objects are module-level singletons that live for the entire process.
 
-    2. **Refcount check**: if the reference count returned by
+    2. **Length check**: CPython keeps a single object for each one-byte
+       bytes value and each Latin-1 one-character str. Before 3.11 their
+       refcounts are ordinary, so the refcount check cannot tell them from
+       a private copy.
+
+    3. **Refcount check**: if the reference count returned by
        ``sys.getrefcount`` is at or above ``_SHARED_REFCOUNT_LIMIT`` the
        string is considered shared.  This catches immortal strings on
        CPython 3.12+ (where the sentinel refcount is ~4 billion) as well as
@@ -96,6 +101,8 @@ def _is_shared(obj) -> bool:
     getrefcount arg).  Shared strings have a higher count.
     """
     if isinstance(obj, str) and id(obj) in _WORDLIST_IDS:
+        return True
+    if isinstance(obj, (str, bytes)) and len(obj) == 1:
         return True
     return sys.getrefcount(obj) >= _SHARED_REFCOUNT_LIMIT
 
@@ -122,6 +129,15 @@ def wipe_bytes(b: bytes | bytearray | None) -> None:
             b[i] = 0
         return
     if isinstance(b, bytes) and len(b) > 0:
+        # Same guard as wipe_string(): a bytes object the interpreter shares
+        # would be zeroed for every other user of it.
+        if _is_shared(b):
+            logger.warning(
+                "wipe_bytes: refusing to wipe shared/immortal bytes "
+                "(refcount=%d)",
+                sys.getrefcount(b),
+            )
+            return
         _wipe_buffer(b, len(b))
 
 
@@ -163,4 +179,50 @@ def wipe_list(lst: list | None) -> None:
             wipe_bytes(item)
         elif isinstance(item, str):
             wipe_string(item)
+    # The slots give a secret away too. An int element (a PIN digit, a byte of
+    # an unlock secret) has no buffer to zero, only the cached int it points
+    # at, and a wordlist word the guard left alone is known by its address.
+    # clear() frees the slot array with those pointers still in it.
+    for index in range(len(lst)):
+        lst[index] = 0
     lst.clear()
+
+
+def wipe_value(value) -> None:
+    """Wipe one secret held as str, bytes, bytearray or list; ignore the rest."""
+    if isinstance(value, (bytes, bytearray)):
+        wipe_bytes(value)
+    elif isinstance(value, str):
+        wipe_string(value)
+    elif isinstance(value, list):
+        wipe_list(value)
+
+
+def wipe_dict(d: dict | None, keys) -> None:
+    """Wipe the values stored under *keys*, then clear the dict.
+
+    Only the named values are wiped. A dict of secrets carries metadata too,
+    such as a type tag or a source name, and that is usually a code constant.
+    On CPython < 3.12 a constant is not immortal and has fewer references than
+    _SHARED_REFCOUNT_LIMIT, so wipe_string() would zero it in place for every
+    other user of the same object.
+    """
+    if d is None:
+        return
+    for key in keys:
+        wipe_value(d.get(key))
+    d.clear()
+
+
+def wipe_private_key(key) -> None:
+    """Zero an embit private key in place: a PrivateKey, or a private HDKey.
+
+    A public key is left alone. It is not secret, and it can be shared with
+    state that still needs it.
+    """
+    if key is None or not getattr(key, "is_private", False):
+        return
+    inner = getattr(key, "key", key)
+    wipe_bytes(getattr(inner, "_secret", None))
+    if inner is not key:
+        wipe_bytes(getattr(key, "chain_code", None))
