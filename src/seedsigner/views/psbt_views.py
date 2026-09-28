@@ -806,6 +806,7 @@ class PSBTOverviewView(View):
             num_change_outputs=num_change_outputs,
             destination_addresses=psbt_parser.destination_addresses,
             has_op_return=psbt_parser.op_return_data is not None,
+            is_high_fee_tx=psbt_parser.is_high_fee,
         )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
@@ -819,9 +820,26 @@ class PSBTOverviewView(View):
 
 
 
-def post_overview_destination(psbt_parser: PSBTParser, skip_current_view: bool = False) -> Destination:
+def pending_risk_warnings(psbt_parser: PSBTParser) -> set[str]:
+    """The risk warnings PSBTRiskWarningView still has to show."""
+    warnings = psbt_parser.risk_warnings - RiskWarning.INFORMATIONAL
+    if psbt_parser.is_high_fee:
+        # PSBTHighFeeWarningView has already warned about the fee
+        warnings -= {RiskWarning.HIGH_FEE}
+    return warnings
+
+
+
+def post_overview_destination(psbt_parser: PSBTParser, skip_current_view: bool = False, high_fee_acknowledged: bool = False) -> Destination:
     """Where review continues once the overview (and any interstitial after it) is done."""
-    if psbt_parser.risk_warnings - RiskWarning.INFORMATIONAL:
+    if psbt_parser.is_high_fee and not high_fee_acknowledged:
+        return Destination(
+            PSBTHighFeeWarningView,
+            view_args={"warning_threshold_percent": psbt_parser.HIGH_FEES_WARNING_THRESHOLD},
+            skip_current_view=skip_current_view,
+        )
+
+    if pending_risk_warnings(psbt_parser):
         return Destination(PSBTRiskWarningView, skip_current_view=skip_current_view)
 
     # expecting p2sh (legacy multisig) and p2pkh to have no policy set
@@ -918,9 +936,10 @@ class PSBTRiskWarningView(View):
             # Should not be able to get here
             return Destination(MainMenuView)
 
+        pending = pending_risk_warnings(psbt_parser)
         messages = []
         for code in self.RISK_TEXT:
-            if code not in psbt_parser.risk_warnings or code in RiskWarning.INFORMATIONAL:
+            if code not in pending:
                 continue
             messages.append(_(self.RISK_TEXT[code]))
 
@@ -996,6 +1015,33 @@ class PSBTNoChangeWarningView(View):
 
 
 
+class PSBTHighFeeWarningView(View):
+    def __init__(self, warning_threshold_percent: int):
+        super().__init__()
+        
+        self.warning_threshold_percent = warning_threshold_percent
+    
+    def run(self):
+        selected_menu_num = self.run_screen(
+            DireWarningScreen,
+            status_headline=_("High Fee!"),
+            # TRANSLATOR_NOTE: Variable is the percentage of the total output value (excluding change) that the fee exceeds. (e.g. "This transaction has a fee higher than 25% of the total output value (excluding change).")
+            text=_("This transaction has a fee higher than {}% of the total output value (excluding change).").format(self.warning_threshold_percent),
+            button_data=[ButtonOption("Continue")],
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        # A high fee can come with other risk warnings and/or no change
+        return post_overview_destination(
+            self.controller.psbt_parser,
+            skip_current_view=True,  # Prevent going BACK to WarningViews
+            high_fee_acknowledged=True,
+        )
+
+
+
 class PSBTMathView(View):
     """
         Follows the Overview pictogram. Shows:
@@ -1024,6 +1070,7 @@ class PSBTMathView(View):
             num_recipients=psbt_parser.num_destinations,
             fee_amount=psbt_parser.fee_amount,
             change_amount=psbt_parser.change_amount,
+            is_high_fee_tx=psbt_parser.is_high_fee,
         )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:

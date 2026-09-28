@@ -785,7 +785,7 @@ class CardPSBTSigningFlowTest(SmartcardFlowTest):
         three fields that make that work have to be set consistently, and the
         ownership scan has to succeed against them.
 
-        Asserting verified_input_derivation_paths is the point: an empty list
+        Asserting verified_input_derivation_paths is the point: an empty entry
         here is exactly what a wrong fingerprint or an unstripped derivation path
         produces, and it is indistinguishable from "this card cannot sign" at
         every layer above.
@@ -808,9 +808,12 @@ class CardPSBTSigningFlowTest(SmartcardFlowTest):
             "test proves nothing about the account-relative derivation")
         assert parser.can_verify_derivations is True
 
-        assert parser.verified_input_derivation_paths == [bip32.parse_path(INPUT_PATH)]
-        assert parser.verified_output_derivation_paths == [
-            None, bip32.parse_path(CHANGE_PATH)]
+        def paths(verified):
+            return [[entry.derivation for entry in scope] for scope in verified]
+
+        assert paths(parser.verified_input_derivation_paths) == [[bip32.parse_path(INPUT_PATH)]]
+        assert paths(parser.verified_output_derivation_paths) == [
+            [], [bip32.parse_path(CHANGE_PATH)]]
 
     def test_card_parse_agrees_with_a_seed_parse(self):
         """
