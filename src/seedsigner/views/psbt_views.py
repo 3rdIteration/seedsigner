@@ -542,6 +542,26 @@ REJECT_PRESENTATION = {
         button_label=_mft("Discard transaction"),
     ),
 
+    # The psbt describes its transaction twice, in fields meant for different
+    # psbt versions. No honest encoder does this, and the two copies can
+    # disagree about where the money goes, so it is treated as an attack.
+    RejectCode.WRONG_VERSION_FIELD: RejectPresentation(
+        screen=DireWarningScreen,
+        title=_mft("Suspicious Transaction"),
+        headline=_mft("Likely an Attack!"),
+        # TRANSLATOR_NOTE: A psbt carries fields that belong to a different psbt format version
+        text=_mft("This transaction describes itself twice, and the two versions may not match."),
+        button_label=_mft("Discard transaction"),
+    ),
+
+    RejectCode.MALFORMED_ENCODING: RejectPresentation(
+        screen=WarningScreen,
+        title=_mft("Transaction Problem"),
+        # TRANSLATOR_NOTE: The psbt's binary encoding breaks the format rules (e.g. a duplicated field)
+        text=_mft("This transaction is encoded in a way that other software could read differently."),
+        button_label=_mft("Discard transaction"),
+    ),
+
     RejectCode.INCONSISTENT_FINGERPRINTS: RejectPresentation(
         screen=WarningScreen,
         title=_mft("Transaction Problem"),

@@ -56,6 +56,11 @@ class Expect:
     # embit accepts the bytes but PSBTParser must refuse with InvalidPSBTError.
     REJECT_PARSER = "reject_parser"
 
+    # The strict loader (psbt_framing.parse_psbt) must refuse the raw bytes with
+    # InvalidPSBTError before embit builds its model. Some of these embit would
+    # accept -- and silently resolve in the attacker's favour.
+    REJECT_FRAMING = "reject_framing"
+
 
 class RejectCode:
     """
@@ -85,6 +90,8 @@ class RejectCode:
     MISLABELED_OUTPUT_OWNERSHIP = "MISLABELED_OUTPUT_OWNERSHIP"
     INCONSISTENT_FINGERPRINTS = "INCONSISTENT_FINGERPRINTS"
     MIXED_DERIVATION_MAPS = "MIXED_DERIVATION_MAPS"
+    WRONG_VERSION_FIELD = "WRONG_VERSION_FIELD"
+    MALFORMED_ENCODING = "MALFORMED_ENCODING"
 
 
 class Advisory:
@@ -142,7 +149,8 @@ class Vector:
     # Risk codes that must fire (only meaningful when expect == PARSES).
     advisories: frozenset = field(default_factory=frozenset)
 
-    # Which RejectCode PSBTParser must raise (only when expect == REJECT_PARSER).
+    # Which RejectCode must be raised (only when expect is REJECT_PARSER or
+    # REJECT_FRAMING).
     reject_code: Optional[str] = None
 
     # True when the vector's shipped bytes do not actually encode the trap its
@@ -969,6 +977,88 @@ VECTORS = [
         Expect.PARSES,
         input_amount=200_000, output_amount=199_000, num_outputs=2, owned_outputs=0,
     ),
+
+    # ---------------------------------------------------------------- encoding
+    # Version confusion and framing ambiguity. These are refused on the raw bytes
+    # by psbt_framing: embit reads v2-only fields in a v0 psbt and overwrites the
+    # global tx's values with them, so after PSBT.parse() nothing is left to check.
+    Vector(
+        "ENC-01.v2_keys_in_v0", "encoding",
+        "A v0 psbt whose output 1 also carries v2 PSBT_OUT_AMOUNT/PSBT_OUT_SCRIPT "
+        "naming a different destination. embit displays and signs the scope's "
+        "output; the global tx the coordinator holds pays the attacker.",
+        Expect.REJECT_FRAMING,
+        reject_code=RejectCode.WRONG_VERSION_FIELD,
+    ),
+    Vector(
+        "ENC-02.v2_sequence_in_v0", "encoding",
+        "v2 PSBT_IN_SEQUENCE in a v0 input claims 0xFFFFFFFF (final) while the "
+        "global tx signals RBF with 0xFFFFFFFD.",
+        Expect.REJECT_FRAMING,
+        reject_code=RejectCode.WRONG_VERSION_FIELD,
+    ),
+    Vector(
+        "ENC-03.v2_keys_hide_change", "encoding",
+        "Injected v2 output fields name one of our change scripts, so an output "
+        "that pays an attacker in the global tx is classified as change and "
+        "dropped from the review screens.",
+        Expect.REJECT_FRAMING,
+        reject_code=RejectCode.WRONG_VERSION_FIELD,
+    ),
+    Vector(
+        "ENC-04.scope_beyond_tx", "encoding",
+        "A third output map, populated with v2 fields for a phantom payment, "
+        "after the two outputs the global tx declares.",
+        Expect.REJECT_FRAMING,
+        reject_code=RejectCode.MALFORMED_ENCODING,
+    ),
+    Vector(
+        "ENC-05.v0_tx_in_v2", "encoding",
+        "A v2 psbt that also carries a PSBT_GLOBAL_UNSIGNED_TX paying an attacker, "
+        "while its scopes pay the honest destination.",
+        Expect.REJECT_FRAMING,
+        reject_code=RejectCode.WRONG_VERSION_FIELD,
+    ),
+    Vector(
+        "ENC-06.v2_outpoint_conflict", "encoding",
+        "A v2 input whose previous_txid names an arbitrary outpoint while its "
+        "witness_utxo describes one of our real prevouts. Without a "
+        "non_witness_utxo an offline signer cannot tell this from an honest spend: "
+        "the bytes are the same shape. It is safe to sign, because BIP-143 commits "
+        "the signature to the witness_utxo's amount and script, so it is invalid "
+        "for any outpoint that does not hold exactly that.",
+        Expect.PARSES,
+        input_amount=200_000, output_amount=199_000, num_outputs=2, owned_outputs=1,
+    ),
+    Vector(
+        "ENC-07.duplicate_conflicting_utxo", "encoding",
+        "Two witness_utxo records in one input, the second claiming double the "
+        "amount: last-wins and first-wins parsers show different fees.",
+        Expect.REJECT_FRAMING,
+        reject_code=RejectCode.MALFORMED_ENCODING,
+    ),
+    Vector(
+        "ENC-08.nonminimal_keylen", "encoding",
+        "A key length in input 0 written in its non-minimal 0xfd form.",
+        Expect.REJECT_FRAMING,
+        reject_code=RejectCode.MALFORMED_ENCODING,
+    ),
+    Vector(
+        "ENC-09.v2_prevtxid_in_v0", "encoding",
+        "A legacy input's previous tx is edited to show a 1,000-sat fee for an "
+        "800,000-sat one, and v2 PSBT_IN_PREVIOUS_TXID/OUTPUT_INDEX are injected "
+        "naming the edited tx's own txid, so the txid check verifies the forgery "
+        "against itself.",
+        Expect.REJECT_FRAMING,
+        reject_code=RejectCode.WRONG_VERSION_FIELD,
+    ),
+    Vector(
+        "ENC-10.v2_global_locktime_in_v0", "encoding",
+        "v2 PSBT_GLOBAL_FALLBACK_LOCKTIME in a v0 psbt claims height 800,000 "
+        "while the global tx's nLockTime is 0.",
+        Expect.REJECT_FRAMING,
+        reject_code=RejectCode.WRONG_VERSION_FIELD,
+    ),
 ]
 
 VECTORS_BY_NAME = {v.name: v for v in VECTORS}
@@ -976,6 +1066,7 @@ VECTORS_BY_NAME = {v.name: v for v in VECTORS}
 PARSING_VECTORS = [v for v in VECTORS if v.expect == Expect.PARSES]
 REJECT_EMBIT_VECTORS = [v for v in VECTORS if v.expect == Expect.REJECT_EMBIT]
 REJECT_PARSER_VECTORS = [v for v in VECTORS if v.expect == Expect.REJECT_PARSER]
+REJECT_FRAMING_VECTORS = [v for v in VECTORS if v.expect == Expect.REJECT_FRAMING]
 
 NORMAL_VECTORS = [v for v in VECTORS if v.category == "normal"]
 
@@ -1009,6 +1100,14 @@ def load_base64(name: str) -> str:
     if raw[:5] == b"psbt\xff":
         return b64encode(raw).decode()
     return raw.decode().strip()
+
+
+def load_wire_bytes(name: str) -> bytes:
+    """Fixture as binary psbt bytes, whichever form it is vendored in."""
+    raw = load_bytes(name)
+    if raw[:5] == b"psbt\xff":
+        return raw
+    return a2b_base64(raw.strip())
 
 
 def load_psbt(name: str) -> PSBT:

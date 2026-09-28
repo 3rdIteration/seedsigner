@@ -126,6 +126,21 @@ class RejectCode:
     TX_MODIFIABLE = "TX_MODIFIABLE"
     UNDISPLAYABLE_OUTPUT = "UNDISPLAYABLE_OUTPUT"
 
+    # Raised by psbt_framing on the raw bytes, before embit builds its model --
+    # afterwards the evidence is gone.
+    #
+    # A field BIP-370 reserves for the other psbt version: a v2-only field (an
+    # output's amount/script, an input's outpoint or sequence, a fallback locktime)
+    # in a v0 psbt, or a global unsigned tx in a v2 one. The psbt then describes its
+    # transaction twice, and embit silently takes the scopes' version, so what is
+    # shown need not be what the coordinator broadcasts.
+    WRONG_VERSION_FIELD = "WRONG_VERSION_FIELD"
+
+    # Framing that two parsers can read differently: a non-minimal compact size, a
+    # key given twice, or input/output maps that don't match the transaction's
+    # counts.
+    MALFORMED_ENCODING = "MALFORMED_ENCODING"
+
     # An output scope claims this seed's fingerprint on a key the seed does not
     # derive. This is not a psbt that merely fails to be ours. A fingerprint is
     # coordinator-supplied metadata, so this is a psbt asserting that a key

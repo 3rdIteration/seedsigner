@@ -72,3 +72,23 @@ Regenerate the upstream corpus with:
 ```
 python psbt_test_suite/generate.py
 ```
+
+## Encoding vectors of 2026-09-28
+
+`ENC-01` … `ENC-10` (psbt_faker category `encoding`) attack the container rather
+than the transaction: PSBTv2-only fields injected into a v0 psbt (ENC-01/02/03/
+09/10), a global unsigned tx smuggled into a v2 psbt (ENC-05), an extra output
+map (ENC-04), a duplicated field (ENC-07) and a non-minimal compact size (ENC-08).
+
+embit 0.8.0 reads the v2 fields in a v0 psbt and overwrites the global tx's
+values with them. Afterwards nothing records the global tx they replaced, so
+these are refused on the raw bytes by `seedsigner.models.psbt_framing`
+(`RejectCode.WRONG_VERSION_FIELD` / `MALFORMED_ENCODING`), which every loader
+(QR scan, UR2, microSD) goes through before `PSBT.parse()`.
+
+Local deviation from upstream: `ENC-06.v2_outpoint_conflict` is expected to
+**parse**. Its only defect is a `previous_txid` that names an arbitrary outpoint.
+Without a `non_witness_utxo`, an offline signer cannot tell those bytes from an
+honest v2 spend. Signing it is safe: the input is segwit v0, and BIP-143 commits
+the signature to the `witness_utxo` amount and script, so the signature is
+invalid for any outpoint that does not hold exactly that.

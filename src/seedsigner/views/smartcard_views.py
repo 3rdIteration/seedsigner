@@ -20,7 +20,6 @@ from pathlib import Path
 
 from embit.bip32 import HDKey
 from embit.descriptor import Descriptor
-from embit.psbt import PSBT
 from embit import ec, script, networks
 from gettext import gettext as _
 
@@ -3484,7 +3483,9 @@ class ToolsKeycardFactoryResetView(View):
 
 class ToolsSatochipLoadPsbtView(View):
     def run(self):
-        from seedsigner.views.psbt_views import PSBTSelectSeedView
+        from seedsigner.models.psbt_framing import parse_psbt
+        from seedsigner.models.psbt_parser import InvalidPSBTError
+        from seedsigner.views.psbt_views import PSBTSelectSeedView, refusal_destination
 
         # Reset microSD PSBT context before prompting the user.
         self.controller.psbt_from_microsd = False
@@ -3553,7 +3554,11 @@ class ToolsSatochipLoadPsbtView(View):
         selected_path = psbt_files[selected]
         try:
             psbt_data = selected_path.read_bytes()
-            psbt = PSBT.parse(psbt_data)
+            psbt = parse_psbt(psbt_data)
+        except InvalidPSBTError as e:
+            # Readable, but its framing is refused (see psbt_framing).
+            logger.info("Refusing psbt from microSD: %s (%s)", e, e.code)
+            return refusal_destination(e)
         except Exception as e:
             logger.exception("Failed to load PSBT from microSD", exc_info=e)
             self.run_screen(
