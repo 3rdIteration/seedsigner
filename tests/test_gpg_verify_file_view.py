@@ -388,6 +388,30 @@ class TestParser:
         )
         assert result["valid_fprs"] == [QLRD_FPR]
 
+    def test_parse_records_the_primary_key_not_the_signing_subkey(self):
+        """
+        A release is normally signed by a signing subkey, and the trust registry
+        holds primaries -- six of the registered primaries cannot sign at all.
+        VALIDSIG's last argument is the primary-key fingerprint (GnuPG DETAILS);
+        reading the first argument instead reports a genuine release as coming
+        from an unknown key.
+        """
+        subkey = "0123456789ABCDEF0123456789ABCDEF01234567"
+        line = (
+            f"[GNUPG:] VALIDSIG {subkey} 2026-08-15 14:12:48 +0000 1789000000 0 10 1 1 "
+            f"{QLRD_FPR}\n"
+        )
+
+        result = _parse_gpg_verify_status(line, "")
+
+        assert result["valid_fprs"] == [QLRD_FPR]
+
+    def test_parse_falls_back_when_no_primary_is_given(self):
+        """Older gpg, and the short form, carry no tenth field."""
+        result = _parse_gpg_verify_status(_validsig(QLRD_FPR), "")
+
+        assert result["valid_fprs"] == [QLRD_FPR]
+
     def test_parse_normalizes_to_uppercase(self):
         result = _parse_gpg_verify_status(
             f"[GNUPG:] VALIDSIG {QLRD_FPR.lower()} 2026-01-01\n", ""
