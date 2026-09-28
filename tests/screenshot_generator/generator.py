@@ -613,6 +613,11 @@ def generate_screenshots(locale):
                 ScreenshotConfig(seed_views.SeedBIP85SelectNumWordsView,     dict(seed=seed_12)),
                 ScreenshotConfig(seed_views.SeedBIP85SelectChildIndexView,   dict(seed=seed_12, num_words=24)),
                 ScreenshotConfig(seed_views.SeedBIP85InvalidChildIndexView,  dict(seed=seed_12, num_words=12)), 
+                ScreenshotConfig(seed_views.SeedSilentPaymentsNoticeView,    dict(seed=seed_12)),
+                ScreenshotConfig(seed_views.SeedSilentPaymentsWarningView,   dict(seed=seed_12)),
+                ScreenshotConfig(seed_views.SeedSilentPaymentsDetailsView,   dict(seed=seed_12)),
+                # No SeedSilentPaymentsScanKeyQRView: a thread draws its QR after the first frame, the one captured here.
+                ScreenshotConfig(seed_views.SeedSilentPaymentsNextStepsView, dict(seed=seed_12)),
                 ScreenshotConfig(seed_views.SeedWordsBackupTestPromptView,   dict(seed=seed_12)),
                 ScreenshotConfig(seed_views.SeedWordsBackupTestView,         dict(seed=seed_12, rand_seed=6102)),
                 ScreenshotConfig(seed_views.SeedWordsBackupTestMistakeView,  dict(seed=seed_12, cur_index=7, wrong_word="satoshi")),

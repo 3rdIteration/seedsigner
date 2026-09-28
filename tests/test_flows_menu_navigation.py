@@ -11,11 +11,32 @@ import pytest
 from base import FlowTest, FlowStep
 
 from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, RET_CODE__POWER_BUTTON, ButtonOption
+from seedsigner.models.seed import AezeedSeed, ElectrumSeed, Seed, Slip39Seed, XprvSeed
 from seedsigner.models.settings import Settings
 from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.views.view import MainMenuView, PowerOptionsView, RestartView, PowerOffView, BackStackView
 from seedsigner.views import scan_views, seed_views, tools_views, settings_views
 
+
+
+_ABANDON = ["abandon"] * 11 + ["about"]
+
+# Seed types for the Silent Payments gate, built on demand (Slip39Seed is slow).
+SILENT_PAYMENTS_SEEDS = {
+    "bip39": lambda: Seed(_ABANDON),
+    "bip39_passphrase": lambda: Seed(_ABANDON, passphrase="TREZOR"),
+    "slip39": lambda: Slip39Seed(
+        mnemonics=["duckling enlarge academic academic agency result length solution fridge kidney coal piece deal husband erode duke ajar critical decision keyboard"],
+        slip39_passphrase="TREZOR",
+    ),
+    "master_xprv": lambda: XprvSeed(Seed(_ABANDON).get_root().to_base58()),
+    "child_xprv": lambda: XprvSeed(Seed(_ABANDON).get_root().derive("m/0h").to_base58()),
+    "electrum": lambda: ElectrumSeed("regular reject rare profit once math fringe chase until ketchup century escape".split()),
+    "aezeed": lambda: AezeedSeed(mnemonic=(
+        "absorb original enlist once climb erode kid thrive kitchen giant define tube "
+        "orange leader harbor comfort olive fatal success suggest drink penalty chimney ritual"
+    ).split()),
+}
 
 
 def _patch_scan_view_decoder(view):
@@ -188,6 +209,7 @@ class TestMenuNavigationFlows(FlowTest):
             (SettingsConstants.SETTING__BIP85_CHILD_SEEDS,  SettingsConstants.OPTION__ENABLED),
             (SettingsConstants.SETTING__MESSAGE_SIGNING,    SettingsConstants.OPTION__ENABLED),
             (SettingsConstants.SETTING__PLAINTEXTQR,        SettingsConstants.OPTION__ENABLED),
+            (SettingsConstants.SETTING__SILENT_PAYMENTS,    SettingsConstants.OPTION__ENABLED),
         ]:
             self.settings.set_value(setting, value)
 
@@ -1315,6 +1337,71 @@ class TestMenuNavigationFlows(FlowTest):
         assert tools_views.ToolsMenuView.PASSWORD_GENERATOR not in captured["button_data"]
 
 
+    @pytest.mark.parametrize("network", [SettingsConstants.MAINNET, SettingsConstants.TESTNET])
+    @pytest.mark.parametrize("seed_type", ["bip39", "bip39_passphrase", "slip39", "master_xprv"])
+    def test_silent_payments_shown(self, seed_type, network):
+        """Silent Payments sits right after BIP-85 when every gate is open."""
+        self.settings.set_value(SettingsConstants.SETTING__NETWORK, network)
+        button_data = self._capture_seed_options_button_data(SILENT_PAYMENTS_SEEDS[seed_type]())
+        index = button_data.index(seed_views.SeedOptionsView.SILENT_PAYMENTS)
+        assert button_data[index - 1] == seed_views.SeedOptionsView.BIP85_CHILD_SEED
+
+    @pytest.mark.parametrize("attr_name, value", [
+        (SettingsConstants.SETTING__SILENT_PAYMENTS, SettingsConstants.OPTION__DISABLED),
+        # 128x128 panels draw a 240x240 canvas and shrink it, too small for this QR.
+        (SettingsConstants.SETTING__DISPLAY_CONFIGURATION, SettingsConstants.DISPLAY_CONFIGURATION__ST7735__128x128),
+        (SettingsConstants.SETTING__DISPLAY_CONFIGURATION, SettingsConstants.DISPLAY_CONFIGURATION__DESKTOP__128x128),
+        (SettingsConstants.SETTING__NETWORK, SettingsConstants.REGTEST),
+    ])
+    def test_silent_payments_hidden_by_setting(self, attr_name, value):
+        self.settings.set_value(attr_name, value)
+        button_data = self._capture_seed_options_button_data(SILENT_PAYMENTS_SEEDS["bip39"]())
+        assert seed_views.SeedOptionsView.SILENT_PAYMENTS not in button_data
+
+    @pytest.mark.parametrize("seed_type", ["electrum", "aezeed", "child_xprv"])
+    def test_silent_payments_hidden_for_seed_type(self, seed_type):
+        button_data = self._capture_seed_options_button_data(SILENT_PAYMENTS_SEEDS[seed_type]())
+        assert seed_views.SeedOptionsView.SILENT_PAYMENTS not in button_data
+
+    def _open_seed_options(self):
+        """MainMenu → Seeds → the one loaded seed's options."""
+        self.controller.storage.seeds = [SILENT_PAYMENTS_SEEDS["bip39"]()]
+        return [
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SEEDS),
+            FlowStep(seed_views.SeedsMenuView, screen_return_value=0),
+        ]
+
+    def test_seed_options_silent_payments(self):
+        """Seed options → Silent Payments → notice → Private Scan Key → details → QR →
+        Next in Sparrow → back to Seed options, with the flow gone from the back stack."""
+        self.run_sequence(self._open_seed_options() + [
+            FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.SILENT_PAYMENTS),
+            FlowStep(seed_views.SeedSilentPaymentsNoticeView, screen_return_value=0),
+            FlowStep(seed_views.SeedSilentPaymentsWarningView, screen_return_value=0),
+            FlowStep(seed_views.SeedSilentPaymentsDetailsView, screen_return_value=0),
+            FlowStep(seed_views.SeedSilentPaymentsScanKeyQRView),
+            FlowStep(seed_views.SeedSilentPaymentsNextStepsView, screen_return_value=0),
+            FlowStep(seed_views.SeedOptionsView),
+        ])
+        assert [d.View_cls for d in self.controller.back_stack][-2:] == [seed_views.SeedsMenuView, seed_views.SeedOptionsView]
+
+    def test_seed_options_silent_payments_back(self):
+        """BACK from the notice, the warning or the details returns to Seed options."""
+        SILENT_PAYMENTS = seed_views.SeedOptionsView.SILENT_PAYMENTS
+        self.run_sequence(self._open_seed_options() + [
+            FlowStep(seed_views.SeedOptionsView, button_data_selection=SILENT_PAYMENTS),
+            FlowStep(seed_views.SeedSilentPaymentsNoticeView, screen_return_value=RET_CODE__BACK_BUTTON),
+            FlowStep(seed_views.SeedOptionsView, button_data_selection=SILENT_PAYMENTS),
+            FlowStep(seed_views.SeedSilentPaymentsNoticeView, screen_return_value=0),
+            FlowStep(seed_views.SeedSilentPaymentsWarningView, screen_return_value=RET_CODE__BACK_BUTTON),
+            FlowStep(seed_views.SeedOptionsView, button_data_selection=SILENT_PAYMENTS),
+            FlowStep(seed_views.SeedSilentPaymentsNoticeView, screen_return_value=0),
+            FlowStep(seed_views.SeedSilentPaymentsWarningView, screen_return_value=0),
+            FlowStep(seed_views.SeedSilentPaymentsDetailsView, screen_return_value=RET_CODE__BACK_BUTTON),
+            FlowStep(seed_views.SeedOptionsView),
+        ])
+
+
     # ======================================================================
     #  STUCK-STATE TESTS
     # ======================================================================
@@ -1440,6 +1527,25 @@ class TestMenuNavigationFlows(FlowTest):
             return RET_CODE__BACK_BUTTON
 
         with patch.object(tools_views.ToolsMenuView, "run_screen", fake_run_screen):
+            view.run()
+
+        return captured["button_data"]
+
+
+    def _capture_seed_options_button_data(self, seed):
+        """Run ``SeedOptionsView`` for *seed* and capture its ``button_data``."""
+        view = object.__new__(seed_views.SeedOptionsView)
+        view.settings = self.settings
+        view.controller = self.controller
+        view.seed = seed
+
+        captured = {}
+
+        def fake_run_screen(self_view, *args, **kwargs):
+            captured["button_data"] = kwargs.get("button_data")
+            return RET_CODE__BACK_BUTTON
+
+        with patch.object(seed_views.SeedOptionsView, "run_screen", fake_run_screen):
             view.run()
 
         return captured["button_data"]
