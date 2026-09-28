@@ -8,7 +8,7 @@ from datetime import datetime
 
 from binascii import a2b_base64, b2a_base64
 from enum import IntEnum
-from embit import psbt, bip39, ec, bip32
+from embit import bip39, ec, bip32
 
 _ZBAR_IMPORT_ERROR = None
 try:
@@ -33,6 +33,8 @@ from urtypes.bytes import Bytes
 from base64 import b32encode, b32decode
 
 from seedsigner.helpers.ur2.ur_decoder import URDecoder
+from seedsigner.models.psbt_framing import parse_psbt
+from seedsigner.models.psbt_parser import InvalidPSBTError
 from seedsigner.models.qr_type import QRType
 from seedsigner.models.seed import Seed
 from seedsigner.models.aezeed import has_valid_checksum as aezeed_has_valid_checksum
@@ -257,12 +259,19 @@ class DecodeQR:
     #   `get_data` and let each QRDecoder class return whatever it needs to as a
     #   str, tuple, dict, etc?
     def get_psbt(self):
+        """
+        The scanned psbt, or None if it can't be read. Raises InvalidPSBTError when
+        it can be read but its framing is refused (see psbt_framing), so the caller
+        can say why.
+        """
         if self.complete:
             data = self.get_data_psbt()
             if data != None:
                 try:
-                    return psbt.PSBT.parse(data)
-                except:
+                    return parse_psbt(data)
+                except InvalidPSBTError:
+                    raise
+                except Exception:
                     return None
         return None
 
@@ -821,8 +830,12 @@ class DecodeQR:
     def is_base64_psbt(s):
         try:
             if DecodeQR.is_base64(s):
-                psbt.PSBT.parse(a2b_base64(s))
+                parse_psbt(a2b_base64(s))
                 return True
+        except InvalidPSBTError:
+            # Recognisably a psbt, but a refused one: still route it as a psbt so
+            # the refusal is shown rather than an "unknown QR" error.
+            return True
         except Exception:
             return False
         return False
@@ -831,7 +844,9 @@ class DecodeQR:
     @staticmethod
     def is_base43_psbt(s):
         try:
-            psbt.PSBT.parse(DecodeQR.base43_decode(s))
+            parse_psbt(DecodeQR.base43_decode(s))
+            return True
+        except InvalidPSBTError:
             return True
         except Exception:
             return False

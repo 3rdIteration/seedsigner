@@ -218,8 +218,14 @@ class ScanView(View):
                 )
             
             elif self.decoder.is_psbt:
-                from seedsigner.views.psbt_views import PSBTSelectSeedView
-                psbt = self.decoder.get_psbt()
+                from seedsigner.models.psbt_parser import InvalidPSBTError
+                from seedsigner.views.psbt_views import PSBTSelectSeedView, refusal_destination
+                try:
+                    psbt = self.decoder.get_psbt()
+                except InvalidPSBTError as e:
+                    # Readable, but its framing is refused (see psbt_framing).
+                    logger.info("Refusing scanned psbt: %s (%s)", e, e.code)
+                    return refusal_destination(e)
                 if psbt is None:
                     # The QR announced itself as a psbt (a UR2 `crypto-psbt`
                     # says so in its type string) but the payload doesn't

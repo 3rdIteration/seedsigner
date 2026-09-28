@@ -15,13 +15,17 @@ import pytest
 
 from embit.base import EmbitError
 
+from seedsigner.models.psbt_framing import check_psbt_framing, parse_psbt
 from seedsigner.models.psbt_parser import InvalidPSBTError, PSBTParser, RejectCode
 from seedsigner.models.settings_definition import SettingsConstants
 
 from embit import bip32
+from embit.psbt import PSBT
+from embit.script import Script
 
 from psbt_suite_util import (
     Advisory,
+    Expect,
     CHANGE_INDEX_LOOKAHEAD,
     DUST_THRESHOLD,
     HIGH_FEE_DENOMINATOR,
@@ -31,6 +35,7 @@ from psbt_suite_util import (
     NORMAL_VECTORS,
     PARSING_VECTORS,
     REJECT_EMBIT_VECTORS,
+    REJECT_FRAMING_VECTORS,
     REJECT_PARSER_VECTORS,
     SUITE_FINGERPRINT,
     SUITE_MAX_FEE_RATE,
@@ -42,12 +47,17 @@ from psbt_suite_util import (
     build_nonzero_op_return_psbt,
     build_utxo_mismatch_psbt,
     load_psbt,
+    load_wire_bytes,
     suite_seed,
 )
 
 
 def ids(vectors):
     return [v.name for v in vectors]
+
+
+# Vectors embit reads and the framing checks must leave alone.
+WELL_FRAMED_VECTORS = [v for v in VECTORS if v.expect in (Expect.PARSES, Expect.REJECT_PARSER)]
 
 
 def parse_vector(vector: Vector) -> PSBTParser:
@@ -98,11 +108,27 @@ class TestNormalVectors:
 
 class TestRobustness:
     """
-    Every vector must land in exactly one of three buckets: it parses, embit
-    refuses the bytes, or PSBTParser refuses it with InvalidPSBTError. Any other
-    exception type is an uncaught crash that reaches the user as the SeedSigner
-    error screen.
+    Every vector must land in exactly one of four buckets: it parses, embit
+    refuses the bytes, the strict loader refuses its framing, or PSBTParser
+    refuses it with InvalidPSBTError. Any other exception type is an uncaught
+    crash that reaches the user as the SeedSigner error screen.
     """
+
+    @pytest.mark.parametrize("vector", REJECT_FRAMING_VECTORS, ids=ids(REJECT_FRAMING_VECTORS))
+    def test_loader_refuses_with_a_reason(self, vector: Vector):
+        with pytest.raises(InvalidPSBTError) as excinfo:
+            parse_psbt(load_wire_bytes(vector.name))
+
+        assert excinfo.value.code == vector.reject_code, (
+            f"{vector.name} was refused as {excinfo.value.code!r}, "
+            f"expected {vector.reject_code!r}: {vector.trap}"
+        )
+
+    @pytest.mark.parametrize("vector", WELL_FRAMED_VECTORS, ids=ids(WELL_FRAMED_VECTORS))
+    def test_loader_passes_well_framed_bytes_unchanged(self, vector: Vector):
+        """No false positives: the framing checks leave every other vector to embit."""
+        raw = load_wire_bytes(vector.name)
+        assert parse_psbt(raw).serialize() == load_psbt(vector.name).serialize()
 
     @pytest.mark.parametrize("vector", REJECT_EMBIT_VECTORS, ids=ids(REJECT_EMBIT_VECTORS))
     def test_embit_refuses_the_bytes(self, vector: Vector):
@@ -359,9 +385,11 @@ class TestEvidenceCannotBeForged:
 
         from embit.psbt import PSBT
 
-        from psbt_testing_util import PSBTTestData
+        from psbt_testing_util import PSBTTestData, foreign_output
 
         psbt = PSBT.parse(a2b_base64(PSBTTestData.MULTISIG_NATIVE_SEGWIT_1_INPUT))
+        # An input-only fixture; a transaction needs an output.
+        psbt.outputs.append(foreign_output())
         parser = PSBTParser(p=psbt, seed=PSBTTestData.seed,
                             network=SettingsConstants.REGTEST)
 
@@ -379,9 +407,11 @@ class TestEvidenceCannotBeForged:
 
         from embit.psbt import PSBT
 
-        from psbt_testing_util import PSBTTestData
+        from psbt_testing_util import PSBTTestData, foreign_output
 
         psbt = PSBT.parse(a2b_base64(PSBTTestData.MULTISIG_NATIVE_SEGWIT_1_INPUT))
+        # An input-only fixture; a transaction needs an output.
+        psbt.outputs.append(foreign_output())
         parser = PSBTParser(psbt)
         parser.parse()
 
@@ -548,7 +578,11 @@ class TestPSBTv2:
         assert parser.input_amount == 100_000_000
 
     def test_v0_unknown_0x06_is_not_treated_as_modifiable(self):
-        """On a v0 psbt key 0x06 is just an unknown field, not BIP-370 modifiability."""
+        """
+        PSBTParser gives a v0 psbt's key 0x06 no modifiability semantics. (On the
+        wire, psbt_framing refuses it before this point: BIP-370 excludes the key
+        from v0, see TestFraming.)
+        """
         psbt = load_psbt("NORMAL-1_p2wpkh")
         assert getattr(psbt, "version", None) in (None, 0)
         psbt.unknown[b"\x06"] = b"\x03"
@@ -1028,10 +1062,36 @@ class TestOpReturnPayload:
         (b"jLP" + b"x" * 80, b"x" * 80),             # OP_PUSHDATA1
         (b"jM," + b"y" * 300, b"y" * 300),       # OP_PUSHDATA2
         (b"j", b""),                                       # bare OP_RETURN
-        (b"jab", b"ab"),                                # truncated push: what is there
+        (b"j\x03ab", None),                         # truncated push: refused, not partly shown
+        (b"j\x4c", None),                           # OP_PUSHDATA1 with no length byte
+        (b"j\x51", None),                           # a non-push opcode
+        (b"j\x00\x02hi", b"hi"),                  # OP_0 is an empty push
     ])
     def test_payload_parsing(self, script, expected):
         assert PSBTParser._op_return_payload(script) == expected
+
+    def test_malformed_payload_is_refused(self):
+        """A push that runs past the end would be shown as data the output doesn't carry."""
+        psbt = load_psbt("XTRAS.OP_RETURN_DIRECT_PUSH")
+        for out in psbt.outputs:
+            if out.script_pubkey.data[:1] == b"\x6a":
+                out.script_pubkey = Script(b"\x6a\x4c\xff" + b"abc")
+        with pytest.raises(InvalidPSBTError) as excinfo:
+            PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK,
+                       max_fee_rate=SUITE_MAX_FEE_RATE)
+        assert excinfo.value.code == RejectCode.UNDISPLAYABLE_OUTPUT
+
+    def test_every_op_return_is_shown(self):
+        """Each OP_RETURN's payload is kept, in output order -- not just the last one."""
+        from copy import deepcopy
+        psbt = load_psbt("XTRAS.OP_RETURN_DIRECT_PUSH")
+        first = [o for o in psbt.outputs if o.script_pubkey.data[:1] == b"\x6a"][0]
+        extra = deepcopy(first)
+        extra.script_pubkey = Script(b"\x6a\x05hello")
+        psbt.outputs.insert(0, extra)
+        parser = PSBTParser(p=PSBT.parse(psbt.serialize()), seed=suite_seed(),
+                            network=SUITE_NETWORK, max_fee_rate=SUITE_MAX_FEE_RATE)
+        assert parser.op_return_payloads == [b"hello", self.MSG]
 
 
 class TestFingerprintConsistency:
@@ -1100,3 +1160,316 @@ class TestUnidentifiedMultisigChange:
         parser = PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK)
         assert parser.num_change_outputs == 1
         assert parser.unidentified_change_outputs == []
+
+
+
+class TestFraming:
+    """
+    The rules in seedsigner.models.psbt_framing, each on its own. The ENC vectors
+    cover one instance of most of them; these cover the rest by editing the bytes
+    of a clean fixture.
+    """
+
+    V0 = "NORMAL-1_p2wpkh"    # 1 input, 2 outputs: map 0 is global, 1 the input, 2-3 the outputs
+    V2 = "NORMAL-1_p2wpkh_V2"
+
+    @staticmethod
+    def _compact(n: int) -> bytes:
+        if n < 0xFD:
+            return bytes([n])
+        return b"\xfd" + n.to_bytes(2, "little")
+
+    @classmethod
+    def _entry(cls, key: bytes, value: bytes) -> bytes:
+        return cls._compact(len(key)) + key + cls._compact(len(value)) + value
+
+    @staticmethod
+    def _separators(raw: bytes) -> list[int]:
+        """Offset of each map's 0x00 separator, in order."""
+        from io import BytesIO
+        from seedsigner.models.psbt_framing import _read_compact
+        stream = BytesIO(raw)
+        stream.read(5)
+        ends = []
+        while stream.tell() < len(raw):
+            while True:
+                key_len = _read_compact(stream)
+                if key_len == 0:
+                    break
+                stream.read(key_len)
+                stream.read(_read_compact(stream))
+            ends.append(stream.tell() - 1)
+        return ends
+
+    def _insert(self, raw: bytes, map_index: int, entry: bytes) -> bytes:
+        """Append raw `entry` bytes to the end of one map."""
+        end = self._separators(raw)[map_index]
+        return raw[:end] + entry + raw[end:]
+
+    @staticmethod
+    def _refusal(raw: bytes) -> str:
+        with pytest.raises(InvalidPSBTError) as excinfo:
+            check_psbt_framing(raw)
+        return excinfo.value.code
+
+    # -------------------------------------------------------- version fields
+
+    @pytest.mark.parametrize("key_type", [0x02, 0x03, 0x04, 0x05, 0x06])
+    def test_v2_only_global_in_v0_is_refused(self, key_type):
+        raw = self._insert(load_wire_bytes(self.V0), 0, self._entry(bytes([key_type]), b"\x00"))
+        assert self._refusal(raw) == RejectCode.WRONG_VERSION_FIELD
+
+    @pytest.mark.parametrize("key_type", [0x0E, 0x0F, 0x10, 0x11, 0x12])
+    def test_v2_only_input_field_in_v0_is_refused(self, key_type):
+        raw = self._insert(load_wire_bytes(self.V0), 1, self._entry(bytes([key_type]), b"\x00" * 4))
+        assert self._refusal(raw) == RejectCode.WRONG_VERSION_FIELD
+
+    @pytest.mark.parametrize("key_type", [0x03, 0x04])
+    def test_v2_only_output_field_in_v0_is_refused(self, key_type):
+        raw = self._insert(load_wire_bytes(self.V0), 3, self._entry(bytes([key_type]), b"\x00" * 8))
+        assert self._refusal(raw) == RejectCode.WRONG_VERSION_FIELD
+
+    def test_v2_fields_in_a_v2_psbt_are_fine(self):
+        """The same keys are the ordinary content of a v2 psbt."""
+        check_psbt_framing(load_wire_bytes(self.V2))
+
+    def test_explicit_version_zero_is_v0(self):
+        raw = self._insert(load_wire_bytes(self.V0), 0, self._entry(b"\xfb", b"\x00" * 4))
+        check_psbt_framing(raw)
+        raw = self._insert(raw, 0, self._entry(b"\x03", b"\x00" * 4))
+        assert self._refusal(raw) == RejectCode.WRONG_VERSION_FIELD
+
+    # -------------------------------------------------------------- framing
+
+    def test_non_minimal_value_length_is_refused(self):
+        # key 0xfc 0x00 (proprietary), then a 1-byte value whose length is spelled 0xfd 0x01 0x00
+        raw = self._insert(load_wire_bytes(self.V0), 1, b"\x02\xfc\x00" + b"\xfd\x01\x00" + b"\x00")
+        assert self._refusal(raw) == RejectCode.MALFORMED_ENCODING
+
+    def test_non_minimal_key_type_is_refused(self):
+        """Type 0x00 spelled 0xfd 0x00 0x00: embit reads type 0xfd, a strict parser 0x00."""
+        raw = self._insert(load_wire_bytes(self.V0), 3, self._entry(b"\xfd\x00\x00", b"\x00"))
+        assert self._refusal(raw) == RejectCode.MALFORMED_ENCODING
+
+    def test_duplicate_proprietary_key_is_refused(self):
+        """Duplicates are refused whatever the key, not only for fields embit knows."""
+        entry = self._entry(b"\xfc\x01x", b"\x01")
+        raw = self._insert(load_wire_bytes(self.V0), 2, entry + entry)
+        assert self._refusal(raw) == RejectCode.MALFORMED_ENCODING
+
+    def test_distinct_proprietary_keys_are_fine(self):
+        raw = self._insert(load_wire_bytes(self.V0), 2,
+                           self._entry(b"\xfc\x01x", b"\x01") + self._entry(b"\xfc\x01y", b"\x01"))
+        check_psbt_framing(raw)
+
+    def test_trailing_map_is_refused(self):
+        raw = load_wire_bytes(self.V0) + b"\x00"
+        assert self._refusal(raw) == RejectCode.MALFORMED_ENCODING
+
+    @pytest.mark.parametrize("key_type", [0x04, 0x05])
+    def test_v2_without_counts_is_refused(self, key_type):
+        raw = load_wire_bytes(self.V2)
+        count = {0x04: 1, 0x05: 2}[key_type]
+        entry = self._entry(bytes([key_type]), bytes([count]))
+        assert raw.index(entry) < self._separators(raw)[0]
+        raw = raw.replace(entry, b"", 1)
+        assert self._refusal(raw) == RejectCode.MALFORMED_ENCODING
+
+    # --------------------------------------------------- left to other layers
+
+    @pytest.mark.parametrize("raw", [b"", b"garbage", b"psbt\xff", b"psbt\xff\x01\x00"])
+    def test_unreadable_bytes_are_left_to_embit(self, raw):
+        check_psbt_framing(raw)
+        # embit raises RuntimeError, not EmbitError, for some truncations; the
+        # loaders catch both. What matters is that it isn't a framing refusal.
+        with pytest.raises(Exception) as excinfo:
+            parse_psbt(raw)
+        assert not isinstance(excinfo.value, InvalidPSBTError)
+
+    def test_truncated_psbt_is_left_to_embit(self):
+        raw = load_wire_bytes(self.V0)[:-10]
+        check_psbt_framing(raw)
+        with pytest.raises(EmbitError):
+            parse_psbt(raw)
+
+    def test_unknown_version_is_left_to_the_parser(self):
+        """The version gate names it (UNSUPPORTED_PSBT_VERSION); framing doesn't guess."""
+        raw = load_wire_bytes(self.V2)
+        version_2 = self._entry(b"\xfb", (2).to_bytes(4, "little"))
+        assert version_2 in raw
+        check_psbt_framing(raw.replace(version_2, self._entry(b"\xfb", (3).to_bytes(4, "little")), 1))
+
+    # ---------------------------------------------------------------- wiring
+
+    def test_decoder_surfaces_the_refusal(self):
+        """DecodeQR.get_psbt() raises the refusal rather than folding it into None."""
+        from binascii import b2a_base64
+        from seedsigner.models.decode_qr import DecodeQR, DecodeQRStatus
+
+        data = b2a_base64(load_wire_bytes("ENC-03.v2_keys_hide_change")).decode().strip()
+        decoder = DecodeQR()
+        assert decoder.add_data(data) == DecodeQRStatus.COMPLETE
+        assert decoder.is_psbt
+        with pytest.raises(InvalidPSBTError) as excinfo:
+            decoder.get_psbt()
+        assert excinfo.value.code == RejectCode.WRONG_VERSION_FIELD
+
+    def test_decoder_recognises_a_psbt_embit_would_refuse(self):
+        """ENC-05 fails embit's parse, but is still routed as a psbt so its refusal is shown."""
+        from binascii import b2a_base64
+        from seedsigner.models.decode_qr import DecodeQR
+
+        data = b2a_base64(load_wire_bytes("ENC-05.v0_tx_in_v2")).decode().strip()
+        decoder = DecodeQR()
+        decoder.add_data(data)
+        assert decoder.is_psbt
+
+    def test_embit_resolves_the_confusion_silently(self):
+        """
+        Why this has to happen on the bytes: embit takes ENC-03's injected v2
+        output fields over the global tx's output and leaves no trace, so once
+        parsed, the attacker's output looks like our change.
+        """
+        parser = parse_vector(VECTORS_BY_NAME["ENC-01.v2_keys_in_v0"])
+        assert parser.fee_amount == 1_000
+        parser = PSBTParser(p=load_psbt("ENC-03.v2_keys_hide_change"), seed=suite_seed(),
+                            network=SUITE_NETWORK, max_fee_rate=SUITE_MAX_FEE_RATE)
+        assert parser.spend_amount == 0
+
+
+
+class TestTransactionStructure:
+    """
+    Transactions consensus would reject whatever they paid, refused before anything
+    about them is shown. Built by editing a clean fixture.
+    """
+
+    @staticmethod
+    def _parse(psbt):
+        return PSBTParser(p=PSBT.parse(psbt.serialize()), seed=suite_seed(),
+                          network=SUITE_NETWORK, max_fee_rate=SUITE_MAX_FEE_RATE)
+
+    def _refusal(self, psbt) -> str:
+        with pytest.raises(InvalidPSBTError) as excinfo:
+            self._parse(psbt)
+        return excinfo.value.code
+
+    def test_spending_one_outpoint_twice_is_refused(self):
+        """Its amount would be counted twice, into the fee on screen."""
+        from copy import deepcopy
+        psbt = load_psbt("NORMAL-1_p2wpkh")
+        psbt.inputs.append(deepcopy(psbt.inputs[0]))
+        assert self._refusal(psbt) == RejectCode.INVALID_TRANSACTION
+
+    def test_no_outputs_is_refused(self):
+        """Every input would be shown as fee."""
+        psbt = load_psbt("NORMAL-1_p2wpkh")
+        psbt.outputs = []
+        assert self._refusal(psbt) == RejectCode.INVALID_TRANSACTION
+
+    def test_v2_with_no_inputs_is_refused(self):
+        psbt = load_psbt("NORMAL-1_p2wpkh_V2")
+        psbt.inputs = []
+        assert self._refusal(psbt) == RejectCode.INVALID_TRANSACTION
+
+    def test_empty_output_script_in_v0_is_refused_not_crashed(self):
+        """Used to escape as an IndexError, i.e. the crash screen."""
+        psbt = load_psbt("NORMAL-1_p2wpkh")
+        psbt.outputs[0].script_pubkey = Script(b"")
+        assert self._refusal(psbt) == RejectCode.UNDISPLAYABLE_OUTPUT
+
+    def test_inputs_totalling_more_than_can_exist_are_refused(self):
+        """Each input is within range; together they are not."""
+        psbt = load_psbt("NORMAL-4_multi_input")
+        for inp in psbt.inputs:
+            inp.witness_utxo.value = MAX_MONEY
+        assert self._refusal(psbt) == RejectCode.AMOUNT_OUT_OF_RANGE
+
+
+class TestUnverifiedInputAmounts:
+    """
+    RiskWarning.UNVERIFIED_INPUT_AMOUNTS: several inputs, and a segwit v0 one whose
+    amount rests on its witness_utxo alone. Only its own signature commits to that
+    amount, so two signings can be combined into one paying a larger fee.
+    """
+
+    def _warnings(self, psbt):
+        return PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK,
+                          max_fee_rate=SUITE_MAX_FEE_RATE).risk_warnings
+
+    def test_multi_input_segwit_without_previous_txs_is_flagged(self):
+        assert Advisory.UNVERIFIED_INPUT_AMOUNTS in self._warnings(load_psbt("NORMAL-4_multi_input"))
+
+    def test_single_input_is_not_flagged(self):
+        """One input: its signature commits to its own amount, the only one there is."""
+        assert Advisory.UNVERIFIED_INPUT_AMOUNTS not in self._warnings(load_psbt("NORMAL-1_p2wpkh"))
+
+    def test_previous_txs_prove_the_amounts(self):
+        """The same shape with every previous tx supplied is not flagged."""
+        from copy import deepcopy
+        from embit.transaction import Transaction, TransactionInput, TransactionOutput
+
+        psbt = load_psbt("NORMAL-4_multi_input")
+        for inp in psbt.inputs:
+            prev = Transaction(
+                vin=[TransactionInput(b"\x11" * 32, 0)],
+                vout=[deepcopy(inp.witness_utxo)],
+            )
+            inp.non_witness_utxo = prev
+            inp.txid = prev.txid()
+            inp.vout = 0
+        assert Advisory.UNVERIFIED_INPUT_AMOUNTS not in self._warnings(PSBT.parse(psbt.serialize()))
+
+
+class TestSeedlessMultisigChange:
+    """
+    The Satochip/Keycard multisig flow parses with no BIP32 tree: the card holds the
+    key. The coordinator supplies the witness script, so it matching the output proves
+    nothing -- an attacker's own m-of-n matches just as well. Only a known-good
+    descriptor may make an output change there.
+    """
+
+    @staticmethod
+    def _seedless(name, descriptor=None):
+        from embit.descriptor import Descriptor
+        parser = PSBTParser(load_psbt(name), network=SUITE_NETWORK, max_fee_rate=SUITE_MAX_FEE_RATE,
+                            multisig_descriptor=Descriptor.from_string(descriptor) if descriptor else None)
+        parser.parse()
+        return parser
+
+    @pytest.mark.parametrize("name", [
+        "TX-05", "TX-13.threshold", "TX-21.ms_foreign_quorum",
+        "TX-21.ms_foreign_quorum_no_xpubs", "TX-21.ms_repointed_keys",
+    ])
+    def test_attacker_change_is_a_payment(self, name):
+        parser = self._seedless(name)
+        assert parser.num_change_outputs == 0
+        assert parser.unidentified_change_outputs == [0]
+
+    def test_honest_change_is_identified_by_the_descriptor(self):
+        from psbt_suite_util import MULTISIG_DESCRIPTOR
+        parser = self._seedless("TX-21.ms_honest_change_no_xpubs", MULTISIG_DESCRIPTOR)
+        assert parser.num_change_outputs == 1
+        assert parser.unidentified_change_outputs == []
+
+    def test_the_descriptor_does_not_adopt_a_foreign_quorum(self):
+        from psbt_suite_util import MULTISIG_DESCRIPTOR
+        parser = self._seedless("TX-21.ms_foreign_quorum", MULTISIG_DESCRIPTOR)
+        assert parser.num_change_outputs == 0
+
+
+class TestFramingCounts:
+    """A v2 psbt may not declare more inputs/outputs than its bytes could hold."""
+
+    @pytest.mark.parametrize("count", [10**6, 2**32 - 1])
+    def test_inflated_input_count_is_refused_quickly(self, count):
+        raw = load_wire_bytes("NORMAL-1_p2wpkh_V2")
+        declared = b"\x01\x04\x01\x01"
+        assert declared in raw
+        bad = raw.replace(declared, b"\x01\x04\x05\xfe" + count.to_bytes(4, "little"), 1)
+        started = time.time()
+        with pytest.raises(InvalidPSBTError) as excinfo:
+            parse_psbt(bad)
+        assert excinfo.value.code == RejectCode.MALFORMED_ENCODING
+        assert time.time() - started < 1
+

@@ -214,11 +214,11 @@ class PSBTSelectSeedView(View):
 
             if is_multisig_psbt:
                 try:
-                    parser = PSBTParser(
-                        psbt,
-                        network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
-                    )
-                    parser.parse()
+                    parser = seedless_multisig_parser(self.controller, self.settings)
+                except InvalidPSBTError as e:
+                    # A deliberate refusal: the same screens as seed signing.
+                    logger.info("Refusing psbt from %s: %s (%s)", card_label, e, e.code)
+                    return refusal_destination(e)
                 except Exception as e:
                     logger.exception("Failed to parse PSBT with %s data", card_label)
                     self.run_screen(
@@ -542,6 +542,26 @@ REJECT_PRESENTATION = {
         button_label=_mft("Discard transaction"),
     ),
 
+    # The psbt describes its transaction twice, in fields meant for different
+    # psbt versions. No honest encoder does this, and the two copies can
+    # disagree about where the money goes, so it is treated as an attack.
+    RejectCode.WRONG_VERSION_FIELD: RejectPresentation(
+        screen=DireWarningScreen,
+        title=_mft("Suspicious Transaction"),
+        headline=_mft("Likely an Attack!"),
+        # TRANSLATOR_NOTE: A psbt carries fields that belong to a different psbt format version
+        text=_mft("This transaction describes itself twice, and the two versions may not match."),
+        button_label=_mft("Discard transaction"),
+    ),
+
+    RejectCode.MALFORMED_ENCODING: RejectPresentation(
+        screen=WarningScreen,
+        title=_mft("Transaction Problem"),
+        # TRANSLATOR_NOTE: The psbt's binary encoding breaks the format rules (e.g. a duplicated field)
+        text=_mft("This transaction is encoded in a way that other software could read differently."),
+        button_label=_mft("Discard transaction"),
+    ),
+
     RejectCode.INCONSISTENT_FINGERPRINTS: RejectPresentation(
         screen=WarningScreen,
         title=_mft("Transaction Problem"),
@@ -685,11 +705,40 @@ def refusal_destination(error: InvalidPSBTError) -> Destination:
 
 
 
+def seedless_multisig_parser(controller, settings) -> PSBTParser:
+    """
+    Parse the loaded multisig psbt with no key to verify against, for card signing:
+    the card holds the key, so there is no BIP32 tree here. Change can then only be
+    identified by the loaded descriptor, if any. Raises InvalidPSBTError on refusal.
+    """
+    parser = PSBTParser(
+        controller.psbt,
+        network=settings.get_value(SettingsConstants.SETTING__NETWORK),
+        multisig_descriptor=controller.multisig_wallet_descriptor,
+    )
+    parser.parse()
+    return parser
+
+
+
 class PSBTOverviewView(View):
     def __init__(self):
         super().__init__()
 
         self.loading_screen = None
+
+        if (not self.controller.psbt_parser
+                and self.controller.psbt_seed is None
+                and self.controller.psbt_sign_with_satochip):
+            # Card multisig: the parser was dropped to re-read the psbt with a newly
+            # loaded descriptor (see MultisigWalletDescriptorView). There is no seed to
+            # hand the constructor, so it is parsed seedless, as it was the first time.
+            try:
+                self.controller.psbt_parser = seedless_multisig_parser(self.controller, self.settings)
+            except InvalidPSBTError as e:
+                logger.info("Refusing psbt: %s (%s)", e, e.code)
+                self.set_redirect(refusal_destination(e))
+            return
 
         if not self.controller.psbt_parser or self.controller.psbt_parser.seed != self.controller.psbt_seed:
             # The PSBTParser takes a while to read the PSBT. Run the loading screen while
@@ -848,6 +897,8 @@ class PSBTRiskWarningView(View):
         RiskWarning.HIGH_FEE: _mft("The fee is an unusually large share of this transaction."),
         # TRANSLATOR_NOTE: The fee per byte is high compared to recent blocks.
         RiskWarning.HIGH_FEE_RATE: _mft("The fee rate is high compared to recent blocks."),
+        # TRANSLATOR_NOTE: The coordinator did not include the previous transactions that prove the input amounts
+        RiskWarning.UNVERIFIED_INPUT_AMOUNTS: _mft("Input amounts are unproven (no previous transactions); the fee may be higher than shown."),
         RiskWarning.DUST_OUTPUT: _mft("One output is below the dust threshold and may be unspendable."),
         RiskWarning.FUTURE_LOCKTIME: _mft("This transaction cannot confirm until a future date."),
         # TRANSLATOR_NOTE: The transaction is locked years beyond when it was created.
@@ -1277,8 +1328,12 @@ class PSBTAddressVerificationFailedView(View):
 
 class PSBTOpReturnView(View):
     """
-        Shows the OP_RETURN data
+        Shows the OP_RETURN data, one output at a time.
     """
+    def __init__(self, op_return_num: int = 0):
+        super().__init__()
+        self.op_return_num = op_return_num
+
     def run(self):
         from seedsigner.gui.screens.psbt_screens import PSBTOpReturnScreen
         psbt_parser: PSBTParser = self.controller.psbt_parser
@@ -1294,11 +1349,14 @@ class PSBTOpReturnView(View):
             PSBTOpReturnScreen,
             title=title,
             button_data=button_data,
-            op_return_data=psbt_parser.op_return_data,
+            op_return_data=psbt_parser.op_return_payloads[self.op_return_num],
         )
         
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
+
+        if self.op_return_num < len(psbt_parser.op_return_payloads) - 1:
+            return Destination(PSBTOpReturnView, view_args={"op_return_num": self.op_return_num + 1})
 
         return Destination(PSBTFinalizeView)
 

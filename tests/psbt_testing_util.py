@@ -180,6 +180,29 @@ def create_output(output_hex: str, value: int = None) -> OutputScope:
     return output
 
 
+def input_at_new_outpoint(inp: InputScope, n: int) -> InputScope:
+    """
+    A copy of `inp` spending a different outpoint, for padding a fixture out to many
+    inputs: the parser refuses a transaction that spends one outpoint twice.
+
+    The copy keeps its witness_utxo but drops its non_witness_utxo, which no longer
+    hashes to the new txid.
+    """
+    from copy import deepcopy
+    from hashlib import sha256
+
+    copy = deepcopy(inp)
+    copy.txid = sha256(inp.txid + n.to_bytes(4, "little")).digest()
+    copy.non_witness_utxo = None
+    return copy
+
+
+def foreign_output(value: int = 10_000) -> OutputScope:
+    """An output paying a key the signing seed does not control, with no derivations."""
+    from embit.transaction import TransactionOutput
+    return OutputScope(vout=TransactionOutput(value, script.p2wpkh(foreign_public_key())))
+
+
 def root_for_seed(seed: Seed) -> bip32.HDKey:
     """
     A seed's master key, built the way PSBTParser builds it.

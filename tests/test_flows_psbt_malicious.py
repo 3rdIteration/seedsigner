@@ -147,6 +147,59 @@ class TestMaliciousPSBTFlows(FlowTest):
         ])
 
 
+    def test_version_confused_psbt_is_refused_at_scan(self):
+        """
+        ENC-03 hides an attacker's output behind v2 output fields in a v0 psbt.
+        embit would take it for our change, so it is refused on the raw bytes, at
+        scan, before a seed is even chosen -- with the refusal screen, not the
+        generic "could not be read" one.
+        """
+        def assert_cleared(view):
+            assert view.controller.psbt is None
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(scan_views.ScanView, before_run=self.load_psbt("ENC-03.v2_keys_hide_change")),
+            FlowStep(psbt_views.PSBTRefusalView, screen_return_value=0),
+            FlowStep(MainMenuView, before_run=assert_cleared),
+        ])
+
+    def test_framing_refusal_embit_cannot_parse_is_explained(self):
+        """
+        ENC-05 (a v2 psbt that also carries a global unsigned tx) is one embit
+        refuses too. Delivered as UR2 it still gets the refusal screen that names
+        the problem, rather than the generic "Invalid PSBT" one.
+        """
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(scan_views.ScanView, before_run=self.load_psbt_as_ur2("ENC-05.v0_tx_in_v2")),
+            FlowStep(psbt_views.PSBTRefusalView, screen_return_value=0),
+            FlowStep(MainMenuView),
+        ])
+
+    def test_version_confused_psbt_is_refused_from_microsd(self, tmp_path):
+        """
+        The microSD loader applies the same framing checks as a scan. ENC-09's
+        forged previous tx would otherwise pass the txid check against its own
+        injected txid and show a 1,000-sat fee for an 800,000-sat one.
+        """
+        from unittest.mock import patch
+        from seedsigner.hardware.microsd import MicroSD
+        from seedsigner.views import smartcard_views
+
+        (tmp_path / "psbt").mkdir()
+        (tmp_path / "psbt" / "tx.psbt").write_bytes(load_bytes("ENC-09.v2_prevtxid_in_v0"))
+        # No stored seeds, so the loader skips its "may expose loaded secrets" warning.
+        self.controller.storage.seeds = []
+
+        with patch.object(MicroSD, "get_microsd_dir", staticmethod(lambda: tmp_path)):
+            self.run_sequence([
+                FlowStep(smartcard_views.ToolsSatochipLoadPsbtView, screen_return_value=0),
+                FlowStep(psbt_views.PSBTRefusalView, screen_return_value=0),
+                FlowStep(MainMenuView),
+            ])
+        assert self.controller.psbt is None
+
     def test_unidentified_multisig_change_is_a_payment_until_identified(self):
         """
         With no global xpubs, genuine multisig change looks exactly like a different
