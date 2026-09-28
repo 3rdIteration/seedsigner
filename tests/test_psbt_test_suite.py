@@ -1292,12 +1292,13 @@ class TestFraming:
         with pytest.raises(EmbitError):
             parse_psbt(raw)
 
-    def test_unknown_version_is_left_to_the_parser(self):
-        """The version gate names it (UNSUPPORTED_PSBT_VERSION); framing doesn't guess."""
+    def test_unknown_version_is_named(self):
+        """embit refuses it too, but only as unreadable; framing says which version."""
         raw = load_wire_bytes(self.V2)
         version_2 = self._entry(b"\xfb", (2).to_bytes(4, "little"))
         assert version_2 in raw
-        check_psbt_framing(raw.replace(version_2, self._entry(b"\xfb", (3).to_bytes(4, "little")), 1))
+        raw = raw.replace(version_2, self._entry(b"\xfb", (3).to_bytes(4, "little")), 1)
+        assert self._refusal(raw) == RejectCode.UNSUPPORTED_PSBT_VERSION
 
     # ---------------------------------------------------------------- wiring
 
@@ -1324,17 +1325,18 @@ class TestFraming:
         decoder.add_data(data)
         assert decoder.is_psbt
 
-    def test_embit_resolves_the_confusion_silently(self):
+    @pytest.mark.parametrize("name", [
+        "ENC-01.v2_keys_in_v0", "ENC-02.v2_sequence_in_v0", "ENC-03.v2_keys_hide_change",
+        "ENC-09.v2_prevtxid_in_v0", "ENC-10.v2_global_locktime_in_v0",
+    ])
+    def test_embit_also_refuses_version_confusion(self, name):
         """
-        Why this has to happen on the bytes: embit takes ENC-03's injected v2
-        output fields over the global tx's output and leaves no trace, so once
-        parsed, the attacker's output looks like our change.
+        Defence in depth: embit 0.8.2 refuses the version mix-ups too. Up to 0.8.0 it
+        silently took the injected v2 fields over the global tx (ENC-03's attacker
+        output became our change), which is why framing checks the bytes first.
         """
-        parser = parse_vector(VECTORS_BY_NAME["ENC-01.v2_keys_in_v0"])
-        assert parser.fee_amount == 1_000
-        parser = PSBTParser(p=load_psbt("ENC-03.v2_keys_hide_change"), seed=suite_seed(),
-                            network=SUITE_NETWORK, max_fee_rate=SUITE_MAX_FEE_RATE)
-        assert parser.spend_amount == 0
+        with pytest.raises(EmbitError):
+            load_psbt(name)
 
 
 
