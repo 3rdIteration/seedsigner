@@ -2,17 +2,18 @@ from __future__ import annotations
 
 import os
 import random
-from concurrent.futures import TimeoutError
 
 from embit.ec import PublicKey
 from embit.psbt import PSBT
 
 from seedsigner.helpers.iso7816 import format_sw_error
 from seedsigner.helpers.satochip_signer import (
+    CARD_TIMEOUTS,
     SignResult,
     _call_with_timeout,
     _format_path,
     normalize_signature_der,
+    signature_matches_pubkey,
 )
 from seedsigner.models.settings import Settings, SettingsConstants
 
@@ -52,6 +53,8 @@ def sign_psbt_with_keycard(psbt: PSBT, connector, timeout: float | None = None) 
     pre_dummy_count = random.randint(0, pre_dummy_max)
     logger.info("Pre-signing dummy signatures: %d", pre_dummy_count)
     for _ in range(pre_dummy_count):
+        if timed_out:
+            break
         dummy_hash = os.urandom(32)
         extra = random.randint(1, in_tx_dummy_max) if random.random() < dummy_prob else 0
         for _ in range(1 + extra):
@@ -63,12 +66,21 @@ def sign_psbt_with_keycard(psbt: PSBT, connector, timeout: float | None = None) 
                     list(dummy_hash),
                     None,
                 )
+            except CARD_TIMEOUTS:
+                # A dummy is a real request, and the card is still on it.
+                logger.warning("Keycard dummy signing timed out")
+                timed_out = True
+                break
             except Exception:
                 pass
 
     indices = list(range(len(psbt.inputs)))
     random.shuffle(indices)
     for i in indices:
+        # Everything sent after a timeout only waits behind the request the
+        # card is still on, a full timeout each, before being refused.
+        if timed_out:
+            break
         inp = psbt.inputs[i]
         if len(inp.bip32_derivations) == 0:
             logger.debug("Keycard signer input %d: skipped (no bip32 derivations)", i)
@@ -151,10 +163,11 @@ def sign_psbt_with_keycard(psbt: PSBT, connector, timeout: float | None = None) 
                             None,
                         )
                     )
-                except TimeoutError:
+                except CARD_TIMEOUTS:
                     logger.warning("Keycard signing timed out")
                     timed_out = True
                     results.append(None)
+                    break
                 except Exception:
                     results.append(None)
 
@@ -179,6 +192,18 @@ def sign_psbt_with_keycard(psbt: PSBT, connector, timeout: float | None = None) 
             except Exception as e:
                 logger.warning("Failed to normalize Keycard signature: %s", e)
 
+            # The path fallback above never proved the card holds this input's
+            # key -- it only asked the card to sign for a path. Verifying the
+            # signature is what establishes that, so an unrelated card cannot
+            # have its signature filed under the PSBT's pubkey.
+            if not signature_matches_pubkey(sig_der, tx_hash, pubkey):
+                logger.warning(
+                    "Keycard signer input %d: signature does not verify against "
+                    "the input's pubkey; not filing it",
+                    i,
+                )
+                continue
+
             inp.partial_sigs[pubkey] = sig_der + b"\x01"
             signed += 1
             logger.info("Keycard signer input %d: signature appended (signed_count=%d)", i, signed)
@@ -188,8 +213,12 @@ def sign_psbt_with_keycard(psbt: PSBT, connector, timeout: float | None = None) 
             logger.info("Keycard signer input %d: no signable path found", i)
 
     post_dummy_count = random.randint(0, post_dummy_max)
+    if timed_out:
+        post_dummy_count = 0
     logger.info("Post-signing dummy signatures: %d", post_dummy_count)
     for _ in range(post_dummy_count):
+        if timed_out:
+            break
         dummy_hash = os.urandom(32)
         extra = random.randint(1, in_tx_dummy_max) if random.random() < dummy_prob else 0
         for _ in range(1 + extra):
@@ -201,6 +230,11 @@ def sign_psbt_with_keycard(psbt: PSBT, connector, timeout: float | None = None) 
                     list(dummy_hash),
                     None,
                 )
+            except CARD_TIMEOUTS:
+                # A dummy is a real request, and the card is still on it.
+                logger.warning("Keycard dummy signing timed out")
+                timed_out = True
+                break
             except Exception:
                 pass
 

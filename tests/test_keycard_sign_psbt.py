@@ -19,17 +19,24 @@ class DummySettings:
 
 
 class DummyKeycardConnector:
+    """A card that really signs with `key`.
+
+    The signer verifies a signature against the input's pubkey before filing
+    it, so a canned byte string would be rejected and prove nothing.
+    """
+
     is_keycard_backend = True
 
-    def __init__(self):
+    def __init__(self, key=None):
         self.sign_order = []
+        self.key = key
 
     def card_sign_transaction_hash(self, keynbr, h, none):
         _ = keynbr
         _ = none
         idx = h[0]
         self.sign_order.append(idx)
-        return (bytes([idx]) * 70, 0x90, 0x00)
+        return (self.key.sign(bytes(h)).serialize(), 0x90, 0x00)
 
 
 def test_sign_psbt_with_keycard_path_fallback_single_derivation(monkeypatch):
@@ -48,7 +55,7 @@ def test_sign_psbt_with_keycard_path_fallback_single_derivation(monkeypatch):
         psbt,
     )
 
-    connector = DummyKeycardConnector()
+    connector = DummyKeycardConnector(priv)
     monkeypatch.setattr(Settings, "get_instance", classmethod(lambda cls: DummySettings()))
     random.seed(0)
 
@@ -57,7 +64,11 @@ def test_sign_psbt_with_keycard_path_fallback_single_derivation(monkeypatch):
     assert result.signed_count == 1
     assert not result.timed_out
     assert getattr(connector, "_last_path", None) == "m/84'/0'/0'/0/0"
-    assert psbt.inputs[0].partial_sigs[pub].endswith(b"\x01")
+    filed = psbt.inputs[0].partial_sigs[pub]
+    assert filed.endswith(b"\x01")
+    # The point of the fallback is a signature this input's key really made.
+    from embit.ec import Signature
+    assert pub.verify(Signature.parse(filed[:-1]), psbt.sighash(0))
 
 
 class _DummyKey:
@@ -71,8 +82,8 @@ class _DummyKey:
 class DummyMultisigKeycardConnector(DummyKeycardConnector):
     """A Keycard whose key lives at exactly one of the input's derivations."""
 
-    def __init__(self, card_pubkey, card_path):
-        super().__init__()
+    def __init__(self, card_pubkey, card_path, key=None):
+        super().__init__(key)
         self.card_pubkey = card_pubkey
         self.card_path = card_path
 
@@ -114,7 +125,7 @@ def test_sign_psbt_with_keycard_multisig_matches_card_pubkey(monkeypatch):
         psbt,
     )
 
-    connector = DummyMultisigKeycardConnector(card_pub.sec(), card_path)
+    connector = DummyMultisigKeycardConnector(card_pub.sec(), card_path, key=card_priv)
     monkeypatch.setattr(Settings, "get_instance", classmethod(lambda cls: DummySettings()))
     random.seed(0)
 
