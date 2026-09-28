@@ -92,6 +92,7 @@ class RejectCode:
     MIXED_DERIVATION_MAPS = "MIXED_DERIVATION_MAPS"
     WRONG_VERSION_FIELD = "WRONG_VERSION_FIELD"
     MALFORMED_ENCODING = "MALFORMED_ENCODING"
+    INVALID_TRANSACTION = "INVALID_TRANSACTION"
 
 
 class Advisory:
@@ -108,6 +109,7 @@ class Advisory:
     SCRIPT_TIMELOCK = "SCRIPT_TIMELOCK"
     LOCKTIME_FAR_FUTURE = "LOCKTIME_FAR_FUTURE"
     RBF = "RBF"
+    UNVERIFIED_INPUT_AMOUNTS = "UNVERIFIED_INPUT_AMOUNTS"
 
 
 # Fee-rate threshold the corpus expectations are written against. Pinned rather
@@ -194,6 +196,7 @@ VECTORS = [
         "3-in/2-out native segwit. Must sign cleanly, all three inputs.",
         Expect.PARSES,
         input_amount=300_000_000, output_amount=299_990_000, num_outputs=2, owned_outputs=1,
+        advisories=frozenset({Advisory.UNVERIFIED_INPUT_AMOUNTS}),
     ),
 
     # ----------------------------------------------------------------- binding
@@ -516,6 +519,7 @@ VECTORS = [
         "cleanly, all three inputs.",
         Expect.PARSES,
         input_amount=300_000_000, output_amount=299_990_000, num_outputs=2, owned_outputs=1,
+        advisories=frozenset({Advisory.UNVERIFIED_INPUT_AMOUNTS}),
     ),
 
     Vector(

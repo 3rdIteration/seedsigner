@@ -36,7 +36,8 @@ from seedsigner.models.seed import Seed
 from seedsigner.models.settings_definition import SettingsConstants
 
 from psbt_testing_util import (NUMS_INTERNAL_KEY, PSBTTestData, claim_seed_owns_key,
-    create_output, foreign_public_key, p2tr_with_script_tree, root_for_seed, tapleaf_hash)
+    create_output, foreign_output, foreign_public_key, input_at_new_outpoint,
+    p2tr_with_script_tree, root_for_seed, tapleaf_hash)
 
 
 
@@ -207,7 +208,11 @@ class TestPSBTParser:
             wrong_seed = Seed(["bacon"] * 24)
             assert not PSBTParser.has_matching_input_fingerprint(psbt, wrong_seed, SettingsConstants.REGTEST)
             
-            # Test the PSBTParser's ability to fill missing fingerprints during parsing
+            # Test the PSBTParser's ability to fill missing fingerprints during parsing.
+            # Some fixtures carry no outputs, which the parser refuses as a transaction;
+            # a payment with no derivations leaves the fingerprints under test alone.
+            if not psbt.outputs:
+                psbt.outputs.append(foreign_output())
             parser = PSBTParser(p=psbt, seed=PSBTTestData.seed, network=SettingsConstants.REGTEST)
             
             # Verify fingerprints were correctly filled after parsing
@@ -289,7 +294,8 @@ class TestPSBTParser:
         assert not PSBTParser.has_matching_input_fingerprint(psbt, wrong_seed, SettingsConstants.REGTEST)
 
         # Parsing should successfully fill the fingerprint and verify that the input
-        # belongs to the seed.
+        # belongs to the seed. (The fixture has no outputs; a transaction needs one.)
+        psbt.outputs.append(foreign_output())
         parser = PSBTParser(p=psbt, seed=PSBTTestData.seed, network=SettingsConstants.REGTEST)
         (_, filled_derivation) = parser.psbt.inputs[0].taproot_bip32_derivations[x_only_public_key]
         assert filled_derivation.fingerprint == parser.root.my_fingerprint
@@ -678,11 +684,13 @@ class TestPSBTParserOptimizations:
 
         # Sanity check that this artificial psbt has no outputs. We have to make sure that
         # the derivation counts at the end of the test were only for inputs, not outputs.
+        # A transaction needs one, so it gets a payment with no derivations to walk.
         assert len(psbt.outputs) == 0, "fixture is expected to have no outputs"
+        psbt.outputs.append(foreign_output())
 
         # Artificially boost this test psbt to 10 total inputs from the same wallet
-        for _ in range(9):
-            psbt.inputs.append(deepcopy(psbt.inputs[0]))
+        for n in range(9):
+            psbt.inputs.append(input_at_new_outpoint(psbt.inputs[0], n))
 
         # Zero out all of the inputs' fingerprints
         num_zeroed = 0
@@ -1022,7 +1030,7 @@ class TestPSBTParserSeedOwnership:
         psbt = self._psbt_with_change()
 
         # The other party's input: their utxo, carrying no derivation info
-        foreign_input = deepcopy(psbt.inputs[0])
+        foreign_input = input_at_new_outpoint(psbt.inputs[0], 0)
         foreign_input.bip32_derivations.clear()
         foreign_input.witness_utxo.script_pubkey = script.p2wpkh(foreign_public_key())
         # See the note in test_missing_fingerprint_handling: the copied non_witness_utxo
@@ -1218,8 +1226,8 @@ class TestPSBTParserSeedOwnership:
         psbt = self._psbt_with_change()
 
         # Boost to 10 inputs from the same wallet, all sharing the one derivation path
-        for _ in range(9):
-            psbt.inputs.append(deepcopy(psbt.inputs[0]))
+        for n in range(9):
+            psbt.inputs.append(input_at_new_outpoint(psbt.inputs[0], n))
 
         # How deep does the derivation path go?
         num_levels = len(list(psbt.inputs[0].bip32_derivations.values())[0].derivation)

@@ -21,7 +21,8 @@ here, on the raw bytes:
   * a v0 psbt carries none of the fields BIP-370 defines for v2 only, and a v2
     psbt carries no PSBT_GLOBAL_UNSIGNED_TX;
   * there are exactly as many input and output maps as the transaction has
-    inputs and outputs, and nothing after them.
+    inputs and outputs, and nothing after them; a v2 psbt may not declare more
+    of them than its remaining bytes could hold.
 
 `parse_psbt()` is the single entry point: every raw psbt the device receives
 should go through it rather than through `PSBT.parse()` directly.
@@ -196,6 +197,17 @@ def _check(stream: BytesIO) -> None:
             if count_stream.read(1):
                 raise _malformed(f"Global map: {V2_ONLY_GLOBAL[key_type]} has trailing bytes.")
         num_inputs, num_outputs = counts
+
+        # Every map is at least its one-byte separator. embit allocates a record
+        # per declared input and output before reading any, so a count the
+        # remaining bytes cannot hold would otherwise let a few-hundred-byte psbt
+        # tie the device up building millions of them.
+        remaining = len(stream.getbuffer()) - stream.tell()
+        if num_inputs + num_outputs > remaining:
+            raise _malformed(
+                f"Global map: declares {num_inputs} inputs and {num_outputs} outputs; "
+                f"only {remaining} bytes follow."
+            )
 
     else:
         # An unknown version: PSBTParser refuses it by name

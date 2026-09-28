@@ -20,6 +20,8 @@ from seedsigner.models.psbt_parser import InvalidPSBTError, PSBTParser, RejectCo
 from seedsigner.models.settings_definition import SettingsConstants
 
 from embit import bip32
+from embit.psbt import PSBT
+from embit.script import Script
 
 from psbt_suite_util import (
     Advisory,
@@ -383,9 +385,11 @@ class TestEvidenceCannotBeForged:
 
         from embit.psbt import PSBT
 
-        from psbt_testing_util import PSBTTestData
+        from psbt_testing_util import PSBTTestData, foreign_output
 
         psbt = PSBT.parse(a2b_base64(PSBTTestData.MULTISIG_NATIVE_SEGWIT_1_INPUT))
+        # An input-only fixture; a transaction needs an output.
+        psbt.outputs.append(foreign_output())
         parser = PSBTParser(p=psbt, seed=PSBTTestData.seed,
                             network=SettingsConstants.REGTEST)
 
@@ -403,9 +407,11 @@ class TestEvidenceCannotBeForged:
 
         from embit.psbt import PSBT
 
-        from psbt_testing_util import PSBTTestData
+        from psbt_testing_util import PSBTTestData, foreign_output
 
         psbt = PSBT.parse(a2b_base64(PSBTTestData.MULTISIG_NATIVE_SEGWIT_1_INPUT))
+        # An input-only fixture; a transaction needs an output.
+        psbt.outputs.append(foreign_output())
         parser = PSBTParser(psbt)
         parser.parse()
 
@@ -1056,10 +1062,36 @@ class TestOpReturnPayload:
         (b"jLP" + b"x" * 80, b"x" * 80),             # OP_PUSHDATA1
         (b"jM," + b"y" * 300, b"y" * 300),       # OP_PUSHDATA2
         (b"j", b""),                                       # bare OP_RETURN
-        (b"jab", b"ab"),                                # truncated push: what is there
+        (b"j\x03ab", None),                         # truncated push: refused, not partly shown
+        (b"j\x4c", None),                           # OP_PUSHDATA1 with no length byte
+        (b"j\x51", None),                           # a non-push opcode
+        (b"j\x00\x02hi", b"hi"),                  # OP_0 is an empty push
     ])
     def test_payload_parsing(self, script, expected):
         assert PSBTParser._op_return_payload(script) == expected
+
+    def test_malformed_payload_is_refused(self):
+        """A push that runs past the end would be shown as data the output doesn't carry."""
+        psbt = load_psbt("XTRAS.OP_RETURN_DIRECT_PUSH")
+        for out in psbt.outputs:
+            if out.script_pubkey.data[:1] == b"\x6a":
+                out.script_pubkey = Script(b"\x6a\x4c\xff" + b"abc")
+        with pytest.raises(InvalidPSBTError) as excinfo:
+            PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK,
+                       max_fee_rate=SUITE_MAX_FEE_RATE)
+        assert excinfo.value.code == RejectCode.UNDISPLAYABLE_OUTPUT
+
+    def test_every_op_return_is_shown(self):
+        """Each OP_RETURN's payload is kept, in output order -- not just the last one."""
+        from copy import deepcopy
+        psbt = load_psbt("XTRAS.OP_RETURN_DIRECT_PUSH")
+        first = [o for o in psbt.outputs if o.script_pubkey.data[:1] == b"\x6a"][0]
+        extra = deepcopy(first)
+        extra.script_pubkey = Script(b"\x6a\x05hello")
+        psbt.outputs.insert(0, extra)
+        parser = PSBTParser(p=PSBT.parse(psbt.serialize()), seed=suite_seed(),
+                            network=SUITE_NETWORK, max_fee_rate=SUITE_MAX_FEE_RATE)
+        assert parser.op_return_payloads == [b"hello", self.MSG]
 
 
 class TestFingerprintConsistency:
@@ -1303,3 +1335,141 @@ class TestFraming:
         parser = PSBTParser(p=load_psbt("ENC-03.v2_keys_hide_change"), seed=suite_seed(),
                             network=SUITE_NETWORK, max_fee_rate=SUITE_MAX_FEE_RATE)
         assert parser.spend_amount == 0
+
+
+
+class TestTransactionStructure:
+    """
+    Transactions consensus would reject whatever they paid, refused before anything
+    about them is shown. Built by editing a clean fixture.
+    """
+
+    @staticmethod
+    def _parse(psbt):
+        return PSBTParser(p=PSBT.parse(psbt.serialize()), seed=suite_seed(),
+                          network=SUITE_NETWORK, max_fee_rate=SUITE_MAX_FEE_RATE)
+
+    def _refusal(self, psbt) -> str:
+        with pytest.raises(InvalidPSBTError) as excinfo:
+            self._parse(psbt)
+        return excinfo.value.code
+
+    def test_spending_one_outpoint_twice_is_refused(self):
+        """Its amount would be counted twice, into the fee on screen."""
+        from copy import deepcopy
+        psbt = load_psbt("NORMAL-1_p2wpkh")
+        psbt.inputs.append(deepcopy(psbt.inputs[0]))
+        assert self._refusal(psbt) == RejectCode.INVALID_TRANSACTION
+
+    def test_no_outputs_is_refused(self):
+        """Every input would be shown as fee."""
+        psbt = load_psbt("NORMAL-1_p2wpkh")
+        psbt.outputs = []
+        assert self._refusal(psbt) == RejectCode.INVALID_TRANSACTION
+
+    def test_v2_with_no_inputs_is_refused(self):
+        psbt = load_psbt("NORMAL-1_p2wpkh_V2")
+        psbt.inputs = []
+        assert self._refusal(psbt) == RejectCode.INVALID_TRANSACTION
+
+    def test_empty_output_script_in_v0_is_refused_not_crashed(self):
+        """Used to escape as an IndexError, i.e. the crash screen."""
+        psbt = load_psbt("NORMAL-1_p2wpkh")
+        psbt.outputs[0].script_pubkey = Script(b"")
+        assert self._refusal(psbt) == RejectCode.UNDISPLAYABLE_OUTPUT
+
+    def test_inputs_totalling_more_than_can_exist_are_refused(self):
+        """Each input is within range; together they are not."""
+        psbt = load_psbt("NORMAL-4_multi_input")
+        for inp in psbt.inputs:
+            inp.witness_utxo.value = MAX_MONEY
+        assert self._refusal(psbt) == RejectCode.AMOUNT_OUT_OF_RANGE
+
+
+class TestUnverifiedInputAmounts:
+    """
+    RiskWarning.UNVERIFIED_INPUT_AMOUNTS: several inputs, and a segwit v0 one whose
+    amount rests on its witness_utxo alone. Only its own signature commits to that
+    amount, so two signings can be combined into one paying a larger fee.
+    """
+
+    def _warnings(self, psbt):
+        return PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK,
+                          max_fee_rate=SUITE_MAX_FEE_RATE).risk_warnings
+
+    def test_multi_input_segwit_without_previous_txs_is_flagged(self):
+        assert Advisory.UNVERIFIED_INPUT_AMOUNTS in self._warnings(load_psbt("NORMAL-4_multi_input"))
+
+    def test_single_input_is_not_flagged(self):
+        """One input: its signature commits to its own amount, the only one there is."""
+        assert Advisory.UNVERIFIED_INPUT_AMOUNTS not in self._warnings(load_psbt("NORMAL-1_p2wpkh"))
+
+    def test_previous_txs_prove_the_amounts(self):
+        """The same shape with every previous tx supplied is not flagged."""
+        from copy import deepcopy
+        from embit.transaction import Transaction, TransactionInput, TransactionOutput
+
+        psbt = load_psbt("NORMAL-4_multi_input")
+        for inp in psbt.inputs:
+            prev = Transaction(
+                vin=[TransactionInput(b"\x11" * 32, 0)],
+                vout=[deepcopy(inp.witness_utxo)],
+            )
+            inp.non_witness_utxo = prev
+            inp.txid = prev.txid()
+            inp.vout = 0
+        assert Advisory.UNVERIFIED_INPUT_AMOUNTS not in self._warnings(PSBT.parse(psbt.serialize()))
+
+
+class TestSeedlessMultisigChange:
+    """
+    The Satochip/Keycard multisig flow parses with no BIP32 tree: the card holds the
+    key. The coordinator supplies the witness script, so it matching the output proves
+    nothing -- an attacker's own m-of-n matches just as well. Only a known-good
+    descriptor may make an output change there.
+    """
+
+    @staticmethod
+    def _seedless(name, descriptor=None):
+        from embit.descriptor import Descriptor
+        parser = PSBTParser(load_psbt(name), network=SUITE_NETWORK, max_fee_rate=SUITE_MAX_FEE_RATE,
+                            multisig_descriptor=Descriptor.from_string(descriptor) if descriptor else None)
+        parser.parse()
+        return parser
+
+    @pytest.mark.parametrize("name", [
+        "TX-05", "TX-13.threshold", "TX-21.ms_foreign_quorum",
+        "TX-21.ms_foreign_quorum_no_xpubs", "TX-21.ms_repointed_keys",
+    ])
+    def test_attacker_change_is_a_payment(self, name):
+        parser = self._seedless(name)
+        assert parser.num_change_outputs == 0
+        assert parser.unidentified_change_outputs == [0]
+
+    def test_honest_change_is_identified_by_the_descriptor(self):
+        from psbt_suite_util import MULTISIG_DESCRIPTOR
+        parser = self._seedless("TX-21.ms_honest_change_no_xpubs", MULTISIG_DESCRIPTOR)
+        assert parser.num_change_outputs == 1
+        assert parser.unidentified_change_outputs == []
+
+    def test_the_descriptor_does_not_adopt_a_foreign_quorum(self):
+        from psbt_suite_util import MULTISIG_DESCRIPTOR
+        parser = self._seedless("TX-21.ms_foreign_quorum", MULTISIG_DESCRIPTOR)
+        assert parser.num_change_outputs == 0
+
+
+class TestFramingCounts:
+    """A v2 psbt may not declare more inputs/outputs than its bytes could hold."""
+
+    @pytest.mark.parametrize("count", [10**6, 2**32 - 1])
+    def test_inflated_input_count_is_refused_quickly(self, count):
+        raw = load_wire_bytes("NORMAL-1_p2wpkh_V2")
+        declared = b"\x01\x04\x01\x01"
+        assert declared in raw
+        bad = raw.replace(declared, b"\x01\x04\x05\xfe" + count.to_bytes(4, "little"), 1)
+        started = time.time()
+        with pytest.raises(InvalidPSBTError) as excinfo:
+            parse_psbt(bad)
+        assert excinfo.value.code == RejectCode.MALFORMED_ENCODING
+        assert time.time() - started < 1
+

@@ -412,6 +412,42 @@ class TestPSBTSatochip(FlowTest):
         assert parser.destination_addresses and parser.destination_addresses[0].startswith("tb1")
 
 
+class TestCardMultisigChange(BaseTest):
+    """
+    The Satochip/Keycard multisig flow parses with no seed, so only a loaded
+    descriptor can identify change -- and loading one must re-read the psbt.
+    """
+
+    def setup_method(self):
+        super().setup_method()
+        from psbt_suite_util import load_psbt
+        self.controller.psbt = load_psbt("TX-21.ms_honest_change_no_xpubs")
+        self.controller.psbt_seed = None
+        self.controller.psbt_sign_with_satochip = True
+        self.settings.set_value(SettingsConstants.SETTING__NETWORK, SettingsConstants.MAINNET)
+
+    def test_change_is_unidentified_without_a_descriptor(self):
+        parser = psbt_views.seedless_multisig_parser(self.controller, self.settings)
+        assert parser.num_change_outputs == 0
+        assert parser.unidentified_change_outputs == [0]
+
+    def test_overview_re_reads_the_psbt_with_the_loaded_descriptor(self):
+        """MultisigWalletDescriptorView drops the parser; the overview must rebuild it seedless."""
+        from embit.descriptor import Descriptor
+        from psbt_suite_util import MULTISIG_DESCRIPTOR
+
+        self.controller.multisig_wallet_descriptor = Descriptor.from_string(MULTISIG_DESCRIPTOR)
+        self.controller.psbt_parser = None
+
+        psbt_views.PSBTOverviewView()
+
+        parser = self.controller.psbt_parser
+        assert parser is not None
+        assert parser.num_change_outputs == 1
+        assert parser.unidentified_change_outputs == []
+
+
+
 class TestPSBTMultisigDescriptorMismatch(BaseTest):
 
     def test_descriptor_mismatch_clears_descriptor_and_prompts(self):
@@ -424,8 +460,15 @@ class TestPSBTMultisigDescriptorMismatch(BaseTest):
         psbt_b64 = "cHNidP8BAIkCAAAAAc9dCSh2RcRPfHaT5bNVBpbg0jAekRLqOK+bpN/QA0jeAAAAAAD9////AtAHAAAAAAAAIlEg24shYsV3IRCzlgmMKjAsR4Ad9tX896z7zDAi5q0TU9H3CgAAAAAAACIAIByGQg/VP2aRID62ty40E64HYZeRRsKRGLt8J/76R6stQ04FAE8BBDWHzwSLLGdzgAAAAq3q6nR20JnHR+vKrBQdWxN9C7xU8zNX942mVF7AQpl2ArrdLwVlkGxaatQJ4wwkvypNBKbwOq9hXGLNlKi7rZWAFDUxzXUwAACAAQAAgAAAAIACAACATwEENYfPBHOCZmWAAAACmH6KTXIny0vueRgQFBq4M6oMuG8f1QM0I/RzKQ03bCgCHrF0fyUtV0+FD2N34u/woqb8MAt/o+7Ed58RddhY8zYUCUjSaDAAAIABAACAAAAAgAIAAIAAAQEriBMAAAAAAAAiACBY4WsjDgJXLj3VW222jU1tkIIhT26ce/2efH73BWGGBiICAqyfkrdUO662QBrdvJcSOZMFxniD7M1awm9U0Kb5XCm5RzBEAiAPkQTY84YjFFkpD6MI2cc5rJySqws5fsTQA/8XEZFpbAIgTNVykbEH4Z7bqyzhhy6lty0K8rtCUDCaHNv+47NNIWgBAQMEAQAAAAEFR1IhApL4XO+VE1pPYn5wnRFyJQKVSc9TX2dO6KIBH6jwvgPaIQKsn5K3VDuutkAa3byXEjmTBcZ4g+zNWsJvVNCm+VwpuVKuIgYCkvhc75UTWk9ifnCdEXIlApVJz1NfZ07oogEfqPC+A9ocNTHNdTAAAIABAACAAAAAgAIAAIAAAAAAAAAAACIGAqyfkrdUO662QBrdvJcSOZMFxniD7M1awm9U0Kb5XCm5HAlI0mgwAACAAQAAgAAAAIACAACAAAAAAAAAAAAAAAEBR1IhApYXaczuYbBM/A+EH639Ir2yIB4PxL46dK/I1V1O9aHgIQLa02HCI/+EP+9gGpxHskjYWFN5hZzXY7RRvwV4UF42ylKuIgIClhdpzO5hsEz8D4Qfrf0ivbIgHg/Evjp0r8jVXU71oeAcNTHNdTAAAIABAACAAAAAgAIAAIABAAAAAAAAACICAtrTYcIj/4Q/72AanEeySNhYU3mFnNdjtFG/BXhQXjbKHAlI0mgwAACAAQAAgAAAAIACAACAAQAAAAAAAAAA"
 
         psbt_obj = psbt.PSBT.from_string(psbt_b64)
-        parser = PSBTParser(psbt_obj)
+        # Seedless (the card multisig flow), so only a descriptor can make the output
+        # change: parse with the wallet's real one, then have the user swap in another.
+        wallet_descriptor = Descriptor.from_string(
+            "wsh(sortedmulti(2,[3531cd75/48h/1h/0h/2h]tpubDEvs8aQCFkexBPVGJoqctrxgK9zeFwejWUWsAn7fKeSbbSUQ8sW6BJHrkKpNGRXwAfk7UWZDKz6amomvE2bo7DzokRtH8gnfweyQZf2ufFz/<0;1>/*,"
+            "[0948d268/48h/1h/0h/2h]tpubDEkn1ih27ZcgHeu4tLzDw5EceCBa8hYMhRoCP7QmfijsrxDgchvMEC8ukFncE9Y7qBCBozBzYjEz4ophQ2quGRZsbN2bTziJxpLeK7mHq4L/<0;1>/*))"
+        )
+        parser = PSBTParser(psbt_obj, multisig_descriptor=wallet_descriptor)
         parser.parse()
+        assert parser.num_change_outputs == 1
 
         self.controller.psbt = psbt_obj
         self.controller.psbt_parser = parser

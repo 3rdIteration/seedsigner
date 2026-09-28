@@ -92,6 +92,16 @@ class RiskWarning:
 
     RBF = "RBF"
 
+    # Two or more inputs, and at least one segwit v0 input described only by a
+    # witness_utxo, without the previous transaction that would prove its amount.
+    # BIP-143 commits each signature to its own input's amount, but not to the
+    # others'. So a coordinator can get this transaction signed twice, each time
+    # understating a different input, and combine the two into a valid transaction
+    # that pays far more fee than either review showed. Taproot (BIP-341) commits
+    # to every input's amount and is not affected. A warning, not a refusal:
+    # plenty of honest coordinators still omit the previous transaction.
+    UNVERIFIED_INPUT_AMOUNTS = "UNVERIFIED_INPUT_AMOUNTS"
+
     # Recorded, but not worth interrupting the user for. Opt-in RBF is the
     # default in every modern coordinator; an interstitial on every ordinary
     # transaction just teaches people to click past the ones that matter.
@@ -140,6 +150,12 @@ class RejectCode:
     # key given twice, or input/output maps that don't match the transaction's
     # counts.
     MALFORMED_ENCODING = "MALFORMED_ENCODING"
+
+    # A transaction consensus would reject whatever it paid: no inputs, no
+    # outputs, or the same outpoint spent twice. Whatever the screens showed for
+    # it -- a spent-twice input counts its amount twice, into the fee -- would
+    # describe a transaction that cannot exist.
+    INVALID_TRANSACTION = "INVALID_TRANSACTION"
 
     # An output scope claims this seed's fingerprint on a key the seed does not
     # derive. This is not a psbt that merely fails to be ours. A fingerprint is
@@ -316,7 +332,8 @@ class PSBTParser():
         self.can_verify_derivations: bool = False
         self.destination_addresses = []
         self.destination_amounts = []
-        self.op_return_data: bytes = None
+        # One entry per OP_RETURN output, in output order.
+        self.op_return_payloads: list[bytes] = []
         self.op_return_amount: int = 0
         self.risk_warnings: set[str] = set()
         # Fee rate in sat/vB, computed during the parse from an estimated vsize.
@@ -383,6 +400,12 @@ class PSBTParser():
         return len(self.destination_addresses)
 
 
+    @property
+    def op_return_data(self) -> bytes | None:
+        """The first OP_RETURN payload, or None. See op_return_payloads for all of them."""
+        return self.op_return_payloads[0] if self.op_return_payloads else None
+
+
     def _set_root(self):
         if self.seed is not None:
             if isinstance(self.seed, WIFKey):
@@ -398,9 +421,10 @@ class PSBTParser():
         """
         Establishes, in order:
 
-          0. _validate_psbt_version / _check_tx_modifiable / _assert_v2_complete: the
-             psbt must be one whose bytes can only mean one transaction before any of its
-             claims are worth reading. See RejectCode.
+          0. _validate_psbt_version / _check_tx_modifiable / _assert_v2_complete /
+             _check_tx_structure: the psbt must be one whose bytes can only mean one
+             transaction, and one consensus could accept, before any of its claims are
+             worth reading. See RejectCode.
 
           1. _fill_missing_fingerprints: backfills all-zero fingerprints, but only for
              scopes the seed provably derives.
@@ -466,6 +490,7 @@ class PSBTParser():
         self._validate_psbt_version()
         self._check_tx_modifiable()
         self._assert_v2_complete()
+        self._check_tx_structure()
 
         if self.seed is not None and self.root is None:
             self._set_root()
@@ -874,6 +899,40 @@ class PSBTParser():
                 )
 
 
+    def _check_tx_structure(self):
+        """
+        Refuse a transaction consensus would reject whatever it paid, and outputs with
+        nothing to show.
+
+        * No inputs: not a transaction. (No outputs is refused too, but in
+          _parse_outputs, so that a more specific finding about the inputs -- a
+          SIGHASH_SINGLE with no output to commit to, say -- is the one reported.)
+        * The same outpoint spent twice: invalid, and its amount would be counted
+          twice, into the fee on screen.
+        * An output with an empty script: nothing to show the user. (Checked here for
+          v0 too; _assert_v2_complete covers the v2 fields being absent.)
+        """
+        if not self.psbt.inputs:
+            raise InvalidPSBTError("The transaction has no inputs.",
+                                   code=RejectCode.INVALID_TRANSACTION)
+        seen = set()
+        for i, inp in enumerate(self.psbt.inputs):
+            outpoint = (inp.txid, inp.vout)
+            if outpoint in seen:
+                raise InvalidPSBTError(
+                    f"Input {i} spends the same output as an earlier input.",
+                    code=RejectCode.INVALID_TRANSACTION,
+                )
+            seen.add(outpoint)
+
+        for i, out in enumerate(self.psbt.tx.vout):
+            if out.script_pubkey is None or len(out.script_pubkey.data) == 0:
+                raise InvalidPSBTError(
+                    f"Output {i} has no script.",
+                    code=RejectCode.UNDISPLAYABLE_OUTPUT,
+                )
+
+
     @staticmethod
     def _validate_input(index: int, inp: InputScope):
         """
@@ -1060,6 +1119,14 @@ class PSBTParser():
                         "Mixed inputs in the transaction",
                         code=RejectCode.MIXED_INPUTS,
                     )
+
+        # Each input was range-checked on its own; together they can still claim
+        # more than can exist.
+        if self.input_amount > MAX_MONEY:
+            raise InvalidPSBTError(
+                f"Inputs total {self.input_amount} sats, more than can exist.",
+                code=RejectCode.AMOUNT_OUT_OF_RANGE,
+            )
 
     @staticmethod
     def is_reachable_derivation(derivation: list[int], input_prefixes: set | None) -> bool:
@@ -1279,6 +1346,7 @@ class PSBTParser():
         self.change_data = []
         self.fee_amount = 0
         self.op_return_amount = 0
+        self.op_return_payloads = []
         self.risk_warnings = set()
         self.destination_addresses = []
         self.destination_amounts = []
@@ -1287,6 +1355,11 @@ class PSBTParser():
         # scratch on every single request. The outputs are consulted a dozen times
         # over the course of the loop below, so grab them once now.
         vout = self.psbt.tx.vout
+
+        if not vout:
+            # With no outputs every input would be shown as fee.
+            raise InvalidPSBTError("The transaction has no outputs.",
+                                   code=RejectCode.INVALID_TRANSACTION)
 
         for i, out in enumerate(self.psbt.outputs):
             value = vout[i].value
@@ -1431,12 +1504,17 @@ class PSBTParser():
                         if not self.can_verify_derivations:
                             # Seedless pre-parse (the smartcard multisig flow) or
                             # WIF/BIP38 signing: there is no BIP32 tree to prove this
-                            # seed's participation with. The rebuilt script already
-                            # matched the output's scriptPubKey, so the output is taken
-                            # as change provisionally, exactly as the fork classified it
-                            # before ownership proofs were added. The descriptor check in
-                            # PSBTChangeDetailsView is what verifies it.
-                            is_presumed_change = True
+                            # seed's participation with. That the rebuilt script
+                            # matched proves nothing -- the coordinator supplied the
+                            # script, so it matches for an attacker's own m-of-n just
+                            # as well. Only a known-good descriptor can identify the
+                            # output as change; until then it is a payment, and
+                            # PSBTIdentifyChangeView offers to load one.
+                            if (self.multisig_descriptor is not None
+                                    and self._descriptor_owns_output(self.multisig_descriptor, i)):
+                                is_presumed_change = True
+                            else:
+                                self.unidentified_change_outputs.append(i)
 
                         elif verified_derivation_path is None:
                             # No entry claimed this seed's fingerprint, but we already
@@ -1595,7 +1673,15 @@ class PSBTParser():
                             )
 
             if vout[i].script_pubkey.data[0] == OPCODES.OP_RETURN:
-                self.op_return_data = PSBTParser._op_return_payload(vout[i].script_pubkey.data)
+                payload = PSBTParser._op_return_payload(vout[i].script_pubkey.data)
+                if payload is None:
+                    # Shown as whatever its pushes happen to yield, it would not be
+                    # what the output carries. Standard OP_RETURNs are push-only.
+                    raise InvalidPSBTError(
+                        f"Output {i} OP_RETURN data is malformed.",
+                        code=RejectCode.UNDISPLAYABLE_OUTPUT,
+                    )
+                self.op_return_payloads.append(payload)
 
                 # Bitcoin Core v30 relaxed OP_RETURN standardness, so the amount
                 # cannot be assumed to be zero. An OP_RETURN is provably
@@ -1676,6 +1762,22 @@ class PSBTParser():
         return True
 
 
+    @staticmethod
+    def _amount_is_unproven(inp: InputScope) -> bool:
+        """
+        A segwit v0 input (native or p2sh-wrapped) with no previous transaction: its
+        amount is the coordinator's word, and only its own signature commits to it.
+        See RiskWarning.UNVERIFIED_INPUT_AMOUNTS. Taproot commits to every input's
+        amount, and a legacy input without a previous transaction is already refused.
+        """
+        if inp.non_witness_utxo is not None or inp.witness_utxo is None:
+            return False
+        script_type = inp.witness_utxo.script_pubkey.script_type()
+        if script_type == "p2sh" and inp.redeem_script is not None:
+            script_type = inp.redeem_script.script_type()
+        return script_type in ("p2wpkh", "p2wsh")
+
+
     def _collect_risk_warnings(self):
         """
         Flag the things a user would want to know before approving, none of
@@ -1687,6 +1789,11 @@ class PSBTParser():
             self.risk_warnings.add(RiskWarning.HIGH_FEE)
 
         self._check_fee_rate()
+
+        if len(self.psbt.inputs) >= 2 and any(
+            PSBTParser._amount_is_unproven(inp) for inp in self.psbt.inputs
+        ):
+            self.risk_warnings.add(RiskWarning.UNVERIFIED_INPUT_AMOUNTS)
 
         for vout in self.psbt.tx.vout:
             if vout.script_pubkey.data and vout.script_pubkey.data[0] == OPCODES.OP_RETURN:
@@ -1799,15 +1906,42 @@ class PSBTParser():
 
 
     @staticmethod
-    def _op_return_payload(data: bytes) -> bytes:
+    def _op_return_payload(data: bytes) -> bytes | None:
         """
         The data an OP_RETURN script carries: everything its pushes push, in order.
+        None if anything after the OP_RETURN is not a complete data push -- a push
+        that runs past the end of the script, or a non-push opcode -- since no
+        display of it would be faithful.
 
         Payloads of 75 bytes or fewer are pushed directly (OP_RETURN <len> <data>),
         which is how Bitcoin Core writes them; OP_PUSHDATA1 is only for longer ones.
         Slicing at a fixed offset dropped the first byte of every short payload.
         """
-        return b"".join(pushed for _op, pushed in PSBTParser._script_ops(data[1:]) if pushed is not None)
+        body = data[1:]
+        payload = b""
+        pos = 0
+        while pos < len(body):
+            op = body[pos]
+            pos += 1
+            if op == 0x00:
+                # OP_0: an empty push.
+                continue
+            if op <= 0x4B:
+                length = op
+            elif op in (OPCODES.OP_PUSHDATA1, OPCODES.OP_PUSHDATA2, OPCODES.OP_PUSHDATA4):
+                width = {OPCODES.OP_PUSHDATA1: 1, OPCODES.OP_PUSHDATA2: 2,
+                         OPCODES.OP_PUSHDATA4: 4}[op]
+                if pos + width > len(body):
+                    return None
+                length = int.from_bytes(body[pos:pos + width], "little")
+                pos += width
+            else:
+                return None
+            if pos + length > len(body):
+                return None
+            payload += body[pos:pos + length]
+            pos += length
+        return payload
 
 
     @staticmethod
