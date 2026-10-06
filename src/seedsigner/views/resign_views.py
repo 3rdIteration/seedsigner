@@ -213,6 +213,22 @@ class _FlowView(View):
         return self.result(text, title=_("Cannot continue"), finish="back",
                            skip_current_view=True)
 
+    def confirm_blind_sign(self, pending: dict) -> bool:
+        """Say plainly that digests are signed blind, before any key is loaded.
+
+        The device cannot see what a digest covers: whoever wrote the card can get
+        any image signed with the release key. True when the user chose to sign."""
+        selected = self.run_screen(
+            WarningScreen,
+            title=self.title,
+            status_headline=_("Signing blind"),
+            text=_("Signs {n} digest(s) without seeing what they cover. "
+                   "Only sign digests your own PC just made.").format(n=len(pending)),
+            button_data=[ButtonOption("Sign")],
+            show_back_button=True,
+        )
+        return selected != RET_CODE__BACK_BUTTON
+
     def load_keys(self, want_ed: bool):
         """(rsa_key, (ed_seed, stored key id or None)) or a None pair.
 
@@ -263,10 +279,10 @@ class _FlowView(View):
 
 
 # Release signing keys are held here, in RAM only, between collection and use (a
-# flow dict is logged, so it carries labels, never keys). Resign Release takes
-# them at its run step; Air-Gap Signing keeps them across the card round-trips
-# and clears them when the ceremony ends. Opening the submenu discards any left
-# behind either way.
+# flow dict is logged, so it carries labels, never keys). Every action takes
+# them at its run step (each Air-Gap round reads the SeedKeeper again). Keys left
+# behind by an abandoned flow are dropped by clear_signing_keys(): on opening the
+# submenu, on reaching Home, and by the inactivity wipe.
 _SEEDKEEPER_KEYS_ATTR = "luckfox_release_keys"
 
 
@@ -309,6 +325,13 @@ def _bip85_cache(controller):
 
 def clear_bip85_cache(controller):
     setattr(controller, _BIP85_CACHE_ATTR, {})
+
+
+def clear_signing_keys(controller):
+    """Drop every release-signing private key this module holds: the cached
+    BIP85 derivations and any SeedKeeper-loaded keys not yet consumed."""
+    clear_bip85_cache(controller)
+    clear_rekey_keys(controller)
 
 
 # The Pico Mini (RV1103) cannot run the two heaviest actions: Resign Release runs
@@ -867,6 +890,12 @@ class ToolsSignDigestRunView(_FlowView):
     def run(self):
         from seedsigner.helpers import resign_release
 
+        # An empty or missing folder is refused by sign_digests itself, below.
+        pending = resign_release.list_digests(
+            os.path.join(str(MicroSD.get_microsd_dir()), resign_release.DIGEST_DIR))
+        if pending and not self.confirm_blind_sign(pending):
+            return Destination(BackStackView)
+
         try:
             rsa_key, (ed_seed, stored_key_id) = self.load_keys(want_ed=True)
         except Exception as e:
@@ -1016,6 +1045,8 @@ class _RekeySignRoundView(_FlowView):
         refusal = self.validate_round(pending)
         if refusal:
             return self.refuse(refusal)
+        if not self.confirm_blind_sign(pending):
+            return Destination(BackStackView)
 
         try:
             rsa_key, (ed_seed, stored_key_id) = self.load_keys(want_ed=True)

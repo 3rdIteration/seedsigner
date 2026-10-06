@@ -145,6 +145,11 @@ class Destination:
         "secret_list",
         "private_key",
         "pin",
+        # The EncryptedQR/KEF passphrase the user typed.
+        "encryption_key",
+        # Free text the user typed for a Text QR, which may itself be a secret.
+        # Also carries harmless display copy elsewhere; hiding that is cheap.
+        "text",
         # Raw entropy sources; these are the full entropy behind a generated
         # password or mnemonic and must never reach the logs.
         "roll_data",
@@ -283,9 +288,10 @@ class MainMenuView(View):
 
         controller.storage.discard_pending_slip39_shares()
         # Reaching Home ends any signing session: drop the cached BIP85
-        # derivations (private halves) the Luckfox tools kept for speed.
-        from seedsigner.views.resign_views import clear_bip85_cache
-        clear_bip85_cache(controller)
+        # derivations (private halves) the Luckfox tools kept for speed, and
+        # any SeedKeeper-loaded release keys an abandoned flow left behind.
+        from seedsigner.views.resign_views import clear_signing_keys
+        clear_signing_keys(controller)
         controller.psbt_from_microsd = False
         controller.psbt_microsd_save_path = None
         controller.psbt_microsd_seed_warning_shown = False

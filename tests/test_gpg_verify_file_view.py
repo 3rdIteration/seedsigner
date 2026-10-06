@@ -429,3 +429,102 @@ class TestSdFileHardening:
 
     def test_manifest_names_are_safe_missing_file(self, tmp_path):
         assert not gpg_views._manifest_names_are_safe(tmp_path / "nope.txt")
+
+
+_CLEARSIGNED_TEMPLATE = (
+    "-----BEGIN PGP SIGNED MESSAGE-----\n"
+    "Hash: SHA512\n"
+    "\n"
+    "{body}"
+    "-----BEGIN PGP SIGNATURE-----\n"
+    "\n"
+    "iHUEARYKAB0WIQS9MjgVI0Yx/kT9070xY1F+Su0L+AUCaAAAAAAACgkQY1F+Su0L\n"
+    "-----END PGP SIGNATURE-----\n"
+)
+
+
+class TestClearsignedUnsignedContent:
+    """gpg --verify accepts unsigned text around a clearsigned block; none of it may
+    be treated as signed (a "<hash>  <file>" line added there would otherwise be
+    reported as a matched checksum)."""
+
+    @pytest.mark.parametrize("before,after", [
+        ("", "deadbeef  evil.bin\n"),
+        ("deadbeef  evil.bin\n", ""),
+        ("", _CLEARSIGNED_TEMPLATE.format(body="deadbeef  evil.bin\n")),
+    ])
+    def test_unsigned_content_is_refused(self, monkeypatch, tmp_path, before, after):
+        content = before + _CLEARSIGNED_TEMPLATE.format(body="aaaa  legit.bin\n") + after
+        captured = []
+        view = _make_view(monkeypatch, tmp_path, [])
+        (tmp_path / "SHA256SUMS.txt").write_text(content)
+        monkeypatch.setattr(ToolsGPGVerifyFileView, "run_screen",
+                            _make_fake_run_screen(captured))
+        monkeypatch.setattr("subprocess.run",
+                            lambda cmd, **kw: SimpleNamespace(stdout=_validsig(SPARROW_FPR), stderr=""))
+        view.run()
+
+        assert not _screens_of_type(captured, LargeIconStatusScreen)
+        errors = _screens_of_type(captured, WarningScreen)
+        assert any("outside" in e["kwargs"]["text"] for e in errors)
+
+    def test_clean_clearsigned_file_is_accepted(self, tmp_path):
+        path = tmp_path / "m.txt"
+        path.write_text("\n" + _CLEARSIGNED_TEMPLATE.format(body="aaaa  legit.bin\n") + "\n")
+        assert not gpg_views._clearsigned_has_unsigned_content(path)
+
+    def test_non_clearsigned_file_is_not_flagged(self, tmp_path):
+        path = tmp_path / "m.txt"
+        path.write_bytes(b"\x89binary inline-signed data")
+        assert not gpg_views._clearsigned_has_unsigned_content(path)
+
+    def test_checksums_come_from_the_signed_text_only(self, monkeypatch, tmp_path):
+        import hashlib
+        legit = b"legit contents"
+        evil = b"evil contents"
+        (tmp_path / "legit.bin").write_bytes(legit)
+        (tmp_path / "evil.bin").write_bytes(evil)
+        legit_line = f"{hashlib.sha256(legit).hexdigest()}  legit.bin\n"
+        evil_line = f"{hashlib.sha256(evil).hexdigest()}  evil.bin\n"
+        # The raw file names evil.bin; what gpg reports as signed does not.
+        (tmp_path / "SHA256SUMS.txt").write_text(
+            _CLEARSIGNED_TEMPLATE.format(body=legit_line + evil_line))
+
+        view = _make_view(monkeypatch, tmp_path, [])
+        captured = []
+
+        def fake_run_screen(self, screen, *args, **kwargs):
+            captured.append({"screen": screen, "kwargs": kwargs})
+            labels = [getattr(b, "button_label", b) for b in kwargs.get("button_data") or []]
+            if screen is ButtonListScreen:
+                return labels.index("SHA256SUMS.txt")
+            if "Check SHA256Sum" in labels:
+                return labels.index("Check SHA256Sum")
+            return 0
+
+        calls = []
+
+        def fake_subprocess_run(cmd, **kwargs):
+            calls.append(cmd)
+            if "--decrypt" in cmd:
+                return SimpleNamespace(stdout=legit_line.encode(), stderr="", returncode=0)
+            return SimpleNamespace(stdout=_validsig(SPARROW_FPR), stderr="")
+
+        monkeypatch.setattr(ToolsGPGVerifyFileView, "run_screen", fake_run_screen)
+        monkeypatch.setattr("subprocess.run", fake_subprocess_run)
+        view.run()
+
+        decrypt = [c for c in calls if "--decrypt" in c]
+        assert decrypt and decrypt[0][-2:] == ["--", "SHA256SUMS.txt"]
+        assert not any(c[0] == "sha256sum" for c in calls)
+        results = [c["kwargs"].get("text", "") for c in captured]
+        assert any("Matched SHA256 for legit.bin" in t for t in results)
+        assert not any("evil.bin" in t for t in results)
+
+
+class TestParserSubkeys:
+    def test_subkey_signature_reports_primary_fingerprint(self):
+        subkey = "ABCDEF0123456789ABCDEF0123456789ABCDEF01"
+        line = (f"[GNUPG:] VALIDSIG {subkey} 2026-08-15 1789000000 0 4 0 22 10 00 "
+                f"{SPARROW_FPR}\n")
+        assert _parse_gpg_verify_status(line, "")["valid_fprs"] == [SPARROW_FPR]
