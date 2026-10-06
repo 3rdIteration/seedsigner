@@ -794,8 +794,21 @@ def require_release_key(folder, rsa_key):
 
 # --- 4. provision a MicroSD update ------------------------------------------
 
+def _is_bare_image_name(name):
+    """A plain filename in the release folder: no directory part, no '..', not
+    hidden and not option-like. sd_update.txt is not signed, so the names it
+    lists are untrusted, and Provision MicroSD copies each one to
+    <card root>/<name>: a '../x' would be written outside the card."""
+    return (bool(name) and name not in (".", "..")
+            and not name.startswith((".", "-"))
+            and "/" not in name and "\\" not in name
+            and os.path.basename(name) == name)
+
+
 def update_script_images(folder):
-    """The images sd_update.txt flashes, in order."""
+    """The images sd_update.txt flashes, in order.
+
+    Raises ResignError if the script names anything but a bare filename."""
     lr = _tools()[3]
     path = os.path.join(folder, "sd_update.txt")
     names = []
@@ -803,6 +816,9 @@ def update_script_images(folder):
         for line in f:
             m = lr._STEP.search(line)
             if m and m.group(3) not in names:
+                if not _is_bare_image_name(m.group(3)):
+                    raise ResignError("sd_update.txt names %r, which is not a plain "
+                                      "filename in the release folder" % m.group(3))
                 names.append(m.group(3))
     return names
 
@@ -821,6 +837,12 @@ def provision_check(folder, card_root):
                                "auto-flashed from MicroSD (eMMC releases never can). "
                                "Flash it over USB.")
         return out
+    # Refuse before anything else reads the files the script names.
+    try:
+        images = update_script_images(folder)
+    except ResignError as e:
+        out["problems"].append(str(e))
+        return out
 
     rep = lr.check_release(folder)
     for name, ok, detail in rep.items:
@@ -838,7 +860,7 @@ def provision_check(folder, card_root):
     out["fixable"] = sd["fixable"]
     out["warnings"].extend(sd["notes"])
 
-    out["files"] = ["sd_update.txt"] + update_script_images(folder)
+    out["files"] = ["sd_update.txt"] + images
     for name in out["files"]:
         p = os.path.join(folder, name)
         if not os.path.isfile(p):
@@ -869,6 +891,7 @@ def provision_microsd(folder, card_root, progress=None):
     """Fix the write lengths, then copy sd_update.txt + its images to the card
     root and read every copy back. Returns the list of files placed."""
     lr = _tools()[3]
+    update_script_images(folder)          # refuses unsafe names before any write
     lr.sd_update_check(folder, None, fix=True)
     files = ["sd_update.txt"] + update_script_images(folder)
     if os.path.realpath(folder) == os.path.realpath(card_root):

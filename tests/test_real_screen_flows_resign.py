@@ -527,7 +527,8 @@ class TestEndToEnd(LuckfoxFlowTest):
 
         # Round 1: sign the rootfs digest - entered fresh, keys re-derived from cache.
         session = UISession(script=select("Luckfox Build Tools", "Air-Gap Signing")
-                            + self._round_script("Round 1 - Sign Rootfs Digest"))
+                            + self._round_script("Round 1 - Sign Rootfs Digest")
+                            + select("Sign"))
         self.run_sequence(self.to_submenu() + self._round_steps(rv.ToolsRekeySignRootfsView),
                           ui_session=session)
 
@@ -544,7 +545,8 @@ class TestEndToEnd(LuckfoxFlowTest):
         # Round 2: sign the boot chain - a third independent entry. The stale
         # rootfs.digest from round 1 is still on the card; re-signing it is a no-op.
         session = UISession(script=select("Luckfox Build Tools", "Air-Gap Signing")
-                            + self._round_script("Round 2 - Sign Boot Chain"))
+                            + self._round_script("Round 2 - Sign Boot Chain")
+                            + select("Sign"))
         self.run_sequence(self.to_submenu() + [
             FlowStep(rv.ToolsRekeyMenuView, real_screens=True),
             FlowStep(rv.ToolsLuckfoxKeySourceView, real_screens=True),

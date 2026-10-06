@@ -56,3 +56,15 @@ def test_destination_repr_redacts_entropy_entropy_source_still_shown():
 
     assert "dice_rolls" in rep
     assert "1111" not in rep
+
+
+def test_destination_repr_redacts_encryption_key_and_typed_text():
+    """The EncryptedQR/KEF passphrase and Text QR content are user secrets."""
+    dest = Destination(
+        MainMenuView,
+        view_args={"encryption_key": "kef-passphrase-123", "text": "my-wallet-password"},
+    )
+    rep = repr(dest)
+    assert "kef-passphrase-123" not in rep
+    assert "my-wallet-password" not in rep
+    assert rep.count("***redacted***") == 2

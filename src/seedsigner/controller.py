@@ -801,6 +801,13 @@ class Controller(Singleton):
         # survive the inactivity wipe either.
         self.password_generator_entropy_cache = None
 
+        # Luckfox release-signing private keys (BIP85 cache, SeedKeeper-loaded).
+        try:
+            from seedsigner.views.resign_views import clear_signing_keys
+            clear_signing_keys(self)
+        except Exception:
+            logger.debug("Error clearing release-signing keys on auto-wipe", exc_info=True)
+
         self.psbt = None
         self.psbt_parser = None
         self.psbt_seed = None

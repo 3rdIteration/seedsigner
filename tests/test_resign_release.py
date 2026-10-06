@@ -804,3 +804,35 @@ def test_sign_digests_ignores_unrecognised_files(tmp_path, new_key):
     (digests / "unknown.digest").write_bytes(b"\x11" * 32)
     with pytest.raises(rr.ResignError, match="no .digest files"):
         rr.sign_digests(str(tmp_path), new_key, ED_SEED)
+
+
+_TRAVERSAL_STEP = ("mw.b 0x40000000 0xff 0x10; fatload mmc 0 0x40000000 {name}; "
+                   "mtd erase spi-nand0 0x0 0x10; mtd write spi-nand0 0x40000000 0x0 0x10;\n")
+
+
+@pytest.mark.parametrize("name", ["../outside/evil.txt", "sub/evil.txt", "..",
+                                  "-evil", ".hidden", r"a\..\..\evil"])
+def test_provision_refuses_a_script_naming_a_path(tmp_path, name):
+    """sd_update.txt is unsigned; a name in it must not reach outside the card root
+    (Provision copies <folder>/<name> to <card root>/<name>)."""
+    card = tmp_path / "card"
+    folder = _full_release(card)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (card / "outside").mkdir(exist_ok=True)
+    (card / "outside" / "evil.txt").write_text("PWNED")
+    with open(os.path.join(folder, "sd_update.txt"), "a", newline="") as f:
+        f.write(_TRAVERSAL_STEP.format(name=name))
+    before = open(os.path.join(folder, "sd_update.txt"), "rb").read()
+
+    with pytest.raises(rr.ResignError):
+        rr.update_script_images(folder)
+    chk = rr.provision_check(folder, str(card))
+    assert any("not a plain filename" in p for p in chk["problems"])
+    with pytest.raises(rr.ResignError):
+        rr.provision_microsd(folder, str(card))
+
+    assert not (outside / "evil.txt").exists()
+    assert not (card / "sd_update.txt").exists()
+    # refused before the write-length fix touched the script
+    assert open(os.path.join(folder, "sd_update.txt"), "rb").read() == before
