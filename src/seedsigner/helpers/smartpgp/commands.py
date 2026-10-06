@@ -146,6 +146,27 @@ def _raw_send_apdu(connection, text, apdu):
     print("%02X %02X" % (sw1, sw2))
     return (data,sw1,sw2)
 
+
+class CardRefusedCommand(Exception):
+    """The card answered a command with a status word other than 9000."""
+
+    def __init__(self, text, sw1, sw2):
+        super().__init__("%s refused: %02X %02X" % (text, sw1, sw2))
+        self.sw1 = sw1
+        self.sw2 = sw2
+
+
+def _send_apdu_checked(connection, text, apdu):
+    """Send ``apdu`` and raise CardRefusedCommand unless the card answers 9000.
+
+    A write whose status word is dropped reads as done whether or not the card
+    took it, so an import the card refused was reported as a key on the card.
+    """
+    (data, sw1, sw2) = _raw_send_apdu(connection, text, apdu)
+    if sw1 != 0x90 or sw2 != 0x00:
+        raise CardRefusedCommand(text, sw1, sw2)
+    return (data, sw1, sw2)
+
 def list_readers():
     for reader in readers():
         try:
@@ -199,7 +220,7 @@ def switch_crypto_rsa_2048(connection,key_role):
         raise WrongKeyRole
     prefix = [0x00, 0xDA, 0x00] + [role]
     apdu = assemble_with_len(prefix, data)
-    _raw_send_apdu(connection,"Switch to RSA2048 (%s)" % (key_role,),apdu)
+    _send_apdu_checked(connection,"Switch to RSA2048 (%s)" % (key_role,),apdu)
 
 def switch_crypto_rsa_3072(connection,key_role):
     data = [
@@ -219,7 +240,7 @@ def switch_crypto_rsa_3072(connection,key_role):
         raise WrongKeyRole
     prefix = [0x00, 0xDA, 0x00] + [role]
     apdu = assemble_with_len(prefix, data)
-    _raw_send_apdu(connection,"Switch to RSA3072 (%s)" % (key_role,),apdu)
+    _send_apdu_checked(connection,"Switch to RSA3072 (%s)" % (key_role,),apdu)
 
 def switch_crypto_rsa_4096(connection,key_role):
     data = [
@@ -239,7 +260,7 @@ def switch_crypto_rsa_4096(connection,key_role):
         raise WrongKeyRole
     prefix = [0x00, 0xDA, 0x00] + [role]
     apdu = assemble_with_len(prefix, data)
-    _raw_send_apdu(connection,"Switch to RSA4096 (%s)" % (key_role,),apdu)
+    _send_apdu_checked(connection,"Switch to RSA4096 (%s)" % (key_role,),apdu)
 
 def switch_crypto(connection,crypto,key_role):
     alg_name = None
@@ -279,7 +300,7 @@ def switch_crypto(connection,crypto,key_role):
         raise WrongKeyRole
     prefix = [0x00, 0xDA, 0x00] + [role]
     apdu = assemble_with_len(prefix, [byte1] + data + [0xff])
-    _raw_send_apdu(connection,"Switch to %s (%s)" % (crypto,key_role),apdu)
+    _send_apdu_checked(connection,"Switch to %s (%s)" % (crypto,key_role),apdu)
 
 def generate_sm_key(connection):
     apdu = assemble_with_len(GENERATE_ASYMETRIC_KEYPAIR, [0xA6, 0x00])
@@ -347,7 +368,7 @@ def put_key_components(connection, role, components):
             data_chunk = cdata[i:i+cl]
             i = i + cl
         apdu = assemble_with_len([cla] + ins_p1_p2, data_chunk)
-        _raw_send_apdu(connection, "Sending key chunk", apdu)
+        _send_apdu_checked(connection, "Sending key chunk", apdu)
 
 
 def put_key(connection, role, pubkey, privkey):
@@ -362,7 +383,7 @@ def put_data(connection, tag, value):
     """Generic helper for ``PUT DATA`` command."""
     prefix = [0x00, 0xDA, 0x00, tag]
     apdu = assemble_with_len(prefix, list(value))
-    _raw_send_apdu(connection, f"Put data {tag:02X}", apdu)
+    _send_apdu_checked(connection, f"Put data {tag:02X}", apdu)
 
 
 def put_sm_key(connection, pubkey, privkey):
