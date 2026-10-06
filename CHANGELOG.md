@@ -4,7 +4,25 @@ All notable changes to this project are documented in this file.
 
 Entries marked "(SeedSigner official)" originate from the upstream project, while "(smartcard fork)" indicates releases and changes unique to this repository.
 
-## Unreleased - SS0.8.6+Satochip+Earthdiver-B4 (smartcard fork)
+## 2026-10-06 - SeSi-0.8.7+ShSi-B13 (smartcard fork)
+
+Paired OS release: `seedsigner-os` tag `SeSi-0.8.7+ShSi-B13`. Highlights since SeSi-0.8.7+ShSi-B12:
+
+- Merged the upstream PSBT output-ownership rewrite (#1032) with fork hardening preserved, plus upstream multisig output-claim hardening (#1044): every derivation entry claiming this seed on a multisig output is now held to the committed script, closing a crafted-PSBT verification bypass; change outputs are verified to actually pay this seed
+- Refuse version-confused and ambiguously framed PSBTs (psbt_faker ENC-01..10); resynced the psbt_faker corpus and closed the gaps it exposed
+- New high-transaction-fee warning, highlighted on the PSBT Overview and PSBT Math screens (upstream #722)
+- Security review hardening (H1, H2, M1, M5, M2, M3); added SECURITY.md, bundled the CryptoGuide GPG key, and tracked ShieldSigner as a trusted signer
+- Security audit fixes: Verify Signature now refuses clearsigned files with unsigned text outside the signed block and hashes only the signed text; Provision MicroSD rejects path-traversal image names in unsigned `sd_update.txt`; redacts encryption keys and Text QR content from logged Destination reprs; clears Luckfox release-signing keys on Home and inactivity wipe; requires an explicit confirmation before blind digest signing; parses VALIDSIG's primary fingerprint so subkey-signed releases match the trusted-signer whitelist
+- Fixed multisig PSBT signing with Keycard/Satochip cards; smartcard menu split per applet with master fingerprint display and Satodime; Satochip Enable 2FA gated behind confirmations
+- SeedKeeper: fixed V2 descriptor read-back decode, mapped the 0x9C01 (card full) status, added v0.1 applet test coverage
+- Luckfox: re-sign a release from MicroSD with BIP85-derived keys; refuse to write an armed idblock a fused board would reject; UART2 console + FIQ debugger stripped by default on every variant; hardened Pico Mini (SPI_NAND) image built in automatic CI
+- Added Pico-Mini smartcard display hat hardware and enclosure files
+- GPG fixes; fixed a newly created seed never reaching the Seeds menu, the invert-colors setting ignored at boot, and completed workflows being buried in the back stack
+- Docs: smartcard/feature documentation, quick starts and regenerated screenshots; SeedSigner OS docs mirrored into the GitHub Pages site
+- BIP85 GPG scheme v4: RSA keys now derive via the BIP85-spec path (see entries below, shipping for the first time in this release)
+
+Previously-unreleased smartcard-fork changes shipping in this release:
+
 - Randomized dummy Satochip signing requests (0-6 by default, configurable up to 12) that themselves may execute extra signatures per the configured probability and dummy count, plus optional extra per-input signatures with random selection among them to reduce potential nonce leakage
 - Issue a random number of post-signing dummy requests (0-6 by default, configurable up to 12) applying the same extra-signing rules for additional nonce obfuscation
 - Enforce configurable per-signature timeout (0.5–5 s, default 1 s, adjustable in 0.5 s steps) and allow tuning of pre-signing dummies, in-transaction dummy count, and per-input dummy probability
