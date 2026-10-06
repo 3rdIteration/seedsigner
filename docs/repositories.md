@@ -57,7 +57,8 @@ The `seedsigner-translations` submodule (required for runtime translations) is f
 
 | This Repo Release | Submodule Commit | OS Tag | OS Commit |
 |-------------------|------------------|--------|-----------|
-| 0.8.7 (pending)   | `6a9433a32d588cafbfbc94e9dd93d3abdaa1d806` | `SeSi-0.8.7+ShSi-B12` | `6a9433a32d588cafbfbc94e9dd93d3abdaa1d806` |
+| 0.8.7 (ShSi-B13)  | `e7589465aff172f4f510ad46d18776ccc8d2c203` | `SeSi-0.8.7+ShSi-B13` | `e7589465aff172f4f510ad46d18776ccc8d2c203` |
+| 0.8.7 (ShSi-B12)  | `6a9433a32d588cafbfbc94e9dd93d3abdaa1d806` | `SeSi-0.8.7+ShSi-B12` | `6a9433a32d588cafbfbc94e9dd93d3abdaa1d806` |
 
 (Update this table when the pin moves.)
 
