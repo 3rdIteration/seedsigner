@@ -1,9 +1,12 @@
 import math
 
+import qrcode
+from PIL import Image
+
 from embit import bip32
 from embit.networks import NETWORKS
 from binascii import hexlify
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List
 from embit import bip32
 from embit.networks import NETWORKS
@@ -140,6 +143,30 @@ class GenericStaticQrEncoder(BaseStaticQrEncoder):
 
     def next_part(self):
         return self.data
+
+
+
+@dataclass
+class InMemoryStaticQrEncoder(BaseStaticQrEncoder):
+    """
+    A static QR drawn entirely in memory, for secrets that must never reach a file.
+    The other encoders draw through QR.qrimage_io(), which writes the data to a temp
+    file for the qrencode binary.
+    """
+    data: str = field(default=None, repr=False)  # a secret: kept out of repr()
+
+    def next_part(self):
+        return self.data
+
+    def part_to_image(self, part, width, height, border: int = 3, background_color: str = "ffffff"):
+        # background_color is a hex triplet without the "#", as QRDisplayScreen passes it.
+        qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=1, border=border)
+        qr.add_data(part)
+        qr.make(fit=True)
+        # Resized through qrcode's image wrapper, as QR.qrimage() does, so older qrcode
+        # releases without get_image() work too.
+        image = qr.make_image(fill_color="black", back_color="#" + background_color)
+        return image.resize((width, height), Image.Resampling.NEAREST).convert("RGBA")
 
 
 
