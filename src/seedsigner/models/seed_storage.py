@@ -28,8 +28,24 @@ class SeedStorage:
 
 
     def finalize_pending_seed(self) -> Seed:
-        # Store the pending seed and return it
+        """
+        Store the pending seed and return it.
+
+        Every seed is admitted through here, so this is where libwally
+        independently re-derives its seed bytes, fingerprint and account keys.
+        On any disagreement the pending seed is wiped and CrossCheckError
+        propagates; the seed never reaches `self.seeds`.
+        """
+        from seedsigner.crosscheck import CrossCheckError
+        from seedsigner.models.crosscheck_claims import crosscheck_seed
+
         seed = self.pending_seed
+        try:
+            crosscheck_seed(seed)
+        except CrossCheckError:
+            self.clear_pending_seed()
+            raise
+
         if seed not in self.seeds:
             self.seeds.append(seed)
         self.pending_seed = None

@@ -237,4 +237,8 @@ def parse_psbt(raw: bytes) -> PSBT:
     framing refusal, or whatever embit raises for bytes that are not a psbt.
     """
     check_psbt_framing(raw)
-    return PSBT.parse(raw)
+    psbt = PSBT.parse(raw)
+    # Kept so the libwally cross-check (seedsigner.crosscheck.psbt) parses the bytes
+    # exactly as received rather than embit's re-serialization of its own model.
+    psbt.seedsigner_raw_bytes = bytes(raw)
+    return psbt

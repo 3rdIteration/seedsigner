@@ -269,6 +269,14 @@ class ScanView(View):
 
                 descriptor = Descriptor.from_string(descriptor_str)
 
+                from seedsigner.crosscheck import CrossCheckError
+                from seedsigner.models.crosscheck_claims import crosscheck_descriptor
+                from seedsigner.views.view import CrossCheckErrorView
+                try:
+                    crosscheck_descriptor(descriptor, descriptor_str)
+                except CrossCheckError as e:
+                    return Destination(CrossCheckErrorView, view_args=dict(detail=e.detail), clear_history=True)
+
                 self.controller.multisig_wallet_descriptor = descriptor
                 return Destination(MultisigWalletDescriptorView, skip_current_view=True)
             

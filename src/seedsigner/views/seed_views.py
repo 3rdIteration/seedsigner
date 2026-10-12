@@ -42,7 +42,8 @@ from seedsigner.models.seed import Seed, AezeedSeed, Slip39Seed, ElectrumSeed, X
 from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.settings_definition import SettingsDefinition
 from seedsigner.models.threads import BaseThread, ThreadsafeCounter
-from seedsigner.views.view import NotYetImplementedView, OptionDisabledView, View, Destination, BackStackView, MainMenuView
+from seedsigner.views.view import NotYetImplementedView, OptionDisabledView, View, Destination, BackStackView, MainMenuView, CrossCheckErrorView
+from seedsigner.crosscheck import CrossCheckError
 
 from pysatochip.JCconstants import SEEDKEEPER_DIC_TYPE, SEEDKEEPER_DIC_ORIGIN, SEEDKEEPER_DIC_EXPORT_RIGHTS, BIP39_WORDLIST_DIC
 from pysatochip.util import dict_swap_keys_values
@@ -1205,7 +1206,10 @@ class SeedFinalizeView(View):
 
         if button_data[selected_menu_num] == self.FINALIZE:
             from seedsigner.controller import Controller
-            seed = self.controller.storage.finalize_pending_seed()
+            try:
+                seed = self.controller.storage.finalize_pending_seed()
+            except CrossCheckError as e:
+                return Destination(CrossCheckErrorView, view_args=dict(detail=e.detail), clear_history=True)
             if self.controller.resume_main_flow == Controller.FLOW__SATOCHIP_IMPORT_SEED:
                 from seedsigner.views.tools_views import ToolsSatochipImportSeedView
 
@@ -1614,7 +1618,10 @@ class SeedReviewPassphraseView(View):
             return Destination(SeedFinalizeView)
 
         elif button_data[selected_menu_num] == self.DONE:
-            seed = self.controller.storage.finalize_pending_seed()
+            try:
+                seed = self.controller.storage.finalize_pending_seed()
+            except CrossCheckError as e:
+                return Destination(CrossCheckErrorView, view_args=dict(detail=e.detail), clear_history=True)
             return Destination(SeedOptionsView, view_args={"seed": seed}, clear_history=True)
 
         elif button_data[selected_menu_num] == self.EDIT:
@@ -4352,6 +4359,14 @@ class SeedAddressVerificationView(View):
                     self.controller.unverified_address["derivation_path"] = self.addr_verification_thread.matched_derivation_path
                 if self.is_expanded and self.addr_verification_thread.matched_script_type:
                     self.controller.unverified_address["script_type"] = self.addr_verification_thread.matched_script_type
+
+                # libwally independently re-derives the match before it is called verified.
+                try:
+                    self._crosscheck_verified_address()
+                except CrossCheckError as e:
+                    logger.warning("Address verification: %s", e)
+                    return Destination(CrossCheckErrorView, view_args=dict(detail=e.detail), clear_history=True)
+
                 if self.export_for_xpub:
                     return Destination(SeedExportXpubVerificationSuccessView)
                 return Destination(SeedAddressVerificationSuccessView, view_args=dict(seed=self.seed))
@@ -4393,6 +4408,25 @@ class SeedAddressVerificationView(View):
 
         return Destination(MainMenuView)
 
+
+
+    def _crosscheck_verified_address(self):
+        from seedsigner.models import crosscheck_claims
+        found = self.controller.unverified_address
+        index = found["verified_index"]
+        is_change = found["verified_index_is_change"]
+        descriptor = getattr(self.addr_verification_thread, "descriptor", None)
+        if descriptor is not None:
+            crosscheck_claims.crosscheck_descriptor_address(
+                descriptor, self.address, self.network, index, is_change)
+        elif self.seed is not None:
+            derivation_path = (
+                getattr(self.addr_verification_thread, "matched_derivation_path", None)
+                or self.derivation_path
+            )
+            crosscheck_claims.crosscheck_seed_address(
+                self.seed, self.address, self.network, found["script_type"],
+                derivation_path, index, is_change)
 
 
     class BruteForceAddressVerificationThread(BaseThread):
@@ -4994,6 +5028,20 @@ class SeedSignMessageConfirmAddressView(View):
             is_change=addr_format["is_change"],
             embit_network=embit_network,
         )
+
+        # The address shown for the signature must be libwally's too: derived
+        # from the seed itself, or from the card's xpub when a card signs.
+        from seedsigner.models import crosscheck_claims
+        if self.seed is not None:
+            crosscheck_claims.crosscheck_seed_address(
+                self.seed, self.address, addr_format["network"], addr_format["script_type"],
+                addr_format["wallet_derivation_path"], addr_format["index"], addr_format["is_change"],
+            )
+        else:
+            crosscheck_claims.crosscheck_xpub_address(
+                xpub, self.address, addr_format["network"], addr_format["script_type"],
+                addr_format["index"], addr_format["is_change"],
+            )
         data["address"] = self.address
 
 

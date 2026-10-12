@@ -577,12 +577,14 @@ class TestPSBTv2:
         parser = PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK)
         assert parser.input_amount == 100_000_000
 
-    def test_v0_unknown_0x06_is_not_treated_as_modifiable(self):
+    def test_v0_unknown_0x06_is_not_treated_as_modifiable(self, monkeypatch):
         """
         PSBTParser gives a v0 psbt's key 0x06 no modifiability semantics. (On the
         wire, psbt_framing refuses it before this point: BIP-370 excludes the key
-        from v0, see TestFraming.)
+        from v0, see TestFraming. libwally refuses it too, so the cross-check is
+        bypassed here to reach the parser's own handling.)
         """
+        monkeypatch.setattr(PSBTParser, "_crosscheck_with_libwally", lambda self: None)
         psbt = load_psbt("NORMAL-1_p2wpkh")
         assert getattr(psbt, "version", None) in (None, 0)
         psbt.unknown[b"\x06"] = b"\x03"

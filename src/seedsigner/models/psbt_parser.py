@@ -213,6 +213,17 @@ class RejectCode:
     # psbt and routes back to seed selection -- see REJECT_PRESENTATION.
     SEED_CANNOT_SIGN = "SEED_CANNOT_SIGN"
 
+    # libwally (seedsigner.crosscheck), an independent implementation, read the
+    # psbt differently from embit: it refuses the bytes, its transaction summary
+    # differs, or it cannot re-derive a change output from this seed. Either
+    # library could be the one that is wrong; nothing is shown that rests on a
+    # reading only one of them holds. CROSSCHECK_UNAVAILABLE: the check is
+    # mandatory on this device and libwally could not be loaded.
+    CROSSCHECK_PARSE = "CROSSCHECK_PARSE"
+    CROSSCHECK_MISMATCH = "CROSSCHECK_MISMATCH"
+    CROSSCHECK_CHANGE = "CROSSCHECK_CHANGE"
+    CROSSCHECK_UNAVAILABLE = "CROSSCHECK_UNAVAILABLE"
+
 
 class InvalidPSBTError(Exception):
     """
@@ -336,6 +347,8 @@ class PSBTParser():
         self.can_verify_derivations: bool = False
         self.destination_addresses = []
         self.destination_amounts = []
+        # Output index of each destination_addresses entry.
+        self.destination_output_indexes: list[int] = []
         # One entry per OP_RETURN output, in output order.
         self.op_return_payloads: list[bytes] = []
         self.op_return_amount: int = 0
@@ -358,6 +371,11 @@ class PSBTParser():
         # Computed once at the end of parse() so the views can read it without each
         # re-walking the outputs.
         self.is_high_fee: bool = False
+
+        # Set by _crosscheck_with_libwally: the claims libwally verified, and the
+        # (id, hash) of the reviewed psbt that signing must still match.
+        self.crosscheck_claims = None
+        self.reviewed_binding = None
 
         # Indexed alongside psbt.inputs / psbt.outputs. Each entry lists every derivation
         # path the seed genuinely owns in that scope, in the order the psbt lists them
@@ -547,7 +565,32 @@ class PSBTParser():
         # Every total is known now, so settle this once rather than per view.
         self.is_high_fee = self.has_high_fee()
 
+        self._crosscheck_with_libwally()
+
         return True
+
+
+    def _crosscheck_with_libwally(self):
+        """
+        Last: libwally re-reads the raw psbt and must agree with everything parsed
+        above, then records which psbt was reviewed so signing can confirm it is
+        still the same one. See seedsigner.crosscheck.psbt.
+        """
+        from seedsigner.crosscheck import CrossCheckCode, CrossCheckError
+        from seedsigner.crosscheck.psbt import check_parsed, psbt_binding
+        from seedsigner.models.crosscheck_claims import psbt_claims
+
+        try:
+            self.crosscheck_claims = psbt_claims(self)
+            check_parsed(self.crosscheck_claims)
+            self.reviewed_binding = psbt_binding(self.psbt.serialize())
+        except CrossCheckError as e:
+            code = {
+                CrossCheckCode.PARSE: RejectCode.CROSSCHECK_PARSE,
+                CrossCheckCode.CHANGE: RejectCode.CROSSCHECK_CHANGE,
+                CrossCheckCode.UNAVAILABLE: RejectCode.CROSSCHECK_UNAVAILABLE,
+            }.get(e.code, RejectCode.CROSSCHECK_MISMATCH)
+            raise InvalidPSBTError(f"Independent check failed: {e.detail}", code=code) from e
 
 
     @staticmethod
@@ -1368,6 +1411,7 @@ class PSBTParser():
         self.risk_warnings = set()
         self.destination_addresses = []
         self.destination_amounts = []
+        self.destination_output_indexes = []
 
         # Asking the PSBT for its transaction rebuilds that entire transaction from
         # scratch on every single request. The outputs are consulted a dozen times
@@ -1758,6 +1802,7 @@ class PSBTParser():
                     ) from e
                 self.destination_addresses.append(addr)
                 self.destination_amounts.append(vout[i].value)
+                self.destination_output_indexes.append(i)
                 self.spend_amount += vout[i].value
 
         self.fee_amount = self.psbt.fee()

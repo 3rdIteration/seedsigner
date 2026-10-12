@@ -2468,7 +2468,12 @@ class ToolsSeedkeeperLoadDescriptorView(View):
             # derives distinct per-index addresses for receive and change.
             secret_template = embit_utils.normalize_descriptor_str(secret_template)
 
-            self.controller.multisig_wallet_descriptor = Descriptor.from_string(secret_template)
+            descriptor = Descriptor.from_string(secret_template)
+            # Raises CrossCheckError (a refusal, shown by the handler below) if
+            # libwally reads the descriptor differently.
+            from seedsigner.models.crosscheck_claims import crosscheck_descriptor
+            crosscheck_descriptor(descriptor, secret_template)
+            self.controller.multisig_wallet_descriptor = descriptor
             
             self.loading_screen.stop()
 
@@ -4307,7 +4312,15 @@ class SatochipExportXpubDetailsView(View):
             else:
                 desc_str = f"wpkh({xpub_base58}/{{0,1}}/*)"
 
-            self.controller.multisig_wallet_descriptor = Descriptor.from_string(desc_str)
+            descriptor = Descriptor.from_string(desc_str)
+            from seedsigner.crosscheck import CrossCheckError
+            from seedsigner.models.crosscheck_claims import crosscheck_descriptor
+            from seedsigner.views.view import CrossCheckErrorView
+            try:
+                crosscheck_descriptor(descriptor, desc_str)
+            except CrossCheckError as e:
+                return Destination(CrossCheckErrorView, view_args=dict(detail=e.detail), clear_history=True)
+            self.controller.multisig_wallet_descriptor = descriptor
 
         selected_menu_num = self.run_screen(
             seed_screens.SeedExportXpubDetailsScreen,
@@ -4554,6 +4567,13 @@ class SatochipLoadDescriptorDetailsView(View):
             desc_str = f"wpkh([{fingerprint_hex}/{origin_path}]{xpub_base58}/{{0,1}}/*)"
 
         descriptor = Descriptor.from_string(desc_str)
+        from seedsigner.crosscheck import CrossCheckError
+        from seedsigner.models.crosscheck_claims import crosscheck_descriptor
+        from seedsigner.views.view import CrossCheckErrorView
+        try:
+            crosscheck_descriptor(descriptor, desc_str)
+        except CrossCheckError as e:
+            return Destination(CrossCheckErrorView, view_args=dict(detail=e.detail), clear_history=True)
 
         selected_menu_num = self.run_screen(
             seed_screens.SeedExportXpubDetailsScreen,

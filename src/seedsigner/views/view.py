@@ -594,6 +594,29 @@ class NetworkMismatchErrorView(ErrorView):
 
 
 @dataclass
+class CrossCheckErrorView(ErrorView):
+    """
+    embit and libwally disagree about something the user is about to rely on
+    (a seed's keys, an address, a descriptor, a signature). There is no safe way
+    to continue; the screen says so and returns to the main menu.
+    """
+    detail: str = None
+
+    def __post_init__(self):
+        # TRANSLATOR_NOTE: Title shown when two independent Bitcoin libraries disagree about a result
+        self.title = _("Self-check Failed")
+        self.show_back_button = False
+        # TRANSLATOR_NOTE: Headline when two independent Bitcoin libraries disagree about a result
+        self.status_headline = _("Results disagree")
+        self.button_text = _("Main Menu")
+        super().__post_init__()
+
+        # TRANSLATOR_NOTE: Body text; {detail} names the value the two libraries computed differently
+        self.text = _("Independent checks disagree: {detail}").format(detail=self.detail or "?")
+
+
+
+@dataclass
 class UnhandledExceptionView(View):
     error: list[str]
 

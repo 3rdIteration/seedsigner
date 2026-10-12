@@ -10,6 +10,10 @@
 # Pillow and qrcode are deliberately pinned differently from upstream; don't
 # "resync" them without checking why.
 embit==0.8.0
+# libwally-core: independent second implementation that cross-checks embit
+# (src/seedsigner/crosscheck). Mandatory on device; must match
+# seedsigner-os/opt/external-packages/python-wallycore.
+wallycore==1.5.6
 Pillow>=10.4.0
 pyzbar @ https://github.com/seedsigner/pyzbar/archive/c3c237821c6a20b17953efe59b90df0b514a1c03.zip
 qrcode==7.3.1

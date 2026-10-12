@@ -1366,6 +1366,7 @@ class ToolsAddressExplorerAddressListView(View):
             try:
                 from seedsigner.gui.screens.screen import LoadingScreenThread
                 from seedsigner.helpers import embit_utils
+                from seedsigner.models import crosscheck_claims
                 # TRANSLATOR_NOTE: a status message that our payment addresses are being calculated
                 self.loading_screen = LoadingScreenThread(text=_("Calculating addrs..."))
                 self.loading_screen.start()
@@ -1379,6 +1380,10 @@ class ToolsAddressExplorerAddressListView(View):
                         # Standard derivation path
                         for i in range(self.start_index, self.start_index + addrs_per_screen):
                             address = embit_utils.get_single_sig_address(xpub=data["xpub"], script_type=data["script_type"], index=i, is_change=self.is_change, embit_network=data["embit_network"])
+                            # Each address shown is re-derived by libwally from the seed itself.
+                            crosscheck_claims.crosscheck_seed_address(
+                                data["seed"], address, data["network"], data["script_type"],
+                                data["derivation_path"], i, self.is_change)
                             addresses.append(address)
                             data[addr_storage_key].append(address)
                     else:
@@ -1390,8 +1395,16 @@ class ToolsAddressExplorerAddressListView(View):
                     descriptor: Descriptor = data["wallet_descriptor"]
                     for i in range(self.start_index, self.start_index + addrs_per_screen):
                         address = embit_utils.get_multisig_address(descriptor=descriptor, index=i, is_change=self.is_change, embit_network=data["embit_network"])
+                        crosscheck_claims.crosscheck_descriptor_address(
+                            descriptor, address, data["network"], i, self.is_change)
                         addresses.append(address)
                         data[addr_storage_key].append(address)
+
+            except CrossCheckError as e:
+                # Discard this batch: none of it is shown unless all of it agrees.
+                data[addr_storage_key] = data[addr_storage_key][:self.start_index]
+                from seedsigner.views.view import CrossCheckErrorView
+                return Destination(CrossCheckErrorView, view_args=dict(detail=e.detail), clear_history=True)
 
             finally:
                 # Everything is set. Stop the loading screen

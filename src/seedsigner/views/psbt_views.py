@@ -502,6 +502,39 @@ class RejectPresentation:
 # draws over the button. Message + tip must stay within that for the longest realistic
 # values AND a verbose translation. tests/test_psbt_refusal_screens.py pins this.
 REJECT_PRESENTATION = {
+    # libwally, a second independent implementation, read the psbt differently
+    # from embit. Not attributed to an attacker -- either library may be the one
+    # that is wrong -- but nothing can be shown that only one of them believes.
+    RejectCode.CROSSCHECK_PARSE: RejectPresentation(
+        screen=WarningScreen,
+        title=_mft("Transaction Problem"),
+        # TRANSLATOR_NOTE: A second, independent Bitcoin library could not read the transaction
+        text=_mft("An independent check could not read this transaction. It may be malformed."),
+        button_label=_mft("Discard transaction"),
+    ),
+    RejectCode.CROSSCHECK_MISMATCH: RejectPresentation(
+        screen=WarningScreen,
+        title=_mft("Transaction Problem"),
+        # TRANSLATOR_NOTE: Two independent Bitcoin libraries read the transaction differently
+        text=_mft("Two independent checks read this transaction differently. It cannot be shown reliably."),
+        button_label=_mft("Discard transaction"),
+    ),
+    RejectCode.CROSSCHECK_CHANGE: RejectPresentation(
+        screen=DireWarningScreen,
+        title=_mft("Suspicious Transaction"),
+        headline=_mft("Likely an Attack!"),
+        # TRANSLATOR_NOTE: An independent check could not confirm the change goes back to this wallet
+        text=_mft("An independent check could not confirm the change outputs come back to your wallet."),
+        button_label=_mft("Discard transaction"),
+    ),
+    RejectCode.CROSSCHECK_UNAVAILABLE: RejectPresentation(
+        screen=WarningScreen,
+        title=_mft("Transaction Problem"),
+        # TRANSLATOR_NOTE: A required safety component of the device software failed to load
+        text=_mft("A required self-check is unavailable on this device. Reinstall the software."),
+        button_label=_mft("Discard transaction"),
+    ),
+
     # TRANSLATOR_NOTE: Points the user at the setting that controls this check
     RejectCode.CHANGE_INDEX_TOO_FAR: RejectPresentation(tip=_mft("See Change Gap Limit in Settings.")),
 
@@ -1471,6 +1504,16 @@ class PSBTFinalizeView(View):
         return _("Locked until ~{}").format(stamp)
 
 
+    def _crosscheck_refusal(self, error) -> Destination:
+        """Drop the psbt (and any signatures on it) and say why."""
+        from seedsigner.views.view import CrossCheckErrorView
+        self.controller.psbt = None
+        self.controller.psbt_parser = None
+        self.controller.signed_tx_hex = None
+        self.controller.psbt_sign_with_satochip = False
+        return Destination(CrossCheckErrorView, view_args=dict(detail=error.detail), clear_history=True)
+
+
     def run(self):
         from embit.psbt import PSBT
         from seedsigner.gui.screens.psbt_screens import PSBTFinalizeScreen
@@ -1499,6 +1542,16 @@ class PSBTFinalizeView(View):
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
+
+        # The psbt about to be signed must be the one the review screens showed.
+        if psbt_parser is not None and psbt_parser.crosscheck_claims is not None:
+            from seedsigner.crosscheck import CrossCheckError
+            from seedsigner.crosscheck.psbt import check_binding
+            try:
+                check_binding(psbt_parser.reviewed_binding, psbt.serialize())
+            except CrossCheckError as e:
+                logger.warning("PSBTFinalize: refusing to sign: %s", e)
+                return self._crosscheck_refusal(e)
 
         sig_cnt = PSBTParser.sig_count(psbt)
         logger.info(
@@ -1621,6 +1674,23 @@ class PSBTFinalizeView(View):
 
                 return Destination(PSBTFinalizeView)
             return Destination(PSBTSigningErrorView)
+
+        # libwally verifies every new signature before anything leaves the device.
+        if psbt_parser is not None and psbt_parser.crosscheck_claims is not None:
+            from seedsigner.crosscheck import CrossCheckError
+            from seedsigner.crosscheck.psbt import check_signed, check_trimmed
+            from seedsigner.models.crosscheck_claims import signer_claims
+            try:
+                signed_bytes = psbt.serialize()
+                check_signed(
+                    signed_bytes,
+                    psbt_parser.crosscheck_claims,
+                    signer_claims(psbt_parser, seed_signed=not self.controller.psbt_sign_with_satochip),
+                )
+                check_trimmed(trimmed_psbt.serialize(), signed_bytes, psbt_parser.crosscheck_claims)
+            except CrossCheckError as e:
+                logger.warning("PSBTFinalize: refusing to export signatures: %s", e)
+                return self._crosscheck_refusal(e)
 
         logger.info("PSBTFinalize: signatures added; routing=PSBTSignedQRDisplayView")
         self.controller.psbt = trimmed_psbt
