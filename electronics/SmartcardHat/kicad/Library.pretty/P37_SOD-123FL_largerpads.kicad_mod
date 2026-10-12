@@ -1,0 +1,213 @@
+(footprint "P37_SOD-123FL_largerpads"
+	(version 20241229)
+	(generator "pcbnew")
+	(generator_version "9.0")
+	(layer "F.Cu")
+	(descr "Diotec SOD-123FL")
+	(tags "SOD-123FL SMD")
+	(property "Reference" "D32"
+		(at 1.97 -1.87 180)
+		(layer "F.SilkS")
+		(uuid "515258d2-206a-47bc-915e-9dc072b13885")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" "SMF13A"
+		(at 1.55 1.8 180)
+		(layer "F.Fab")
+		(uuid "6bbb1910-bc28-44b3-98b7-990d1a6a5654")
+		(effects
+			(font
+				(size 0.7 0.7)
+				(thickness 0.09)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 180)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "32ea3d26-444d-4be2-96d3-1f29ba3d44d0")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 180)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "229c2503-5341-44c4-ac03-4e4bb20ee507")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(attr smd)
+	(fp_line
+		(start -0.8 -1.1)
+		(end -0.8 1.1)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "ba9c288b-6a4d-4dff-bc40-5a1560d7cab9")
+	)
+	(fp_line
+		(start -0.8 -1.1)
+		(end 3.1 -1.1)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "76da769b-71e0-4777-9ab7-73719adabc64")
+	)
+	(fp_line
+		(start -0.8 1.1)
+		(end 3.25 1.1)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "88f300be-e135-4009-90da-95e124a69ce0")
+	)
+	(fp_line
+		(start -0.85 -1.2)
+		(end -0.85 1.2)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "0d95d7d2-6864-4aec-8fe0-10ae2ccc47f7")
+	)
+	(fp_line
+		(start -0.85 -1.2)
+		(end 3.95 -1.2)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "e698209a-1c6b-4e96-94f5-210f3dbfdcac")
+	)
+	(fp_line
+		(start 3.95 -1.2)
+		(end 3.95 1.2)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "2637a6bc-c75c-46a9-a8a1-8c6aaf3f3ff6")
+	)
+	(fp_line
+		(start 3.95 1.2)
+		(end -0.85 1.2)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "2ab0f367-5537-47ff-8689-55c8249b7f5c")
+	)
+	(fp_line
+		(start 0.05 -1)
+		(end 3.05 -1)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "25ad4265-0dbf-4228-abbb-c797740171f9")
+	)
+	(fp_line
+		(start 0.05 1)
+		(end 0.05 -1)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "840afa5d-ec26-458a-8332-c5d742149d7c")
+	)
+	(fp_line
+		(start 3.05 -1)
+		(end 3.05 1)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "0640d4e0-50e5-4497-9dc1-30d9bf2600bd")
+	)
+	(fp_line
+		(start 3.05 1)
+		(end 0.05 1)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "5b480551-5699-4596-aa2f-e30b22c7597b")
+	)
+	(fp_text user "${REFERENCE}"
+		(at 1.55 -1.8 180)
+		(layer "F.Fab")
+		(uuid "afe97a7b-a9d5-4670-87b3-98d0d74b7483")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(pad "1" smd roundrect
+		(at 0 0)
+		(size 1.4 1.2)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(roundrect_rratio 0.1)
+		(uuid "0a29a556-95cd-440f-9b93-49039ecc3ae2")
+	)
+	(pad "2" smd roundrect
+		(at 3.1 0)
+		(size 1.4 1.2)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(roundrect_rratio 0.1)
+		(uuid "d1ca3fba-101c-4bc5-908e-a000ea0dabe4")
+	)
+	(embedded_fonts no)
+	(model "F:/data/Elektronik/KiCad/Models/Diotec-3D-Models/p37_SOD-123FL.stp"
+		(offset
+			(xyz 1.24 -0.395 -0.25)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz -0 -0 -0)
+		)
+	)
+	(model "${KIPRJMOD}/step files/SMF13A.STEP"
+		(offset
+			(xyz 1.15 -0.3 0)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz -0 -0 -0)
+		)
+	)
+)
