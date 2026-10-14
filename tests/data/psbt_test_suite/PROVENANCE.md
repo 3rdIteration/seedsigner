@@ -86,6 +86,12 @@ these are refused on the raw bytes by `seedsigner.models.psbt_framing`
 (`RejectCode.WRONG_VERSION_FIELD` / `MALFORMED_ENCODING`), which every loader
 (QR scan, UR2, microSD) goes through before `PSBT.parse()`.
 
+Since embit 0.8.2, embit refuses the version mix-ups (ENC-01/02/03/05/09/10) and
+unsupported versions (XTRAS.UNSUPPORTED_PSBT_VERSION*) itself as well. The framing
+checks still run first, so each refusal keeps its named RejectCode; the
+XTRAS.UNSUPPORTED_PSBT_VERSION* vectors are now refused there
+(`UNSUPPORTED_PSBT_VERSION`) rather than by PSBTParser.
+
 Local deviation from upstream: `ENC-06.v2_outpoint_conflict` is expected to
 **parse**. Its only defect is a `previous_txid` that names an arbitrary outpoint.
 Without a `non_witness_utxo`, an offline signer cannot tell those bytes from an

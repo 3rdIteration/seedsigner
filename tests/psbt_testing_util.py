@@ -174,7 +174,9 @@ def create_output(output_hex: str, value: int = None) -> OutputScope:
 
     Optionally override the output's `value`.
     """
-    output = OutputScope.read_from(BytesIO(unhexlify(output_hex)))
+    # The fixture hex carries the output's own amount and script (PSBT_OUT_AMOUNT /
+    # PSBT_OUT_SCRIPT), which exist only in v2; embit 0.8.2 refuses them in a v0 scope.
+    output = OutputScope.read_from(BytesIO(unhexlify(output_hex)), version=2)
     if value is not None:
         output.value = value
     return output

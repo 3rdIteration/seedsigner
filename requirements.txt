@@ -9,7 +9,9 @@
 #
 # Pillow and qrcode are deliberately pinned differently from upstream; don't
 # "resync" them without checking why.
-embit==0.8.0
+# embit v0.8.2 is not on PyPI. Pinned to the v0.8.2 tag's commit: the tag's own
+# pyproject.toml still says 0.8.1, so a version pin could not tell them apart.
+embit @ https://github.com/diybitcoinhardware/embit/archive/eb6104fd85d3becabba628756cd5e1b75619f3a1.zip
 Pillow>=10.4.0
 pyzbar @ https://github.com/seedsigner/pyzbar/archive/c3c237821c6a20b17953efe59b90df0b514a1c03.zip
 qrcode==7.3.1

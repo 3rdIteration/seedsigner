@@ -2,18 +2,22 @@
 Strict byte-level checks on a serialized psbt, run before embit builds its model.
 
 Some deceptions cannot be seen once embit has parsed a psbt, because embit
-resolves them silently while reading. embit reads the BIP-370 (v2) per-scope
-fields in a v0 container, too. It overwrites the values the global unsigned tx
-gave each input and output with them and then rebuilds `psbt.tx` from the
-scopes. What is left carries no trace of the global tx it replaced. So a v0 psbt
-can name one transaction in its global unsigned tx and a different one in its
-scopes, and PSBTParser only ever sees the second one. That is enough to show an
-attacker's output as the user's change, or to make a forged previous tx for a
-legacy input check out against its own hash.
+resolved them while reading. Up to 0.8.0, embit read the BIP-370 (v2) per-scope
+fields in a v0 container too, overwrote the global unsigned tx's values with them
+and rebuilt `psbt.tx` from the scopes, leaving no trace of the tx it replaced. So
+a v0 psbt could name one transaction in its global unsigned tx and another in its
+scopes, and PSBTParser only ever saw the second: enough to show an attacker's
+output as the user's change, or to make a forged previous tx for a legacy input
+check out against its own hash.
 
-The same goes for framing that two correct-looking parsers read differently, such
-as a non-minimal compact size or a key given twice. So these rules are enforced
-here, on the raw bytes:
+embit 0.8.2 refuses those version mix-ups itself. These checks stay regardless:
+they give each refusal a RejectCode the user is shown, rather than a generic
+"could not be read"; they are not tied to one embit release's parser; and they
+cover what embit still does not -- non-minimal compact sizes, and v2 counts too
+large for the data (embit allocates a record per declared input/output before
+reading any). The rules, enforced on the raw bytes:
+
+  * the version is 0 or 2;
 
   * every compact size (key length, key type, value length) uses its minimal
     encoding;
@@ -210,10 +214,12 @@ def _check(stream: BytesIO) -> None:
             )
 
     else:
-        # An unknown version: PSBTParser refuses it by name
-        # (UNSUPPORTED_PSBT_VERSION). Its scopes can't be delimited without knowing
-        # its rules, so the per-scope checks stop here.
-        return
+        # A format whose fields we would misread. embit refuses it as well, but
+        # only as "could not be read"; this names it.
+        raise InvalidPSBTError(
+            f"PSBT version {version} is not supported.",
+            code=RejectCode.UNSUPPORTED_PSBT_VERSION,
+        )
 
     for i in range(num_inputs):
         entries = _read_map(stream, f"Input {i}")

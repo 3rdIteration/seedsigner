@@ -595,13 +595,13 @@ VECTORS = [
     Vector(
         "XTRAS.UNSUPPORTED_PSBT_VERSION", "extras",
         "A v0 psbt declaring PSBT_GLOBAL_VERSION 1, which BIP-370 reserves.",
-        Expect.REJECT_PARSER,
+        Expect.REJECT_FRAMING,
         reject_code=RejectCode.UNSUPPORTED_PSBT_VERSION,
     ),
     Vector(
         "XTRAS.UNSUPPORTED_PSBT_VERSION_V2", "extras",
         "A structurally complete v2 psbt declaring version 3, which is undefined.",
-        Expect.REJECT_PARSER,
+        Expect.REJECT_FRAMING,
         reject_code=RejectCode.UNSUPPORTED_PSBT_VERSION,
     ),
     Vector(
