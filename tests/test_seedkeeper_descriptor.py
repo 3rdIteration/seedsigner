@@ -42,24 +42,18 @@ DESCRIPTOR_STRING = (
 
 
 def _fresh_controller_with_descriptor():
-    base.BaseTest.reset_controller()
+    # Re-creating the Controller restarts the MicroSD thread singleton, which
+    # can only be started once per process, so only build it the first time.
+    if Controller._instance is None:
+        base.BaseTest.reset_controller()
     base.BaseTest.reset_settings()
     controller = Controller.get_instance()
     controller.multisig_wallet_descriptor = Descriptor.from_string(DESCRIPTOR_STRING)
     return controller
 
 
-def test_seedkeeper_save_descriptor_reads_back_v2_without_crashing(monkeypatch):
-    """Regression for #416.
-
-    The view must be able to read back an already-stored V2 "Descriptor" secret
-    (2-byte length prefix) without crashing on the utf-8 decode, and therefore
-    detect it as a duplicate and skip re-importing it.
-    """
-    desc = _fresh_controller_with_descriptor().multisig_wallet_descriptor
-    stored_text = desc.to_string()
-    stored_len = len(stored_text.encode("utf-8"))
-    stored_payload = list(stored_len.to_bytes(2, "big")) + list(stored_text.encode("utf-8"))
+def _run_save_view_with_stored_payload(monkeypatch, stored_payload):
+    """Run the save view against a fake card holding one V2 Descriptor secret."""
 
     class FakeLabelScreen:
         def __init__(self, **kwargs):
@@ -136,6 +130,22 @@ def test_seedkeeper_save_descriptor_reads_back_v2_without_crashing(monkeypatch):
 
     view = ToolsSeedkeeperSaveDescriptorView()
     view.run()
+    return fake, shown_screens
+
+
+def test_seedkeeper_save_descriptor_reads_back_v2_without_crashing(monkeypatch):
+    """Regression for #416.
+
+    The view must be able to read back an already-stored V2 "Descriptor" secret
+    (2-byte length prefix) without crashing on the utf-8 decode, and therefore
+    detect it as a duplicate and skip re-importing it.
+    """
+    desc = _fresh_controller_with_descriptor().multisig_wallet_descriptor
+    stored_text = desc.to_string()
+    stored_len = len(stored_text.encode("utf-8"))
+    stored_payload = list(stored_len.to_bytes(2, "big")) + list(stored_text.encode("utf-8"))
+
+    fake, shown_screens = _run_save_view_with_stored_payload(monkeypatch, stored_payload)
 
     # The pre-existing V2 Descriptor was read back (exported) without a utf-8
     # crash, and since it matches the descriptor being saved it was skipped. The
@@ -143,6 +153,23 @@ def test_seedkeeper_save_descriptor_reads_back_v2_without_crashing(monkeypatch):
     # try/except swallows a decode failure into an "Error" WarningScreen).
     assert fake.exported == [0x0001]
     assert fake.imported == []
+    assert smartcard_views.LargeIconStatusScreen in shown_screens
+    assert smartcard_views.WarningScreen not in shown_screens
+
+
+def test_seedkeeper_save_descriptor_skips_existing_non_text_secret(monkeypatch):
+    """An existing Descriptor secret that isn't utf-8 text (e.g. written by
+    another tool) is only read for the duplicate check, so it must be skipped
+    rather than aborting the save with ``can't decode byte 0x83``.
+    """
+    _fresh_controller_with_descriptor()
+    binary = bytes([0x83, 0x01, 0xff, 0xfe])
+    stored_payload = list(len(binary).to_bytes(2, "big")) + list(binary)
+
+    fake, shown_screens = _run_save_view_with_stored_payload(monkeypatch, stored_payload)
+
+    assert fake.exported == [0x0001]
+    assert len(fake.imported) == 1
     assert smartcard_views.LargeIconStatusScreen in shown_screens
     assert smartcard_views.WarningScreen not in shown_screens
 

@@ -2117,8 +2117,14 @@ class ToolsSeedkeeperViewSecretsView(View):
 
 
             elif stype in ('Descriptor', 'Data', 'Public Key'):
-                secret_dict['secret'] = unhexlify(secret_dict['secret'])[2:].decode()
-                
+                payload_bytes = unhexlify(secret_dict['secret'])[2:]
+                try:
+                    secret_dict['secret'] = payload_bytes.decode("utf-8")
+                except UnicodeDecodeError:
+                    # Secrets written by other tools aren't guaranteed to be text
+                    logger.info("Secret payload is not utf-8 text; showing as hex")
+                    secret_dict['secret'] = payload_bytes.hex()
+
             else:
                 secret_dict['secret'] =  secret_dict['secret'][2:]
 
@@ -2448,8 +2454,19 @@ class ToolsSeedkeeperLoadDescriptorView(View):
 
             stype = SEEDKEEPER_DIC_TYPE.get(secret_dict['type'], hex(secret_dict['type']))  # hex(header['type'])
 
-            if stype == "Descriptor": # Seedkeeper V2 
-                secret_template = unhexlify(secret_dict['secret'])[2:].decode()
+            if stype == "Descriptor": # Seedkeeper V2
+                try:
+                    secret_template = _decode_seedkeeper_text(secret_dict)
+                except UnicodeDecodeError:
+                    self.loading_screen.stop()
+                    self.run_screen(
+                        WarningScreen,
+                        title="Error",
+                        status_headline="Unreadable Descriptor",
+                        text="This descriptor is not stored as text and can't be loaded.",
+                        show_back_button=True,
+                    )
+                    return Destination(BackStackView)
             else:
                 secret_dict['secret'] = unhexlify(secret_dict['secret'])[1:].decode()
                 secret_template = secret_dict['secret']
@@ -2596,7 +2613,14 @@ class ToolsSeedkeeperSaveDescriptorView(View):
                 # decode helper tries the 2-byte form first, then 1-byte, then raw,
                 # so re-reading an existing V2 Descriptor no longer trips a utf-8
                 # decode error (we were stripping only one byte with [1:]).
-                multisig_descriptor_templates.append(_decode_seedkeeper_text(secret_dict))
+                # Existing secrets are only read here to skip duplicates, so one
+                # that isn't utf-8 text (e.g. written by another tool) must not
+                # block saving the new descriptor.
+                try:
+                    multisig_descriptor_templates.append(_decode_seedkeeper_text(secret_dict))
+                except UnicodeDecodeError:
+                    logger.info("Skipping existing descriptor secret that is not utf-8 text")
+                    continue
 
                 logger.debug("Decoded existing descriptor template")
 
@@ -2646,7 +2670,7 @@ class ToolsSeedkeeperSaveDescriptorView(View):
                     )
                     return Destination(BackStackView)
                 (sid, fingerprint) = Satochip_Connector.seedkeeper_import_secret(secret_dic)
-                logger.info("Imported - SID:", sid, " Fingerprint:", fingerprint)
+                logger.info("Imported - SID: %s Fingerprint: %s", sid, fingerprint)
                 secrets_imported += 1
 
             self.loading_screen.stop()
