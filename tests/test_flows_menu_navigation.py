@@ -17,6 +17,23 @@ from seedsigner.views.view import MainMenuView, PowerOptionsView, RestartView, P
 from seedsigner.views import scan_views, seed_views, tools_views, settings_views
 
 
+# The before_run helpers below are handed a View, not the test, so anything they
+# start is registered here for teardown_method() to undo. A patcher left running
+# leaks into every later test in the session -- a stale
+# find_sd_card_device() -> "/dev/test" made the real detector untestable -- and a
+# temp dir left behind is never cleaned up at all.
+_STARTED_PATCHERS = []
+_TEMP_DIRS = []
+
+
+def _temp_dir(prefix: str) -> Path:
+    """A temp dir that teardown_method() removes."""
+    import tempfile
+
+    path = Path(tempfile.mkdtemp(prefix=prefix))
+    _TEMP_DIRS.append(path)
+    return path
+
 
 def _patch_scan_view_decoder(view):
     """Prevent ScanView subclasses from processing mock decoder data.
@@ -47,7 +64,7 @@ def _patch_microsd_child(view):
     ]
     for p in patchers:
         p.start()
-    view._microsd_patchers = patchers
+    _STARTED_PATCHERS.extend(patchers)
 
     # Inject a seed so FlashView's WarningScreen is shown (BACK exits early)
     if not view.controller.storage.seeds:
@@ -64,16 +81,15 @@ def _patch_gpg_verify_file(view):
     at a temp dir containing one dummy file, so the View reaches its
     ButtonListScreen where BACK exits cleanly.
     """
-    import tempfile
-
-    tmpdir = Path(tempfile.mkdtemp(prefix="gpg_verify_test_"))
+    tmpdir = _temp_dir("gpg_verify_test_")
     (tmpdir / "dummy.bin").write_bytes(b"test")
 
-    view._gpg_verify_patchers = [
+    patchers = [
         patch("seedsigner.views.gpg_views.resolve_microsd_images_dir", return_value=tmpdir),
     ]
-    for p in view._gpg_verify_patchers:
+    for p in patchers:
         p.start()
+    _STARTED_PATCHERS.extend(patchers)
 
     view.controller.gpg_keys_imported = True
 
@@ -219,6 +235,10 @@ class TestMenuNavigationFlows(FlowTest):
             p = getattr(self, attr, None)
             if p is not None:
                 p.stop()
+        while _STARTED_PATCHERS:
+            _STARTED_PATCHERS.pop().stop()
+        while _TEMP_DIRS:
+            shutil.rmtree(_TEMP_DIRS.pop(), ignore_errors=True)
         super().teardown_method()
 
 
@@ -794,7 +814,7 @@ class TestMenuNavigationFlows(FlowTest):
 
         connector = _patch_satodime_connector(monkeypatch)
         connector.setup_done = False  # unclaimed card -> plain claim flow
-        microsd_dir = use_microsd(monkeypatch, Path(tempfile.mkdtemp(prefix="satodime_backup_test_")))
+        microsd_dir = use_microsd(monkeypatch, _temp_dir("satodime_backup_test_"))
 
         # The mock's card_setup mints unlock_secret=list(range(20)) for this UID.
         card_id = seedkeeper_utils.satodime_card_id(connector)
@@ -829,7 +849,7 @@ class TestMenuNavigationFlows(FlowTest):
 
         connector = _patch_satodime_connector(monkeypatch)
         card_id = seedkeeper_utils.satodime_card_id(connector)
-        microsd_dir = use_microsd(monkeypatch, Path(tempfile.mkdtemp(prefix="satodime_backup_test_")))
+        microsd_dir = use_microsd(monkeypatch, _temp_dir("satodime_backup_test_"))
         payload = seedkeeper_utils.format_satodime_unlock_payload(card_id, list(range(20)))
         (microsd_dir / seedkeeper_utils.satodime_unlock_backup_filename(card_id)).write_text(payload, encoding="utf-8")
 
@@ -1208,7 +1228,7 @@ class TestMenuNavigationFlows(FlowTest):
             ToolsSmartcardMenuView, ToolsSatochipDIYView, ToolsDIYInstallAppletView,
         )
 
-        cap_dir = Path(tempfile.mkdtemp(prefix="javacard_cap_test_")) / "javacard-cap"
+        cap_dir = _temp_dir("javacard_cap_test_") / "javacard-cap"
         cap_dir.mkdir()
         (cap_dir / "Satochip.cap").write_bytes(b"test")
 
@@ -1238,9 +1258,9 @@ class TestMenuNavigationFlows(FlowTest):
         if shutil.which("gpg") is None or importlib.util.find_spec("pgpy") is None:
             pytest.skip("gpg binary and/or pgpy not available")
 
-        images_dir = Path(tempfile.mkdtemp(prefix="gpg_import_test_"))
+        images_dir = _temp_dir("gpg_import_test_")
         (images_dir / "pubkey.asc").write_text("not a real key")
-        gnupg_home = Path(tempfile.mkdtemp(prefix="gpg_import_home_"))
+        gnupg_home = _temp_dir("gpg_import_home_")
 
         with ExitStack() as stack:
             # Keep the real `gpg --import` away from the host's keyring.
