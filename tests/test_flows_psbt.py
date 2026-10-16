@@ -424,6 +424,9 @@ class TestCardMultisigChange(BaseTest):
         self.controller.psbt = load_psbt("TX-21.ms_honest_change_no_xpubs")
         self.controller.psbt_seed = None
         self.controller.psbt_sign_with_satochip = True
+        # What PSBTSelectSeedView records for a card multisig: no key material,
+        # on purpose, so a rebuild parses against the descriptor alone.
+        self.controller.psbt_card_keys = {}
         self.settings.set_value(SettingsConstants.SETTING__NETWORK, SettingsConstants.MAINNET)
 
     def test_change_is_unidentified_without_a_descriptor(self):
