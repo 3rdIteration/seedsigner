@@ -1012,7 +1012,10 @@ class PSBTIdentifyChangeView(View):
         if self.controller.multisig_wallet_descriptor:
             # TRANSLATOR_NOTE: A loaded multisig descriptor did not match an output that looked like change
             text = _("The loaded descriptor doesn't identify it. Shown as a payment.")
-            button_data = [self.CONTINUE]
+            # Loading the wrong descriptor is the ordinary way to arrive here, and
+            # offering only "Continue" left the right one unreachable: the user
+            # had to abandon the transaction to try again.
+            button_data = [self.LOAD_DESCRIPTOR, self.CONTINUE]
         else:
             # TRANSLATOR_NOTE: Multisig change can't be told apart from a payment without the wallet descriptor
             text = _("Load descriptor to identify change.")
@@ -1307,6 +1310,27 @@ class PSBTChangeDetailsView(View):
                     [2147483696, 2147483649, 2147483648, 2147483650, 1, 0],
             }
         """
+
+        if change_data is None:
+            # This output is no longer counted as change: the descriptor that
+            # identified it has been replaced by one that does not, which a
+            # rootless multisig parse depends on entirely. Reading on would crash
+            # on the missing dict.
+            if self.controller.multisig_wallet_descriptor:
+                self.controller.multisig_wallet_descriptor = None
+                self.run_screen(
+                    WarningScreen,
+                    title=_("Descriptor mismatch"),
+                    status_icon_name=SeedSignerIconConstants.WARNING,
+                    status_headline=_("Descriptor cleared"),
+                    text=_(
+                        "Loaded multisig wallet descriptor does not match this PSBT. "
+                        "Load the correct descriptor or skip verification to continue."
+                    ),
+                    show_back_button=False,
+                    button_data=[ButtonOption(_("OK"))],
+                )
+            return Destination(PSBTOverviewView)
 
         # The parser proved this derivation path belongs to this seed before recording
         # the output as change, so the view reads the verified path rather than the
