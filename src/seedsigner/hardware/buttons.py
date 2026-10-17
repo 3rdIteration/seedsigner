@@ -38,6 +38,10 @@ D_PAD_SIZE = 40
 BTN_SIZE = 40
 BTN_SPACING = 10
 
+# Maps a window position to the layout coordinates the button rects use;
+# None = identity. See HardwareButtons.set_desktop_pos_mapper().
+_DESKTOP_POS_MAPPER = None
+
 
 class HardwareButtons(Singleton):
     _instance_lock = threading.Lock()
@@ -162,6 +166,17 @@ class HardwareButtons(Singleton):
     def set_desktop_scale(cls, scale: int) -> None:
         global DESKTOP_SCALE
         DESKTOP_SCALE = scale
+
+    @classmethod
+    def set_desktop_pos_mapper(cls, mapper) -> None:
+        """Install a window->layout coordinate mapper for mouse/touch input.
+
+        ``None`` (the default) means window and layout coordinates are the same.
+        DesktopDisplay installs one in fullscreen mode, where the layout is
+        scaled and centred on a larger screen.
+        """
+        global _DESKTOP_POS_MAPPER
+        _DESKTOP_POS_MAPPER = mapper
 
     @classmethod
     def set_desktop_dimensions(cls, width: int, height: int) -> None:
@@ -375,8 +390,9 @@ class HardwareButtons(Singleton):
                         mapped = self.key_map.get(event.key)
                     elif event.type == pygame.MOUSEBUTTONDOWN:
                         mapped = None
+                        pos = _DESKTOP_POS_MAPPER(event.pos) if _DESKTOP_POS_MAPPER else event.pos
                         for key, rect in self.button_rects.items():
-                            if rect.collidepoint(event.pos):
+                            if rect.collidepoint(pos):
                                 mapped = key
                                 break
                     else:

@@ -1,5 +1,6 @@
 import logging
 import os
+import select
 import time
 from pathlib import Path
 
@@ -118,6 +119,9 @@ class MicroSD(Singleton, BaseThread):
     FIFO_MODE = 0o600
     ACTION__INSERTED = "add"
     ACTION__REMOVED = "remove"
+    # Mount-state re-check interval. The OS hotplug helper's FIFO message is
+    # only a wake-up hint; this poll catches anything it missed.
+    POLL_INTERVAL_SECONDS = 1.0
 
 
     @staticmethod
@@ -215,37 +219,116 @@ class MicroSD(Singleton, BaseThread):
         self.start()
 
 
+    @classmethod
+    def parse_fifo_actions(cls, data: bytes) -> list:
+        """Extract the add/remove notifications from raw FIFO bytes, in order.
+
+        Hotplug helpers write a bare ``add`` / ``remove`` with no separator, so
+        back-to-back events read as one chunk (``b"removeadd"`` for a quick card
+        swap). Anything else in the data is ignored.
+        """
+        text = data.decode("ascii", errors="ignore")
+        actions = []
+        i = 0
+        while i < len(text):
+            for action in (cls.ACTION__INSERTED, cls.ACTION__REMOVED):
+                if text.startswith(action, i):
+                    actions.append(action)
+                    i += len(action)
+                    break
+            else:
+                i += 1
+        return actions
+
+
+    @classmethod
+    def detect_state_change(cls, was_inserted: bool, now_inserted: bool, fifo_actions: list):
+        """Decide which state change (if any) to report to Settings and the toast.
+
+        The mount state is the source of truth; FIFO messages only wake us up.
+        The one case a pure state comparison misses is a card swapped faster
+        than the poll: it reads as "still inserted", but the OS says a card was
+        added, so the new card's settings.json must be loaded.
+        """
+        if now_inserted != was_inserted:
+            return cls.ACTION__INSERTED if now_inserted else cls.ACTION__REMOVED
+        if now_inserted and cls.ACTION__INSERTED in fifo_actions:
+            return cls.ACTION__INSERTED
+        return None
+
+
+    def _open_fifo(self):
+        """Create the hotplug FIFO and return a non-blocking fd, or None.
+
+        O_RDWR because Linux lets a FIFO's reader also hold the write end: the
+        fd then never reports EOF/POLLHUP between hotplug writers, so select()
+        sleeps until real data arrives instead of spinning.
+        """
+        try:
+            if os.path.lexists(self.FIFO_PATH):
+                os.remove(self.FIFO_PATH)
+            os.mkfifo(self.FIFO_PATH, self.FIFO_MODE)
+            return os.open(self.FIFO_PATH, os.O_RDWR | os.O_NONBLOCK)
+        except (OSError, AttributeError) as e:
+            # A storage/permission failure must not kill detection: fall back to
+            # polling the mount state alone.
+            logger.error(
+                f"Could not create microSD detection FIFO {self.FIFO_PATH}: {e}; "
+                "falling back to polling the mount state"
+            )
+            return None
+
+
+    def _wait_for_hint(self, fifo_fd) -> list:
+        """Block up to POLL_INTERVAL_SECONDS for a FIFO message; return its actions."""
+        if fifo_fd is None:
+            time.sleep(self.POLL_INTERVAL_SECONDS)
+            return []
+        ready, _, _ = select.select([fifo_fd], [], [], self.POLL_INTERVAL_SECONDS)
+        if not ready:
+            return []
+        try:
+            data = os.read(fifo_fd, 256)
+        except BlockingIOError:
+            return []
+        logger.info(f"fifo message: {data!r}")
+        return self.parse_fifo_actions(data)
+
+
     def run(self):
         from seedsigner.controller import Controller
         from seedsigner.gui.toast import SDCardStateChangeToastManagerThread
         from seedsigner.models.settings import Settings  # Import here to avoid circular import issues
-        action = ""
-        
+
         # explicitly only microsd add/remove detection in seedsigner-os
-        if Settings.is_seedsigner_os():
+        if not Settings.is_seedsigner_os():
+            return
 
-            # at start-up, get current status and inform Settings
-            Settings.handle_microsd_state_change(
-                action=MicroSD.ACTION__INSERTED if self.is_inserted else MicroSD.ACTION__REMOVED
-            )
+        # Create the FIFO BEFORE sampling the mount state. The OS hotplug helper
+        # writes to it right after mounting; a card mounted between the sample
+        # and the mkfifo used to be lost -- its "add" went into a plain file that
+        # mkfifo then deleted -- and the app believed there was no card (so no
+        # Persistent Settings) for the whole session. Any event from here on is
+        # either queued in the FIFO or caught by the mount-state poll.
+        fifo_fd = self._open_fifo()
 
-            # Set up the mdev FIFO. A storage/permission failure here must not
-            # crash the detection thread; log and stop detection instead.
-            try:
-                if os.path.exists(self.FIFO_PATH):
-                    os.remove(self.FIFO_PATH)
+        # at start-up, get current status and inform Settings
+        inserted = self.is_inserted
+        Settings.handle_microsd_state_change(
+            action=MicroSD.ACTION__INSERTED if inserted else MicroSD.ACTION__REMOVED
+        )
 
-                os.mkfifo(self.FIFO_PATH, self.FIFO_MODE)
-            except OSError as e:
-                logger.error(f"Could not create microSD detection FIFO {self.FIFO_PATH}: {e}")
-                return
-
+        try:
             while self.keep_running:
-                with open(self.FIFO_PATH) as fifo:
-                    action = fifo.read()
-                    logger.info(f"fifo message: {action}")
-
-                    Settings.handle_microsd_state_change(action=action)
-                    Controller.get_instance().activate_toast(SDCardStateChangeToastManagerThread(action=action))
-
-                time.sleep(0.1)
+                fifo_actions = self._wait_for_hint(fifo_fd)
+                now_inserted = self.is_inserted
+                action = self.detect_state_change(inserted, now_inserted, fifo_actions)
+                inserted = now_inserted
+                if action is None:
+                    continue
+                logger.info(f"microSD state change: {action}")
+                Settings.handle_microsd_state_change(action=action)
+                Controller.get_instance().activate_toast(SDCardStateChangeToastManagerThread(action=action))
+        finally:
+            if fifo_fd is not None:
+                os.close(fifo_fd)

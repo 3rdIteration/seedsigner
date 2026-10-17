@@ -491,7 +491,6 @@ class Controller(Singleton):
         from seedsigner.views.smartcard_views import ToolsSmartcardMenuView
         from seedsigner.views.screensaver import OpeningSplashView
         from seedsigner.models.settings_definition import SettingsConstants
-        from seedsigner.views.desktop_warning import DesktopWarningView
         from seedsigner.views.developer_os_warning import DeveloperOSWarningView
         from seedsigner.helpers.seedsigner_os import is_seedsigner_os_dev_build, signal_app_alive
         from seedsigner.gui.toast import RemoveSDCardToastManagerThread
@@ -517,8 +516,6 @@ class Controller(Singleton):
                     OpeningSplashView().run()
                     if is_seedsigner_os_dev_build():
                         DeveloperOSWarningView().run()
-                    if self.settings.get_value(SettingsConstants.SETTING__DISPLAY_CONFIGURATION).startswith("desktop"):
-                        DesktopWarningView().run()
                 except Exception as e:
                     logger.exception("Exception during startup interstitials")
                     startup_error_destination = self.handle_exception(e)
