@@ -22,8 +22,9 @@ def is_seedsigner_os_dev_build() -> bool:
     Deliberately NOT restricted to SeedSigner OS images. A desktop or dev-board
     run genuinely fails several exposure checks, so warning there is a true
     statement rather than a false alarm, and "do not use real seeds" applies
-    just as much. (``DesktopWarningView`` may also fire; the two say different
-    things — one is about the environment, this one about what is exposed.)
+    just as much. This warning is the only startup "not secure" interstitial:
+    the separate desktop-mode warning was removed because a desktop run always
+    fails the exposure checks, so this one already covers it.
     """
     if os.path.exists("/usr/bin/microsd_notice.py"):
         return True
