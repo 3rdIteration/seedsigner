@@ -2514,3 +2514,92 @@ msgstr "编码文本"
 msgid "Decode QR code"
 msgstr "解码二维码"
 
+#. FORK: translated by Claude 2026-10-17
+#. Settings submenu holding the checks applied to transactions before signing
+#: src/seedsigner/views/settings_views.py
+msgid "PSBT Safety"
+msgstr "PSBT 安全"
+
+#. FORK: translated by Claude 2026-10-17
+#. Setting for multisig wallets whose cosigners use different or unusual
+#. derivation paths
+#: src/seedsigner/models/settings_definition.py
+msgid "Unusual Multisig Paths"
+msgstr "异常多重签名路径"
+
+#. FORK: translated by Claude 2026-10-17
+#: src/seedsigner/models/settings_definition.py
+msgid "Without a matching descriptor"
+msgstr "无匹配描述符时"
+
+#. FORK: translated by Claude 2026-10-17
+#: src/seedsigner/models/settings_definition.py
+msgid "Block"
+msgstr "阻止"
+
+#. FORK: translated by Claude 2026-10-17
+#: src/seedsigner/models/settings_definition.py
+msgid "Warn"
+msgstr "警告"
+
+#. FORK: translated by Claude 2026-10-17
+#: src/seedsigner/models/settings_definition.py
+msgid "Off"
+msgstr "关闭"
+
+#. FORK: translated by Claude 2026-10-17
+#. Setting for transactions that send bitcoin to an unspendable OP_RETURN
+#. output
+#: src/seedsigner/models/settings_definition.py
+msgid "OP_RETURN Burn"
+msgstr "OP_RETURN 销毁"
+
+#. FORK: translated by Claude 2026-10-17
+#: src/seedsigner/models/settings_definition.py
+msgid "Value sent to OP_RETURN is destroyed"
+msgstr "发送到 OP_RETURN 的金额将被销毁"
+
+#. FORK: translated by Claude 2026-10-17
+#. Headline when a multisig's cosigners use unusual derivation paths
+#: src/seedsigner/views/psbt_views.py
+msgid "Unusual Key Paths"
+msgstr "异常密钥路径"
+
+#. FORK: translated by Claude 2026-10-17
+#. Multisig cosigners use different account numbers in their derivation paths
+#: src/seedsigner/views/psbt_views.py
+msgid "Cosigners use different accounts. Load the descriptor to verify."
+msgstr "联合签名者使用不同账户。请加载描述符以验证。"
+
+#. FORK: translated by Claude 2026-10-17
+#. Shown under "Unusual Key Paths" when multisig cosigners are on non-standard
+#. derivation paths
+#: src/seedsigner/views/psbt_views.py
+msgid "Load the wallet descriptor to sign."
+msgstr "请加载钱包描述符以签名。"
+
+#. FORK: translated by Claude 2026-10-17
+#. The loaded multisig descriptor does not describe the wallet this transaction
+#. spends from
+#: src/seedsigner/views/psbt_views.py
+msgid "The loaded descriptor doesn't match this transaction's inputs."
+msgstr "已加载的描述符与此交易的输入不匹配。"
+
+#. FORK: translated by Claude 2026-10-17
+#. Bitcoin sent to an OP_RETURN output can never be spent by anyone
+#: src/seedsigner/views/psbt_views.py
+msgid "An OP_RETURN output burns bitcoin; it is destroyed, not sent."
+msgstr "OP_RETURN 输出会销毁比特币；资金被销毁，而非发送。"
+
+#. FORK: translated by Claude 2026-10-17
+#. Shown after a list of multisig cosigner paths that was cut short, e.g. "+3
+#. more"
+#: src/seedsigner/views/seed_views.py
+msgid "+{} more"
+msgstr "+{} 个"
+
+#. FORK: translated by Claude 2026-10-17
+#: src/seedsigner/views/psbt_views.py
+msgid "Load descriptor"
+msgstr "加载描述符"
+

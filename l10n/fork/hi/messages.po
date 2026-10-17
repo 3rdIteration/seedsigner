@@ -2514,3 +2514,92 @@ msgstr "टेक्स्ट एन्कोड करें"
 msgid "Decode QR code"
 msgstr "QR कोड डिकोड करें"
 
+#. FORK: translated by Claude 2026-10-17
+#. Settings submenu holding the checks applied to transactions before signing
+#: src/seedsigner/views/settings_views.py
+msgid "PSBT Safety"
+msgstr "PSBT सुरक्षा"
+
+#. FORK: translated by Claude 2026-10-17
+#. Setting for multisig wallets whose cosigners use different or unusual
+#. derivation paths
+#: src/seedsigner/models/settings_definition.py
+msgid "Unusual Multisig Paths"
+msgstr "असामान्य मल्टीसिग पाथ"
+
+#. FORK: translated by Claude 2026-10-17
+#: src/seedsigner/models/settings_definition.py
+msgid "Without a matching descriptor"
+msgstr "मेल खाते डिस्क्रिप्टर के बिना"
+
+#. FORK: translated by Claude 2026-10-17
+#: src/seedsigner/models/settings_definition.py
+msgid "Block"
+msgstr "ब्लॉक करें"
+
+#. FORK: translated by Claude 2026-10-17
+#: src/seedsigner/models/settings_definition.py
+msgid "Warn"
+msgstr "चेतावनी दें"
+
+#. FORK: translated by Claude 2026-10-17
+#: src/seedsigner/models/settings_definition.py
+msgid "Off"
+msgstr "बंद"
+
+#. FORK: translated by Claude 2026-10-17
+#. Setting for transactions that send bitcoin to an unspendable OP_RETURN
+#. output
+#: src/seedsigner/models/settings_definition.py
+msgid "OP_RETURN Burn"
+msgstr "OP_RETURN बर्न"
+
+#. FORK: translated by Claude 2026-10-17
+#: src/seedsigner/models/settings_definition.py
+msgid "Value sent to OP_RETURN is destroyed"
+msgstr "OP_RETURN को भेजी गई राशि नष्ट हो जाती है"
+
+#. FORK: translated by Claude 2026-10-17
+#. Headline when a multisig's cosigners use unusual derivation paths
+#: src/seedsigner/views/psbt_views.py
+msgid "Unusual Key Paths"
+msgstr "असामान्य की पाथ"
+
+#. FORK: translated by Claude 2026-10-17
+#. Multisig cosigners use different account numbers in their derivation paths
+#: src/seedsigner/views/psbt_views.py
+msgid "Cosigners use different accounts. Load the descriptor to verify."
+msgstr "सह-हस्ताक्षरकर्ताओं के अकाउंट अलग हैं। जाँच हेतु डिस्क्रिप्टर लोड करें।"
+
+#. FORK: translated by Claude 2026-10-17
+#. Shown under "Unusual Key Paths" when multisig cosigners are on non-standard
+#. derivation paths
+#: src/seedsigner/views/psbt_views.py
+msgid "Load the wallet descriptor to sign."
+msgstr "साइन करने के लिए वॉलेट डिस्क्रिप्टर लोड करें।"
+
+#. FORK: translated by Claude 2026-10-17
+#. The loaded multisig descriptor does not describe the wallet this transaction
+#. spends from
+#: src/seedsigner/views/psbt_views.py
+msgid "The loaded descriptor doesn't match this transaction's inputs."
+msgstr "लोड किया डिस्क्रिप्टर इस लेन-देन के इनपुट से मेल नहीं खाता।"
+
+#. FORK: translated by Claude 2026-10-17
+#. Bitcoin sent to an OP_RETURN output can never be spent by anyone
+#: src/seedsigner/views/psbt_views.py
+msgid "An OP_RETURN output burns bitcoin; it is destroyed, not sent."
+msgstr "OP_RETURN आउटपुट बिटकॉइन जला देता है; यह नष्ट होता है, भेजा नहीं जाता।"
+
+#. FORK: translated by Claude 2026-10-17
+#. Shown after a list of multisig cosigner paths that was cut short, e.g. "+3
+#. more"
+#: src/seedsigner/views/seed_views.py
+msgid "+{} more"
+msgstr "+{} और"
+
+#. FORK: translated by Claude 2026-10-17
+#: src/seedsigner/views/psbt_views.py
+msgid "Load descriptor"
+msgstr "डिस्क्रिप्टर लोड करें"
+

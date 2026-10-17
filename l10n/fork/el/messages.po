@@ -2868,3 +2868,92 @@ msgstr ""
 "Πρέπει να αφαιρέσεις την\n"
 "κάρτα MicroSD για να συνεχίσεις."
 
+#. FORK: translated by Claude 2026-10-17
+#. Settings submenu holding the checks applied to transactions before signing
+#: src/seedsigner/views/settings_views.py
+msgid "PSBT Safety"
+msgstr "Ασφάλεια PSBT"
+
+#. FORK: translated by Claude 2026-10-17
+#. Setting for multisig wallets whose cosigners use different or unusual
+#. derivation paths
+#: src/seedsigner/models/settings_definition.py
+msgid "Unusual Multisig Paths"
+msgstr "Ασυνήθιστες διαδρομές πολυυπογραφής"
+
+#. FORK: translated by Claude 2026-10-17
+#: src/seedsigner/models/settings_definition.py
+msgid "Without a matching descriptor"
+msgstr "Χωρίς αντίστοιχο περιγραφέα"
+
+#. FORK: translated by Claude 2026-10-17
+#: src/seedsigner/models/settings_definition.py
+msgid "Block"
+msgstr "Αποκλεισμός"
+
+#. FORK: translated by Claude 2026-10-17
+#: src/seedsigner/models/settings_definition.py
+msgid "Warn"
+msgstr "Προειδοποίηση"
+
+#. FORK: translated by Claude 2026-10-17
+#: src/seedsigner/models/settings_definition.py
+msgid "Off"
+msgstr "Απενεργό"
+
+#. FORK: translated by Claude 2026-10-17
+#. Setting for transactions that send bitcoin to an unspendable OP_RETURN
+#. output
+#: src/seedsigner/models/settings_definition.py
+msgid "OP_RETURN Burn"
+msgstr "Καύση OP_RETURN"
+
+#. FORK: translated by Claude 2026-10-17
+#: src/seedsigner/models/settings_definition.py
+msgid "Value sent to OP_RETURN is destroyed"
+msgstr "Ό,τι στέλνεται σε OP_RETURN καταστρέφεται"
+
+#. FORK: translated by Claude 2026-10-17
+#. Headline when a multisig's cosigners use unusual derivation paths
+#: src/seedsigner/views/psbt_views.py
+msgid "Unusual Key Paths"
+msgstr "Ασυνήθιστες διαδρομές κλειδιών"
+
+#. FORK: translated by Claude 2026-10-17
+#. Multisig cosigners use different account numbers in their derivation paths
+#: src/seedsigner/views/psbt_views.py
+msgid "Cosigners use different accounts. Load the descriptor to verify."
+msgstr "Οι συνυπογράφοντες έχουν άλλους λογαριασμούς. Φορτώστε τον περιγραφέα."
+
+#. FORK: translated by Claude 2026-10-17
+#. Shown under "Unusual Key Paths" when multisig cosigners are on non-standard
+#. derivation paths
+#: src/seedsigner/views/psbt_views.py
+msgid "Load the wallet descriptor to sign."
+msgstr "Φορτώστε τον περιγραφέα πορτοφολιού για υπογραφή."
+
+#. FORK: translated by Claude 2026-10-17
+#. The loaded multisig descriptor does not describe the wallet this transaction
+#. spends from
+#: src/seedsigner/views/psbt_views.py
+msgid "The loaded descriptor doesn't match this transaction's inputs."
+msgstr "Ο φορτωμένος περιγραφέας δεν ταιριάζει με τις εισόδους της συναλλαγής."
+
+#. FORK: translated by Claude 2026-10-17
+#. Bitcoin sent to an OP_RETURN output can never be spent by anyone
+#: src/seedsigner/views/psbt_views.py
+msgid "An OP_RETURN output burns bitcoin; it is destroyed, not sent."
+msgstr "Μια έξοδος OP_RETURN καίει bitcoin· καταστρέφεται, δεν αποστέλλεται."
+
+#. FORK: translated by Claude 2026-10-17
+#. Shown after a list of multisig cosigner paths that was cut short, e.g. "+3
+#. more"
+#: src/seedsigner/views/seed_views.py
+msgid "+{} more"
+msgstr "+{} ακόμη"
+
+#. FORK: translated by Claude 2026-10-17
+#: src/seedsigner/views/psbt_views.py
+msgid "Load descriptor"
+msgstr "Φόρτωση περιγραφέα"
+

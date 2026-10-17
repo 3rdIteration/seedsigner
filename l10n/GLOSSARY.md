@@ -77,3 +77,15 @@ closest sibling language and note the decision here.
   labels like `" New seed"` and value labels like `"Voltage: "`).
 - Body copy ≤ ~120 chars over ≤ 2 lines; buttons/titles as short as English
   (240px screen, no horizontal scroll — see AGENTS.md).
+
+## PSBT Safety settings (#477)
+
+- **"Load descriptor"** follows each locale's upstream verb for "Load seed":
+  pt_BR *Adicionar*, it *Importa*, ja *入力*, ko *불러오기*, zh *加载*, cs *Nahrát*;
+  "descriptor" itself stays English wherever upstream keeps it (it, ja, ko, nl).
+- **"Block" / "Warn" / "Off"** are setting values: verbs for Block/Warn, and
+  "Off" uses upstream's word for "Disabled" where one exists.
+- **"OP_RETURN Burn"**: keep `OP_RETURN` verbatim; "burn" uses the local
+  crypto term for destroying coins (*quema*, *Burn* in de, *焼却*, *销毁*, …).
+- The `PSBTMultisigKeyPathsView` texts must fit within ~3 body lines above two
+  buttons: shorten the cosigner sentence before shortening the instruction.
