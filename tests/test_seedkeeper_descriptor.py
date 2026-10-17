@@ -308,3 +308,53 @@ def test_ensure_capacity_reraises_a_genuine_status_failure(monkeypatch):
 
     with pytest.raises(FakeSW12Error):
         seedkeeper_utils.ensure_seedkeeper_capacity(connector, secret_dic)
+
+
+def test_gpg_encrypt_message_rejects_non_text_data_secret(monkeypatch):
+    """Picking a SeedKeeper Data secret that isn't utf-8 text as the message to
+    encrypt shows a clear "Unreadable Message" warning instead of crashing on
+    the decode.
+    """
+    import subprocess
+    from seedsigner.gui.screens.screen import WarningScreen
+    from seedsigner.views import tools_views  # noqa: F401 -- must load before gpg_views (circular import)
+    from seedsigner.views import gpg_views
+    from seedsigner.views.view import BackStackView
+
+    _fresh_controller_with_descriptor()
+    binary = bytes([0x83, 0x01, 0xff, 0xfe])
+    payload = list(len(binary).to_bytes(2, "big")) + list(binary)
+
+    connector = MagicMock()
+    connector.seedkeeper_list_secret_headers.return_value = [
+        {"id": 0x0001, "type": 0xC0, "label": "msg", "export_rights": 0x01},
+    ]
+    connector.seedkeeper_export_secret.return_value = {"secret_list": payload}
+    connector.card_get_status.return_value = (None, None, None, {"protocol_minor_version": 2})
+
+    monkeypatch.setattr(gpg_views, "SEEDKEEPER_DIC_TYPE", {0xC0: "Data"}, raising=False)
+    monkeypatch.setattr(
+        gpg_views, "SEEDKEEPER_DIC_EXPORT_RIGHTS", {0x01: "Plaintext export allowed"}, raising=False
+    )
+    monkeypatch.setattr(seedkeeper_utils, "init_satochip", lambda *a, **k: connector)
+    monkeypatch.setattr("seedsigner.gui.screens.screen.LoadingScreenThread", MagicMock)
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: MagicMock(stdout=""))
+
+    # Select Key -> Skip, Message Source -> Load Seedkeeper, Select Message -> first
+    selections = iter([0, 1, 0])
+    shown = []
+
+    def fake_run_screen(self, screen, *a, **k):
+        shown.append((screen, k))
+        if screen is WarningScreen:
+            return 0
+        return next(selections)
+
+    monkeypatch.setattr(gpg_views.ToolsGPGEncryptMessageView, "run_screen", fake_run_screen)
+
+    destination = gpg_views.ToolsGPGEncryptMessageView().run()
+
+    warnings = [k for screen, k in shown if screen is WarningScreen]
+    assert len(warnings) == 1
+    assert warnings[0]["status_headline"] == "Unreadable Message"
+    assert destination.View_cls is BackStackView
