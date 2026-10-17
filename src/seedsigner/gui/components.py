@@ -393,6 +393,7 @@ class TextArea(BaseComponent):
     horizontal_scroll_begin_hold_secs: float = 2.0
     horizontal_scroll_end_hold_secs: float = 1.0
     height_ignores_below_baseline: bool = False  # If True, characters that render below the baseline (e.g. "pqgy") will not affect the final height calculation
+    line_spacing: int = None  # Gap between lines; None = GUIConstants.BODY_LINE_SPACING
 
 
     def __post_init__(self):
@@ -412,7 +413,8 @@ class TextArea(BaseComponent):
         if self.screen_x + self.width > self.canvas_width:
             self.width = self.canvas_width - self.screen_x
 
-        self.line_spacing = GUIConstants.BODY_LINE_SPACING
+        if self.line_spacing is None:
+            self.line_spacing = GUIConstants.BODY_LINE_SPACING
 
         # Calculate the actual font height from the "baseline" anchor ("_s")
         font = Fonts.get_font(self.font_name, self.font_size)

@@ -297,6 +297,16 @@ def generate_screenshots(locale):
         # ...and Advanced entries
         add_settings_entries(SettingsConstants.VISIBILITY__ADVANCED)
 
+        # The "PSBT Safety" submenu and its entries
+        settings_views_list.append(
+            ScreenshotConfig(
+                settings_views.SettingsMenuView,
+                dict(visibility=SettingsConstants.VISIBILITY__PSBT_SAFETY),
+                screenshot_name="SettingsMenuView__PSBTSafety"
+            )
+        )
+        add_settings_entries(SettingsConstants.VISIBILITY__PSBT_SAFETY)
+
         # Render the nested "Advanced" -> "Hardware" submenu
         settings_views_list.append(
             ScreenshotConfig(
@@ -379,6 +389,61 @@ def generate_screenshots(locale):
             )
             with patch.object(controller, 'unverified_address', fake_addr_verification_data):
                 yield
+
+
+        @contextmanager
+        def mock_multisig_key_paths_psbt_loaded(vector_name: str):
+            """A multisig psbt whose cosigners' paths differ (issue #477); see PSBTMultisigKeyPathsView."""
+            import multisig_key_path_vectors as vectors
+            vector = getattr(vectors, vector_name)()
+            psbt = vector.build()
+            with patch.object(controller, 'psbt', psbt):
+                with patch.object(controller, 'psbt_seed', vectors.OUR_SEED):
+                    with patch.object(controller, 'multisig_wallet_descriptor', None):
+                        with patch.object(controller, 'psbt_parser', PSBTParser(p=psbt, seed=vectors.OUR_SEED, network=SettingsConstants.TESTNET)):
+                            yield
+
+
+        @contextmanager
+        def mock_multisig_mixed_accounts_psbt_loaded():
+            with mock_multisig_key_paths_psbt_loaded("provider_wallet"):
+                yield
+
+
+        @contextmanager
+        def mock_multisig_nonstandard_paths_psbt_loaded():
+            with mock_multisig_key_paths_psbt_loaded("nonstandard_wallet"):
+                yield
+
+
+        @contextmanager
+        def mock_multisig_mixed_accounts_address_verified():
+            import multisig_key_path_vectors as vectors
+            fake_addr_verification_data = dict(
+                address="tb1qw5tcpws5thg29zdg30wvl7pyz9j33heredn5aqgx2scn2g8twndsejnflz",
+                network=SettingsConstants.TESTNET,
+                sig_type=SettingsConstants.MULTISIG,
+                script_type=SettingsConstants.NATIVE_SEGWIT,
+                derivation_path="m/48'/1'/0'/2'",
+                verified_index=1,
+                verified_index_is_change=False
+            )
+            with patch.object(controller, 'unverified_address', fake_addr_verification_data):
+                with patch.object(controller, 'multisig_wallet_descriptor', vectors.provider_wallet().descriptor()):
+                    yield
+
+
+        @contextmanager
+        def mock_multisig_three_paths_address_verified():
+            import multisig_key_path_vectors as vectors
+            descriptor = vectors.MultisigVector(cosigners=[
+                vectors.Cosigner(vectors.OUR_SEED, "m/48h/1h/0h/2h"),
+                vectors.Cosigner(vectors.COSIGNER_SEED, "m/48h/1h/1h/2h"),
+                vectors.Cosigner(vectors.PROVIDER_SEED, vectors.PROVIDER_ACCOUNT),
+            ]).descriptor()
+            with mock_multisig_mixed_accounts_address_verified():
+                with patch.object(controller, 'multisig_wallet_descriptor', descriptor):
+                    yield
 
 
         @contextmanager
@@ -638,6 +703,8 @@ def generate_screenshots(locale):
                 ScreenshotConfig(seed_views.AddressVerificationSigTypeView),
                 ScreenshotConfig(seed_views.SeedAddressVerificationView, dict(seed=seed_12), mock_context_manager=mock_address_verification_data_loaded),
                 ScreenshotConfig(seed_views.SeedAddressVerificationSuccessView, dict(seed=seed_12), mock_context_manager=mock_address_verification_data_loaded),
+                ScreenshotConfig(seed_views.SeedAddressVerificationSuccessView, dict(seed=None), screenshot_name="SeedAddressVerificationSuccessView_multisig_mixed_accounts", mock_context_manager=mock_multisig_mixed_accounts_address_verified),
+                ScreenshotConfig(seed_views.SeedAddressVerificationSuccessView, dict(seed=None), screenshot_name="SeedAddressVerificationSuccessView_multisig_three_paths", mock_context_manager=mock_multisig_three_paths_address_verified),
 
                 ScreenshotConfig(seed_views.LoadMultisigWalletDescriptorView),
                 ScreenshotConfig(seed_views.MultisigWalletDescriptorView, mock_context_manager=mock_multisig_wallet_descriptor_loaded),
@@ -664,6 +731,8 @@ def generate_screenshots(locale):
                 ScreenshotConfig(psbt_views.PSBTRiskWarningView, mock_context_manager=mock_psbt_with_risk_warnings_loaded),
                 ScreenshotConfig(psbt_views.PSBTIdentifyChangeView, screenshot_name="PSBTIdentifyChangeView_no_descriptor", mock_context_manager=mock_multisig_psbt_without_xpubs_loaded),
                 ScreenshotConfig(psbt_views.PSBTIdentifyChangeView, screenshot_name="PSBTIdentifyChangeView_descriptor_mismatch", mock_context_manager=mock_multisig_psbt_without_xpubs_and_descriptor_loaded),
+                ScreenshotConfig(psbt_views.PSBTMultisigKeyPathsView, screenshot_name="PSBTMultisigKeyPathsView_mixed_accounts", mock_context_manager=mock_multisig_mixed_accounts_psbt_loaded),
+                ScreenshotConfig(psbt_views.PSBTMultisigKeyPathsView, screenshot_name="PSBTMultisigKeyPathsView_nonstandard", mock_context_manager=mock_multisig_nonstandard_paths_psbt_loaded),
                 ScreenshotConfig(psbt_views.PSBTHighFeeWarningView, dict(warning_threshold_percent=25)),
                 ScreenshotConfig(psbt_views.PSBTMathView, mock_context_manager=mock_multisig_psbt_loaded),
                 ScreenshotConfig(psbt_views.PSBTAddressDetailsView, dict(address_num=0), mock_context_manager=mock_multisig_psbt_loaded),

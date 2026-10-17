@@ -342,6 +342,36 @@ class SettingsConstants:
     # Used when AUTO is selected but latest-block.json is unavailable.
     FALLBACK_MAX_FEE_RATE = 500
 
+    # What to do with a multisig whose cosigners' paths don't follow one standard
+    # scheme (see PSBTParser.key_path_irregularity). Can be an honest wallet, but
+    # so could a psbt built for a lookalike wallet. Cosigners that differ only in
+    # account number (a provider giving each client its own account) are an
+    # everyday layout, so BLOCK only warns about those. Only the wallet's descriptor tells the two apart, so
+    # every option but Off offers to load one, and a matching descriptor settles it.
+    #   BLOCK: no signing until a matching descriptor is loaded.
+    #   WARN:  say so, and let the user continue without one.
+    #   OFF:   say nothing.
+    # Value attached to an OP_RETURN output is destroyed. Consensus-valid, and
+    # occasionally deliberate (proof-of-burn), but far more often a way to hide
+    # value from a signer that doesn't count it.
+    #   BLOCK: refuse the psbt (RejectCode.NONZERO_OP_RETURN).
+    #   WARN:  count it as spent and flag it for review (RiskWarning.OP_RETURN_BURN).
+    OP_RETURN_BURN__BLOCK = "block"
+    OP_RETURN_BURN__WARN = "warn"
+    ALL_OP_RETURN_BURNS = [
+        (OP_RETURN_BURN__BLOCK, _mft("Block")),
+        (OP_RETURN_BURN__WARN, _mft("Warn")),
+    ]
+
+    MULTISIG_KEY_PATHS__BLOCK = "block"
+    MULTISIG_KEY_PATHS__WARN = "warn"
+    MULTISIG_KEY_PATHS__OFF = "off"
+    ALL_MULTISIG_KEY_PATHS = [
+        (MULTISIG_KEY_PATHS__BLOCK, _mft("Block")),
+        (MULTISIG_KEY_PATHS__WARN, _mft("Warn")),
+        (MULTISIG_KEY_PATHS__OFF, _mft("Off")),
+    ]
+
     # Satochip signing behavior
     SATOCHIP_TIMEOUT_MIN = 0.25
     SATOCHIP_TIMEOUT_MAX = 1
@@ -514,6 +544,8 @@ class SettingsConstants:
     SETTING__ACCOUNT_PROMPT = "account_prompt"
     SETTING__CHANGE_INDEX_LOOKAHEAD = "change_lookahead"
     SETTING__MAX_FEE_RATE = "max_fee_rate"
+    SETTING__MULTISIG_KEY_PATHS = "msig_key_paths"
+    SETTING__OP_RETURN_BURN = "op_return_burn"
     SETTING__SEED_WORD_LENGTHS = "seed_word_lengths"
     SETTING__XPUB_DETAILS = "xpub_details"
     SETTING__PASSPHRASE = "passphrase"
@@ -600,6 +632,7 @@ class SettingsConstants:
     VISIBILITY__GENERAL = "general"
     VISIBILITY__ADVANCED = "advanced"
     VISIBILITY__HARDWARE = "hardware"
+    VISIBILITY__PSBT_SAFETY = "psbt_safety"
     VISIBILITY__DEVELOPER = "developer"
     VISIBILITY__HIDDEN = "hidden"   # For data-only (e.g. custom_derivation)
 
@@ -931,9 +964,11 @@ class SettingsDefinition:
                     selection_options=SettingsConstants.ALL_SCARD_PIN_ATTEMPTS,
                     default_value=SettingsConstants.DEFAULT_SCARD_PIN_ATTEMPTS),
 
+        # PSBT safety checks; their own submenu under Settings
         SettingsEntry(category=SettingsConstants.CATEGORY__WALLET,
                     attr_name=SettingsConstants.SETTING__CHANGE_INDEX_LOOKAHEAD,
                     abbreviated_name="chglook",
+                    visibility=SettingsConstants.VISIBILITY__PSBT_SAFETY,
                     display_name=_mft("Change Gap Limit"),
                     help_text=_mft("Warn when a change address sits this far past the inputs"),
                     type=SettingsConstants.TYPE__SELECT_1,
@@ -943,11 +978,34 @@ class SettingsDefinition:
         SettingsEntry(category=SettingsConstants.CATEGORY__WALLET,
                     attr_name=SettingsConstants.SETTING__MAX_FEE_RATE,
                     abbreviated_name="maxfee",
+                    visibility=SettingsConstants.VISIBILITY__PSBT_SAFETY,
                     display_name=_mft("Max Fee Rate"),
                     help_text=_mft("Warn when the fee rate is at or above this"),
                     type=SettingsConstants.TYPE__SELECT_1,
                     selection_options=SettingsConstants.ALL_MAX_FEE_RATES,
                     default_value=SettingsConstants.DEFAULT_MAX_FEE_RATE),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__WALLET,
+                    attr_name=SettingsConstants.SETTING__MULTISIG_KEY_PATHS,
+                    abbreviated_name="msigpaths",
+                    # TRANSLATOR_NOTE: Setting for multisig wallets whose cosigners use different or unusual derivation paths
+                    display_name=_mft("Unusual Multisig Paths"),
+                    help_text=_mft("Without a matching descriptor"),
+                    visibility=SettingsConstants.VISIBILITY__PSBT_SAFETY,
+                    type=SettingsConstants.TYPE__SELECT_1,
+                    selection_options=SettingsConstants.ALL_MULTISIG_KEY_PATHS,
+                    default_value=SettingsConstants.MULTISIG_KEY_PATHS__BLOCK),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__WALLET,
+                    attr_name=SettingsConstants.SETTING__OP_RETURN_BURN,
+                    abbreviated_name="opburn",
+                    # TRANSLATOR_NOTE: Setting for transactions that send bitcoin to an unspendable OP_RETURN output
+                    display_name=_mft("OP_RETURN Burn"),
+                    help_text=_mft("Value sent to OP_RETURN is destroyed"),
+                    visibility=SettingsConstants.VISIBILITY__PSBT_SAFETY,
+                    type=SettingsConstants.TYPE__SELECT_1,
+                    selection_options=SettingsConstants.ALL_OP_RETURN_BURNS,
+                    default_value=SettingsConstants.OP_RETURN_BURN__BLOCK),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
                     attr_name=SettingsConstants.SETTING__WIPE_TIMER,

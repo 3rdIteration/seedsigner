@@ -9,6 +9,7 @@ from pathlib import Path
 from binascii import hexlify
 from gettext import gettext as _
 
+from embit import bip32
 from embit.descriptor import Descriptor
 from embit.networks import NETWORKS
 from typing import List
@@ -4568,11 +4569,67 @@ class SeedAddressVerificationView(View):
 
 
 class SeedAddressVerificationSuccessView(View):
+    # The screen has room for this many path rows below the address.
+    MAX_COSIGNER_PATH_ROWS = 3
+
+    # Multisig script type -> PSBTParser policy type, for judging cosigner paths.
+    MULTISIG_POLICY_TYPES = {
+        SettingsConstants.NATIVE_SEGWIT: "p2wsh",
+        SettingsConstants.NESTED_SEGWIT: "p2sh-p2wsh",
+    }
+
     def __init__(self, seed: Seed):
         super().__init__()
         self.seed = seed
         if self.seed is not None:
             self.seed = seed
+
+
+    @classmethod
+    def cosigner_path_rows(cls, descriptor: Descriptor, script_type: str) -> list[tuple[str, bool]] | None:
+        """
+        One (label, is_non_standard) row per distinct cosigner account path in a
+        multisig descriptor, or None if every cosigner shares one path -- the
+        single path row then says it all.
+
+        Cosigners needn't share an account: a managed-multisig provider may keep
+        its key at m/48'/1'/778'/2' next to the user's m/48'/1'/0'/2' (issue #477),
+        and showing only one of them would misdescribe the wallet. A path held by
+        one cosigner is labelled with its fingerprint, one held by several with
+        how many ("2x"). Past MAX_COSIGNER_PATH_ROWS the last row counts the rest.
+        """
+        from seedsigner.models.psbt_parser import PSBTParser
+
+        origins = []
+        for key in descriptor.keys:
+            if key.origin is None:
+                return None
+            origins.append((key.fingerprint.hex(), tuple(key.origin.derivation)))
+        if len({derivation for _, derivation in origins}) < 2:
+            return None
+
+        # Distinct paths in descriptor order, with the cosigners at each.
+        fingerprints_by_path = {}
+        for fingerprint, derivation in origins:
+            fingerprints_by_path.setdefault(derivation, []).append(fingerprint)
+
+        policy_type = cls.MULTISIG_POLICY_TYPES.get(script_type)
+        rows = []
+        for derivation, fingerprints in fingerprints_by_path.items():
+            path = bip32.path_to_str(list(derivation)).replace("h", "'")
+            is_standard = policy_type is not None and PSBTParser.is_standard_multisig_prefix(derivation, policy_type)
+            if len(fingerprints) == 1:
+                label = f"{fingerprints[0]}: {path}"
+            else:
+                label = f"{len(fingerprints)}x {path}"
+            rows.append((label, not is_standard))
+
+        if len(rows) > cls.MAX_COSIGNER_PATH_ROWS:
+            remaining = len(rows) - (cls.MAX_COSIGNER_PATH_ROWS - 1)
+            rows = rows[:cls.MAX_COSIGNER_PATH_ROWS - 1]
+            # TRANSLATOR_NOTE: Shown after a list of multisig cosigner paths that was cut short, e.g. "+3 more"
+            rows.append((_("+{} more").format(remaining), False))
+        return rows
 
 
     def run(self):
@@ -4593,6 +4650,21 @@ class SeedAddressVerificationSuccessView(View):
         script_type_settings_entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__SCRIPT_TYPES)
         script_type_display = script_type_settings_entry.get_selection_option_display_name_by_value(script_type) if script_type else None
 
+        # For multisig the path above is only a guess at the standard one; the
+        # descriptor that actually verified the address knows each cosigner's.
+        cosigner_paths = None
+        descriptor = self.controller.multisig_wallet_descriptor
+        if (self.controller.unverified_address.get("sig_type") == SettingsConstants.MULTISIG
+                and descriptor is not None and descriptor.is_basic_multisig):
+            cosigner_paths = self.cosigner_path_rows(descriptor, script_type)
+            if cosigner_paths is None and descriptor.keys and descriptor.keys[0].origin is not None:
+                # All cosigners share a path: show that one, not the guess.
+                derivation_path = bip32.path_to_str(descriptor.keys[0].origin.derivation).replace("h", "'")
+                policy_type = self.MULTISIG_POLICY_TYPES.get(script_type)
+                from seedsigner.models.psbt_parser import PSBTParser
+                is_non_standard = not (policy_type and PSBTParser.is_standard_multisig_prefix(
+                    tuple(descriptor.keys[0].origin.derivation), policy_type))
+
         self.run_screen(
             seed_screens.SeedAddressVerificationSuccessScreen,
             address = self.controller.unverified_address["address"],
@@ -4601,6 +4673,7 @@ class SeedAddressVerificationSuccessView(View):
             derivation_path = derivation_path,
             script_type_display = script_type_display,
             is_non_standard = is_non_standard,
+            cosigner_paths = cosigner_paths,
         )
 
         return Destination(MainMenuView)
@@ -4815,9 +4888,11 @@ class MultisigWalletDescriptorView(View):
         elif button_data[selected_menu_num] == self.RETURN:
             self.controller.resume_main_flow = None
             psbt_parser = self.controller.psbt_parser
-            if psbt_parser and psbt_parser.unidentified_change_outputs:
-                # The descriptor decides which outputs are change, so the psbt has to be
-                # read again with it; the review restarts from the overview.
+            if psbt_parser and (psbt_parser.unidentified_change_outputs
+                                or psbt_parser.has_nonstandard_key_paths):
+                # The descriptor decides which outputs are change, and whether unusual
+                # cosigner paths are this wallet's, so the psbt has to be read again
+                # with it; the review restarts from the overview.
                 from seedsigner.views.psbt_views import PSBTOverviewView
                 self.controller.psbt_parser = None
                 return Destination(PSBTOverviewView, skip_current_view=True)

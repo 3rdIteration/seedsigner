@@ -92,6 +92,10 @@ class RiskWarning:
 
     RBF = "RBF"
 
+    # Value sent to an OP_RETURN, which destroys it. Only reachable when the user
+    # has set OP_RETURN Burn to Warn; otherwise RejectCode.NONZERO_OP_RETURN.
+    OP_RETURN_BURN = "OP_RETURN_BURN"
+
     # Two or more inputs, and at least one segwit v0 input described only by a
     # witness_utxo, without the previous transaction that would prove its amount.
     # BIP-143 commits each signature to its own input's amount, but not to the
@@ -294,6 +298,7 @@ class PSBTParser():
         max_fee_rate: float | None = None,
         block_anchor: tuple[int, int] | None = None,
         multisig_descriptor: Descriptor | None = None,
+        allow_op_return_burn: bool | None = None,
     ):
         self.psbt: PSBT = p
         self.seed = seed
@@ -333,6 +338,21 @@ class PSBTParser():
         self.num_inputs = 0
         self.verified_input_prefixes: set = set()
         self.verified_max_input_index: int = -1
+        # (fingerprint, account prefix) for every key the inputs' multisig scripts
+        # commit to, cosigners included. What a cosigner's key on a change output
+        # is measured against; see _is_reachable_cosigner_derivation. Also what
+        # has_nonstandard_key_paths is decided from.
+        self.input_key_origins: set = set()
+        # How far a multisig's cosigner paths stray from one standard scheme: None,
+        # KEY_PATHS__MIXED_ACCOUNTS or KEY_PATHS__NONSTANDARD. Not a refusal: the
+        # view asks for the wallet descriptor, per the user's
+        # SETTING__MULTISIG_KEY_PATHS. See _check_key_origins.
+        self.key_path_irregularity: str | None = None
+        # Whether the loaded descriptor accounts for every input, which settles any
+        # doubt has_nonstandard_key_paths raises.
+        self.inputs_match_descriptor: bool = False
+        # Set by the view once the user chooses to continue past that warning.
+        self.key_paths_acknowledged: bool = False
         self.can_verify_derivations: bool = False
         self.destination_addresses = []
         self.destination_amounts = []
@@ -354,6 +374,14 @@ class PSBTParser():
         self.locktime_is_enforced: bool = False
         self.locktime: int = 0
 
+        # Whether value sent to an OP_RETURN is shown as a warning (proof-of-burn
+        # is a real, if rare, use) rather than refused. SETTING__OP_RETURN_BURN.
+        self.allow_op_return_burn = (
+            allow_op_return_burn
+            if allow_op_return_burn is not None
+            else PSBTParser._configured_allow_op_return_burn()
+        )
+
         # Whether the fee is high relative to what is being sent; see has_high_fee().
         # Computed once at the end of parse() so the views can read it without each
         # re-walking the outputs.
@@ -369,6 +397,19 @@ class PSBTParser():
 
         if self.seed is not None or self.root is not None:
             self.parse()
+
+
+    @staticmethod
+    def _configured_allow_op_return_burn() -> bool:
+        """The user's OP_RETURN Burn setting, or refusal if settings aren't available."""
+        try:
+            from seedsigner.models.settings import Settings
+            return Settings.get_instance().get_value(
+                SettingsConstants.SETTING__OP_RETURN_BURN
+            ) == SettingsConstants.OP_RETURN_BURN__WARN
+        except Exception as e:
+            logger.debug("Falling back to refusing OP_RETURN burns: %s", e)
+            return False
 
 
     @staticmethod
@@ -539,6 +580,8 @@ class PSBTParser():
         rt = self._parse_outputs(child_key_derivation_cache)
         if rt == False:
             return False
+
+        self._check_key_origins()
 
         # Last, so that a more serious finding about this seed's own keys is the
         # one reported.
@@ -1088,10 +1131,25 @@ class PSBTParser():
         self.num_inputs = len(self.psbt.inputs)
         self.verified_input_prefixes = set()
         self.verified_max_input_index = -1
+        self.input_key_origins = set()
         # can_verify_derivations is established in parse(), before the ownership
         # scan that also depends on it.
         for i, inp in enumerate(self.psbt.inputs):
             PSBTParser._validate_input(i, inp)
+
+            # Every cosigner's account, as the inputs' own scripts attest to it.
+            # A cosigner's derivation can't be re-derived here, but an entry whose
+            # key the spent script actually holds is the coordinator describing the
+            # wallet it is spending from -- the reference a change output's
+            # cosigner paths are compared against.
+            multisig_script = inp.witness_script or inp.redeem_script
+            if multisig_script is not None:
+                for public_key, derivation_path_obj in inp.bip32_derivations.items():
+                    derivation = derivation_path_obj.derivation
+                    if len(derivation) >= 2 and public_key.sec() in multisig_script.data:
+                        self.input_key_origins.add(
+                            (derivation_path_obj.fingerprint, tuple(derivation[:-2]))
+                        )
 
             # Everything above the trailing branch/index pair, for the inputs this
             # seed actually produces. Each is a utxo the wallet already found, so
@@ -1182,6 +1240,29 @@ class PSBTParser():
         if input_prefixes is not None and tuple(derivation[:-2]) not in input_prefixes:
             return False
         return True
+
+
+    def _is_reachable_cosigner_derivation(self, derivation_path_obj: DerivationPath) -> bool:
+        """
+        is_reachable_derivation for another cosigner's key on a change output.
+
+        A multisig output is only the wallet's if *every* cosigner's key sits where
+        the wallet derives it. Each cosigner is held to its own account, as the
+        inputs show it (input_key_origins) -- not to this seed's. Cosigners need not
+        share an account: a managed-multisig provider may keep its key at, say,
+        m/48h/1h/778h/2h while the user's are at m/48h/1h/0h/2h (issue #477).
+
+        A fingerprint the inputs say nothing about falls back to this seed's own
+        prefixes, which is what every cosigner was held to before.
+        """
+        derivation = derivation_path_obj.derivation
+        fingerprint = derivation_path_obj.fingerprint
+        cosigner_prefixes = {
+            prefix for fp, prefix in self.input_key_origins if fp == fingerprint
+        }
+        return PSBTParser.is_reachable_derivation(
+            derivation, cosigner_prefixes or self.verified_input_prefixes
+        )
 
 
     @staticmethod
@@ -1659,16 +1740,30 @@ class PSBTParser():
                 # output "your change" while the funds land somewhere the wallet
                 # can never find them. Refuse rather than relabel -- a psbt that
                 # tried to deceive the display should not be signed at all.
-                derivations = self._scope_derivations(out)
-                unreachable = [
-                    d for d in derivations
-                    if not PSBTParser.is_reachable_derivation(
-                        d,
-                        self.verified_input_prefixes
-                        if self.can_verify_derivations
-                        else None,
-                    )
-                ]
+                #
+                # This seed's keys are held to where this seed's inputs sit, and
+                # each cosigner's key to where that cosigner's inputs sit. Cosigners
+                # needn't share an account, so measuring theirs against ours would
+                # refuse an honest wallet whose provider keeps its key elsewhere.
+                if self.can_verify_derivations:
+                    own_paths = self.verified_output_derivation_paths[i]
+                    own = {(d.fingerprint, tuple(d.derivation)) for d in own_paths}
+                    unreachable = [
+                        list(d.derivation) for d in own_paths
+                        if not PSBTParser.is_reachable_derivation(d.derivation, self.verified_input_prefixes)
+                    ]
+                    unreachable += [
+                        list(d.derivation) for d in out.bip32_derivations.values()
+                        if (d.fingerprint, tuple(d.derivation)) not in own
+                        and not self._is_reachable_cosigner_derivation(d)
+                    ]
+                else:
+                    # Nothing here can be told apart as this seed's, and no input
+                    # was verified to measure against: only the branch is checked.
+                    unreachable = [
+                        d for d in self._scope_derivations(out)
+                        if not PSBTParser.is_reachable_derivation(d, None)
+                    ]
                 if unreachable:
                     raise InvalidPSBTError(
                         f"Change path {bip32.path_to_str(unreachable[0])} is "
@@ -1683,7 +1778,7 @@ class PSBTParser():
                 # adjustable -- the view tells the user where.
                 if self.change_index_lookahead > 0 and self.verified_max_input_index >= 0:
                     ceiling = self.verified_max_input_index + self.change_index_lookahead
-                    for derivation in derivations:
+                    for derivation in self._scope_derivations(out):
                         index = derivation[-1] & 0x7FFFFFFF
                         if index > ceiling:
                             raise InvalidPSBTError(
@@ -1705,10 +1800,12 @@ class PSBTParser():
 
                 # Bitcoin Core v30 relaxed OP_RETURN standardness, so the amount
                 # cannot be assumed to be zero. An OP_RETURN is provably
-                # unspendable, so value attached to it is destroyed -- and the
-                # only reason to attach any is that a signer might not count it.
+                # unspendable, so value attached to it is destroyed -- and, short
+                # of a deliberate proof-of-burn, the only reason to attach any is
+                # that a signer might not count it. Refused unless the user has
+                # opted in, and then counted as spent and called out for review.
                 self.op_return_amount += vout[i].value
-                if vout[i].value > 0:
+                if vout[i].value > 0 and not self.allow_op_return_burn:
                     raise InvalidPSBTError(
                         f"Output {i} burns {vout[i].value} sats in an OP_RETURN.",
                         code=RejectCode.NONZERO_OP_RETURN,
@@ -1814,6 +1911,9 @@ class PSBTParser():
             PSBTParser._amount_is_unproven(inp) for inp in self.psbt.inputs
         ):
             self.risk_warnings.add(RiskWarning.UNVERIFIED_INPUT_AMOUNTS)
+
+        if self.op_return_amount > 0:
+            self.risk_warnings.add(RiskWarning.OP_RETURN_BURN)
 
         for vout in self.psbt.tx.vout:
             if vout.script_pubkey.data and vout.script_pubkey.data[0] == OPCODES.OP_RETURN:
@@ -2828,18 +2928,133 @@ class PSBTParser():
 
     def _descriptor_owns_output(self, descriptor: Descriptor, i: int) -> bool:
         """See verify_multisig_output; takes an output index rather than a change number."""
-        output = self.psbt.outputs[i]
-        script_pubkey = self.psbt.tx.vout[i].script_pubkey
+        return PSBTParser._descriptor_owns_scope(
+            descriptor, self.psbt.outputs[i], self.psbt.tx.vout[i].script_pubkey
+        )
 
-        if not output.bip32_derivations:
+
+    def _descriptor_owns_inputs(self, descriptor: Descriptor) -> bool:
+        """Whether every input is one the descriptor derives, by the same rule as outputs."""
+        for inp in self.psbt.inputs:
+            utxo = inp.witness_utxo or (
+                inp.non_witness_utxo.vout[inp.vout] if inp.non_witness_utxo else None
+            )
+            if utxo is None or not PSBTParser._descriptor_owns_scope(descriptor, inp, utxo.script_pubkey):
+                return False
+        return True
+
+
+    # Account-level paths a multisig coordinator derives by default, by script type.
+    # Any hardened account number is accepted; what is "standard" is the shape.
+    #   BIP-48: m/48h/coin'/account'/script', script 1h = sh(wsh), 2h = wsh
+    #   BIP-45: m/45h (legacy p2sh)
+    #   BIP-87: m/87h/coin'/account', any script type
+    _BIP48_SCRIPT_INDEX = {"p2sh-p2wsh": 1, "p2wsh": 2}
+
+
+    @staticmethod
+    def is_standard_multisig_prefix(prefix: tuple, policy_type: str) -> bool:
+        H = bip32.HARDENED_INDEX
+        if not prefix or any(i < H for i in prefix):
+            return False
+        purpose = prefix[0] - H
+        if purpose == 45:
+            return len(prefix) == 1 and policy_type == "p2sh"
+        if purpose == 87:
+            return len(prefix) == 3 and prefix[1] - H in (0, 1)
+        if purpose == 48:
+            return (
+                len(prefix) == 4
+                and prefix[1] - H in (0, 1)
+                and PSBTParser._BIP48_SCRIPT_INDEX.get(policy_type) == prefix[3] - H
+            )
+        return False
+
+
+    @staticmethod
+    def _multisig_prefix_family(prefix: tuple) -> tuple:
+        """
+        A standard prefix with its account number left out: cosigners in one family
+        differ only in which account they use. Only meaningful for a prefix
+        is_standard_multisig_prefix accepts.
+        """
+        purpose = prefix[0] - bip32.HARDENED_INDEX
+        if purpose == 48:
+            return (prefix[0], prefix[1], prefix[3])
+        if purpose == 87:
+            return (prefix[0], prefix[1])
+        return tuple(prefix)
+
+
+    # Values of key_path_irregularity, mildest first.
+    #
+    # Cosigners at different accounts of one standard scheme. Normal for a
+    # managed-multisig provider, which serves many clients (or one client's
+    # sub-accounts) from a single key by giving each its own account, e.g.
+    # m/48h/1h/778h/2h next to the user's m/48h/1h/0h/2h (issue #477).
+    KEY_PATHS__MIXED_ACCOUNTS = "mixed_accounts"
+    # A path no coordinator derives by default -- the wrong purpose or script
+    # index, an unhardened level, an unexpected depth -- or cosigners that don't
+    # even agree on the scheme.
+    KEY_PATHS__NONSTANDARD = "nonstandard"
+
+
+    @property
+    def has_nonstandard_key_paths(self) -> bool:
+        return self.key_path_irregularity is not None
+
+
+    def _check_key_origins(self):
+        """
+        Settle key_path_irregularity and inputs_match_descriptor.
+
+        Either irregularity can be an honest wallet, but it is also what a psbt
+        built for a lookalike wallet would show, and only the wallet's own
+        descriptor tells the two apart. So the view asks for one;
+        SETTING__MULTISIG_KEY_PATHS decides how insistently. Mixed accounts, an
+        everyday provider layout, are never more than a warning: the user may not
+        have the descriptor to hand.
+        """
+        self.key_path_irregularity = None
+        self.inputs_match_descriptor = False
+        if not self.is_multisig or not self.input_key_origins:
+            return
+
+        prefixes = {prefix for _, prefix in self.input_key_origins}
+        if not all(PSBTParser.is_standard_multisig_prefix(p, self.policy["type"]) for p in prefixes):
+            self.key_path_irregularity = PSBTParser.KEY_PATHS__NONSTANDARD
+        elif len({PSBTParser._multisig_prefix_family(p) for p in prefixes}) > 1:
+            self.key_path_irregularity = PSBTParser.KEY_PATHS__NONSTANDARD
+        elif len(prefixes) > 1:
+            self.key_path_irregularity = PSBTParser.KEY_PATHS__MIXED_ACCOUNTS
+        if self.multisig_descriptor is not None:
+            try:
+                self.inputs_match_descriptor = self._descriptor_owns_inputs(self.multisig_descriptor)
+            except Exception as e:
+                logger.debug("Descriptor could not be checked against the inputs: %s", e)
+
+
+    @property
+    def cosigner_key_origins(self) -> list[tuple[str, str]]:
+        """(fingerprint hex, account path) per cosigner, as the inputs show them."""
+        return sorted(
+            (hexlify(fp).decode(), bip32.path_to_str(list(prefix)))
+            for fp, prefix in self.input_key_origins
+        )
+
+
+    @staticmethod
+    def _descriptor_owns_scope(descriptor: Descriptor, scope: InputScope | OutputScope, script_pubkey) -> bool:
+        """See verify_multisig_output."""
+        if not scope.bip32_derivations:
             # Taproot descriptors carry their claims in the taproot map instead.
-            return descriptor.owns(output)
+            return descriptor.owns(scope)
 
         if script_pubkey.script_type() != descriptor.scriptpubkey_type():
             return False
 
         matched = False
-        for public_key, derivation_path_obj in output.bip32_derivations.items():
+        for public_key, derivation_path_obj in scope.bip32_derivations.items():
             res = descriptor.check_derivation(derivation_path_obj)
             if res is None:
                 continue
