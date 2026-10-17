@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: seedsigner 0.8.7\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-07-08 21:02-0400\n"
+"POT-Creation-Date: 2026-10-17 10:07-0400\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -172,11 +172,18 @@ msgid "raw hex data"
 msgstr ""
 
 #: src/seedsigner/gui/screens/psbt_screens.py
+#: src/seedsigner/views/smartcard_views.py
 msgid "Sign Transaction"
 msgstr ""
 
 #: src/seedsigner/gui/screens/psbt_screens.py
 msgid "Click to approve this transaction"
+msgstr ""
+
+#. BIP-125 replace-by-fee; the sender can replace
+#. this transaction with a different one until it confirms.
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "Replaceable (RBF)"
 msgstr ""
 
 #: src/seedsigner/gui/screens/scan_screens.py
@@ -210,6 +217,20 @@ msgstr ""
 msgid "Review Encryption Key"
 msgstr ""
 
+#: src/seedsigner/gui/screens/screen.py
+msgid "{title} {page}/{total}"
+msgstr ""
+
+#: src/seedsigner/gui/screens/screen.py src/seedsigner/views/gpg_views.py
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "Done"
+msgstr ""
+
+#: src/seedsigner/gui/screens/screen.py
+msgid "More"
+msgstr ""
+
 #. Increase QR code screen brightness
 #: src/seedsigner/gui/screens/screen.py
 msgid "Brighter"
@@ -229,8 +250,9 @@ msgstr ""
 #: src/seedsigner/gui/screens/screen.py
 #: src/seedsigner/gui/screens/seed_screens.py src/seedsigner/views/gpg_views.py
 #: src/seedsigner/views/microsd_views.py src/seedsigner/views/psbt_views.py
-#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
-#: src/seedsigner/views/smartcard_views.py src/seedsigner/views/tools_views.py
+#: src/seedsigner/views/resign_views.py src/seedsigner/views/scan_views.py
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+#: src/seedsigner/views/tools_views.py
 msgid "OK"
 msgstr ""
 
@@ -243,7 +265,7 @@ msgstr ""
 msgid "Privacy Leak!"
 msgstr ""
 
-#: src/seedsigner/gui/screens/screen.py
+#: src/seedsigner/gui/screens/screen.py src/seedsigner/views/resign_views.py
 msgid "I understand"
 msgstr ""
 
@@ -267,6 +289,17 @@ msgid ""
 "SeedSigner is restarting.\n"
 "\n"
 "All in-memory data will be wiped."
+msgstr ""
+
+#: src/seedsigner/gui/screens/screen.py
+msgid "Flash Mode"
+msgstr ""
+
+#: src/seedsigner/gui/screens/screen.py
+msgid ""
+"Rebooting into USB flash (Loader) mode.\n"
+"\n"
+"Connect USB and use the Rockchip flash tool."
 msgstr ""
 
 #: src/seedsigner/gui/screens/screen.py
@@ -450,8 +483,8 @@ msgstr ""
 #: src/seedsigner/gui/screens/tools_screens.py
 #: src/seedsigner/views/gpg_views.py
 #: src/seedsigner/views/password_generator_views.py
-#: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
-#: src/seedsigner/views/tools_views.py
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/resign_views.py
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/tools_views.py
 msgid "Next"
 msgstr ""
 
@@ -496,7 +529,7 @@ msgstr ""
 
 #. Short for "Input/Output"; screen to make sure the buttons and camera are
 #. working properly
-#: src/seedsigner/gui/screens/settings_screens.py
+#: src/seedsigner/gui/screens/settings_screens.py src/seedsigner/views/view.py
 msgid "I/O Test"
 msgstr ""
 
@@ -549,6 +582,22 @@ msgid "Variant: {platform_variant}"
 msgstr ""
 
 #: src/seedsigner/gui/screens/settings_screens.py
+msgid "Firmware: {firmware_version}"
+msgstr ""
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Source: {source_location}"
+msgstr ""
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "OS: {os_build}"
+msgstr ""
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "App: {app_build}"
+msgstr ""
+
+#: src/seedsigner/gui/screens/settings_screens.py
 msgid "Serial (CPU): {system_serial}"
 msgstr ""
 
@@ -557,8 +606,43 @@ msgid "Serial (MicroSD): {microsd_serial}"
 msgstr ""
 
 #: src/seedsigner/gui/screens/settings_screens.py
+msgid "Memory Info"
+msgstr ""
+
+#: src/seedsigner/gui/screens/settings_screens.py
+#: src/seedsigner/views/password_generator_views.py
+msgid "None"
+msgstr ""
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Test Hardening"
+msgstr ""
+
+#: src/seedsigner/gui/screens/settings_screens.py
+#: src/seedsigner/views/settings_views.py
+msgid "Version"
+msgstr ""
+
+#: src/seedsigner/gui/screens/settings_screens.py
 #: src/seedsigner/views/settings_views.py
 msgid "Settings QR"
+msgstr ""
+
+#. Shown after scanning a SettingsQR; nothing is applied until the user taps
+#. Apply.
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Apply these settings? Nothing changes until you tap Apply."
+msgstr ""
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Apply"
+msgstr ""
+
+#: src/seedsigner/gui/screens/settings_screens.py
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/psbt_views.py
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "Cancel"
 msgstr ""
 
 #: src/seedsigner/gui/screens/settings_screens.py
@@ -570,19 +654,8 @@ msgid "Home"
 msgstr ""
 
 #: src/seedsigner/gui/screens/tools_screens.py
-#: src/seedsigner/views/smartcard_views.py
-msgid "Device Filter"
-msgstr ""
-
-#: src/seedsigner/gui/screens/tools_screens.py
 #: src/seedsigner/views/tools_views.py
 msgid "Network Info"
-msgstr ""
-
-#: src/seedsigner/gui/screens/tools_screens.py
-#: src/seedsigner/views/gpg_views.py src/seedsigner/views/scan_views.py
-#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
-msgid "Done"
 msgstr ""
 
 #: src/seedsigner/gui/screens/tools_screens.py
@@ -728,6 +801,249 @@ msgstr ""
 msgid "Next {}"
 msgstr ""
 
+#: src/seedsigner/helpers/hardening.py
+msgid "Could not probe AF_INET"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "AF_INET sockets available"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "No TCP/IP in kernel"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "TCP/IP stack removed"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "network"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "No /sys/class/net"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "Interfaces: {names}"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "Loopback only"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "No network interfaces"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "Could not probe wireless"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "802.11 stack present"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "No 802.11 stack"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "No wireless stack"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "WiFi"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "{count} loadable driver(s)"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "None on disk"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "No WiFi drivers on disk"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "No /sys/class/udc"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "UDC present: {names}"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "No UDC, ADB impossible"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "USB gadget cannot bind"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "USB-ADB"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "Serial console silenced"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "No /proc/cmdline"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "serial"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "Console: {devices}"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "Virtual terminal only: {devices}"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "No serial console"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "Could not read process list"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "Running: {names}"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "None running"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "No remote shell daemon"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "remote shell"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "Error-to-MicroSD export enabled"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+#: src/seedsigner/models/settings_definition.py
+msgid "Disabled"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "Error diagnostics export disabled"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "diagnostics"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "Reboot on panic armed"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "No panic= in cmdline"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "Reboot on kernel panic"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "No logging daemons"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "Present: {names}"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "None on PATH"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "No dev/network tools"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "Root writes not persistent"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "Could not read mount table"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "Root is {fstype}"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "Overlay upper on {fstype}"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "Overlay upper layer unknown"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "Root mounted read-only"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "Writable {fstype}, changes persist"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "Check failed to run"
+msgstr ""
+
+#: src/seedsigner/helpers/hardening.py
+msgid "Probe error"
+msgstr ""
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "2FA Enabled"
+msgstr ""
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid ""
+"Signing while 2FA is enabled\n"
+"is not currently supported."
+msgstr ""
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid ""
+"Not enough space on Seedkeeper\n"
+"Card memory is full\n"
+"\n"
+"Seedkeeper v1 cannot delete secrets. A factory reset is required."
+msgstr ""
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid ""
+"Not enough space on Seedkeeper\n"
+"Card memory is full\n"
+"\n"
+"Delete a secret to free space."
+msgstr ""
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "Not supported by this Seedkeeper applet"
+msgstr ""
+
 #: src/seedsigner/helpers/seedkeeper_utils.py
 msgid "Set Duress PIN"
 msgstr ""
@@ -739,10 +1055,6 @@ msgstr ""
 
 #: src/seedsigner/models/settings_definition.py
 msgid "Enabled"
-msgstr ""
-
-#: src/seedsigner/models/settings_definition.py
-msgid "Disabled"
 msgstr ""
 
 #: src/seedsigner/models/settings_definition.py
@@ -840,11 +1152,31 @@ msgid "Regtest"
 msgstr ""
 
 #: src/seedsigner/models/settings_definition.py
+msgid "Off"
+msgstr ""
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Auto"
+msgstr ""
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Block"
+msgstr ""
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Warn"
+msgstr ""
+
+#: src/seedsigner/models/settings_definition.py
 msgid "Store Settings on SD card"
 msgstr ""
 
 #: src/seedsigner/models/settings_definition.py
 msgid "Insert SD card to enable"
+msgstr ""
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Store Settings on this device"
 msgstr ""
 
 #: src/seedsigner/models/settings_definition.py
@@ -946,6 +1278,42 @@ msgid "Smartcard PIN Attempts"
 msgstr ""
 
 #: src/seedsigner/models/settings_definition.py
+msgid "Change Gap Limit"
+msgstr ""
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Warn when a change address sits this far past the inputs"
+msgstr ""
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Max Fee Rate"
+msgstr ""
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Warn when the fee rate is at or above this"
+msgstr ""
+
+#. Setting for multisig wallets whose cosigners use different or unusual
+#. derivation paths
+#: src/seedsigner/models/settings_definition.py
+msgid "Unusual Multisig Paths"
+msgstr ""
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Without a matching descriptor"
+msgstr ""
+
+#. Setting for transactions that send bitcoin to an unspendable OP_RETURN
+#. output
+#: src/seedsigner/models/settings_definition.py
+msgid "OP_RETURN Burn"
+msgstr ""
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Value sent to OP_RETURN is destroyed"
+msgstr ""
+
+#: src/seedsigner/models/settings_definition.py
 msgid "Wipe Timer"
 msgstr ""
 
@@ -1006,7 +1374,7 @@ msgid "BIP85 GPG version"
 msgstr ""
 
 #: src/seedsigner/models/settings_definition.py
-msgid "v3 is the latest; use v2 to recreate B9-B10 keys"
+msgid "v4 is the latest; use v2 or v3 to recreate B9-B12 keys"
 msgstr ""
 
 #: src/seedsigner/models/settings_definition.py
@@ -1070,6 +1438,10 @@ msgid "KeyCard support"
 msgstr ""
 
 #: src/seedsigner/models/settings_definition.py
+msgid "Luckfox build tools"
+msgstr ""
+
+#: src/seedsigner/models/settings_definition.py
 msgid "Specter-DIY support"
 msgstr ""
 
@@ -1127,18 +1499,24 @@ msgstr ""
 #: src/seedsigner/views/developer_os_warning.py
 #: src/seedsigner/views/gpg_views.py
 #: src/seedsigner/views/password_generator_views.py
-#: src/seedsigner/views/smartcard_views.py
+#: src/seedsigner/views/smartcard_views.py src/seedsigner/views/tools_views.py
 msgid "I Understand"
 msgstr ""
 
 #: src/seedsigner/views/developer_os_warning.py
-msgid "Development Build"
+msgid "Open: {items}."
 msgstr ""
 
 #: src/seedsigner/views/developer_os_warning.py
-msgid ""
-"This SeedSignerOS development build is for testing only.\n"
-"Do NOT use with real seeds or private keys."
+msgid "Usually means a development build. Do not use real seeds."
+msgstr ""
+
+#: src/seedsigner/views/developer_os_warning.py
+msgid "Development build. Do not use real seeds."
+msgstr ""
+
+#: src/seedsigner/views/developer_os_warning.py
+msgid "Unhardened Build"
 msgstr ""
 
 #: src/seedsigner/views/gpg_views.py
@@ -1170,6 +1548,14 @@ msgstr ""
 msgid "Advanced"
 msgstr ""
 
+#: src/seedsigner/views/gpg_views.py
+msgid "Required but not installed:\n"
+msgstr ""
+
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/smartcard_views.py
+msgid "Save to MicroSD"
+msgstr ""
+
 #: src/seedsigner/views/gpg_views.py src/seedsigner/views/tools_views.py
 msgid "GPG Tools"
 msgstr ""
@@ -1178,8 +1564,28 @@ msgstr ""
 msgid "Missing packages"
 msgstr ""
 
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/settings_views.py
+msgid "MicroSD"
+msgstr ""
+
 #: src/seedsigner/views/gpg_views.py
-msgid "Required but not installed:\n"
+msgid "No card detected"
+msgstr ""
+
+#: src/seedsigner/views/gpg_views.py
+msgid "Insert a microSD card and try again."
+msgstr ""
+
+#: src/seedsigner/views/gpg_views.py
+msgid "Saved"
+msgstr ""
+
+#: src/seedsigner/views/gpg_views.py
+msgid "Saved to {filename}"
+msgstr ""
+
+#: src/seedsigner/views/gpg_views.py
+msgid "Save failed"
 msgstr ""
 
 #: src/seedsigner/views/gpg_views.py
@@ -1219,12 +1625,6 @@ msgstr ""
 msgid "Export Bundle"
 msgstr ""
 
-#: src/seedsigner/views/gpg_views.py src/seedsigner/views/psbt_views.py
-#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
-#: src/seedsigner/views/smartcard_views.py
-msgid "Cancel"
-msgstr ""
-
 #: src/seedsigner/views/gpg_views.py
 msgid "microSD"
 msgstr ""
@@ -1235,8 +1635,9 @@ msgstr ""
 
 #: src/seedsigner/views/gpg_views.py src/seedsigner/views/microsd_views.py
 #: src/seedsigner/views/password_generator_views.py
-#: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
-#: src/seedsigner/views/smartcard_views.py src/seedsigner/views/view.py
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/resign_views.py
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+#: src/seedsigner/views/view.py
 msgid "Continue"
 msgstr ""
 
@@ -1364,7 +1765,7 @@ msgstr ""
 msgid "Decrypt"
 msgstr ""
 
-#: src/seedsigner/views/gpg_views.py
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/resign_views.py
 msgid "Sign"
 msgstr ""
 
@@ -1668,10 +2069,12 @@ msgid "Choose at least one character set."
 msgstr ""
 
 #: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/tools_views.py
 msgid "System RNG health check failed."
 msgstr ""
 
 #: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/tools_views.py
 msgid "System RNG Error"
 msgstr ""
 
@@ -1701,10 +2104,6 @@ msgstr ""
 
 #: src/seedsigner/views/password_generator_views.py
 msgid "BIP85 supports Diceware, Dice Rolls, Hex, Base64, and Base85."
-msgstr ""
-
-#: src/seedsigner/views/password_generator_views.py
-msgid "None"
 msgstr ""
 
 #: src/seedsigner/views/password_generator_views.py
@@ -1827,10 +2226,6 @@ msgstr ""
 
 #: src/seedsigner/views/password_generator_views.py
 msgid "Password saved to Seedkeeper"
-msgstr ""
-
-#: src/seedsigner/views/password_generator_views.py
-msgid "Not enough space on Seedkeeper for password"
 msgstr ""
 
 #: src/seedsigner/views/password_generator_views.py
@@ -1967,6 +2362,193 @@ msgstr ""
 msgid "Could not decrypt BIP38 key."
 msgstr ""
 
+#. Points the user at the setting that controls this check
+#: src/seedsigner/views/psbt_views.py
+msgid "See Change Gap Limit in Settings."
+msgstr ""
+
+#. Title of the screen shown when a psbt lies about owning an output
+#: src/seedsigner/views/psbt_views.py
+msgid "Suspicious Transaction"
+msgstr ""
+
+#: src/seedsigner/views/psbt_views.py
+msgid "Likely an Attack!"
+msgstr ""
+
+#: src/seedsigner/views/psbt_views.py
+msgid ""
+"The transaction's change/self-transfer outputs are not going back to your"
+" wallet."
+msgstr ""
+
+#: src/seedsigner/views/psbt_views.py
+msgid "Discard transaction"
+msgstr ""
+
+#. A psbt's claims about which keys belong to this seed contradict each other
+#: src/seedsigner/views/psbt_views.py
+msgid "This transaction makes contradictory claims about which keys are yours."
+msgstr ""
+
+#. Title of the screen shown when a psbt misstates who owns an input
+#: src/seedsigner/views/psbt_views.py
+msgid "Transaction Problem"
+msgstr ""
+
+#. A psbt labels an output that really pays this seed as another wallet's
+#: src/seedsigner/views/psbt_views.py
+msgid ""
+"An output that pays this seed is labelled as another wallet's. The "
+"transaction misdescribes itself."
+msgstr ""
+
+#. A psbt carries fields that belong to a different psbt format version
+#: src/seedsigner/views/psbt_views.py
+msgid ""
+"This transaction describes itself twice, and the two versions may not "
+"match."
+msgstr ""
+
+#. The psbt's binary encoding breaks the format rules (e.g. a duplicated field)
+#: src/seedsigner/views/psbt_views.py
+msgid ""
+"This transaction is encoded in a way that other software could read "
+"differently."
+msgstr ""
+
+#. Two records in the psbt disagree about which wallet a key comes from
+#: src/seedsigner/views/psbt_views.py
+msgid "This transaction's records disagree about which wallet a key comes from."
+msgstr ""
+
+#: src/seedsigner/views/psbt_views.py
+msgid "This transaction incorrectly claims that its input(s) belong to this seed."
+msgstr ""
+
+#. Title of the screen shown when the chosen seed can't sign the psbt
+#: src/seedsigner/views/psbt_views.py
+msgid "Seed Can't Sign"
+msgstr ""
+
+#: src/seedsigner/views/psbt_views.py
+msgid "None of the inputs in this transaction are controlled by this seed."
+msgstr ""
+
+#: src/seedsigner/views/psbt_views.py
+msgid "Select a different seed"
+msgstr ""
+
+#: src/seedsigner/views/psbt_views.py
+msgid "This transaction could not be verified."
+msgstr ""
+
+#: src/seedsigner/views/psbt_views.py
+msgid "Load descriptor"
+msgstr ""
+
+#. The loaded multisig descriptor does not describe the wallet this transaction
+#. spends from
+#: src/seedsigner/views/psbt_views.py
+msgid "The loaded descriptor doesn't match this transaction's inputs."
+msgstr ""
+
+#. Multisig cosigners use different account numbers in their derivation paths
+#: src/seedsigner/views/psbt_views.py
+msgid "Cosigners use different accounts. Load the descriptor to verify."
+msgstr ""
+
+#. Shown under "Unusual Key Paths" when multisig cosigners are on non-standard
+#. derivation paths
+#: src/seedsigner/views/psbt_views.py
+msgid "Load the wallet descriptor to sign."
+msgstr ""
+
+#. Headline when a multisig's cosigners use unusual derivation paths
+#: src/seedsigner/views/psbt_views.py
+msgid "Unusual Key Paths"
+msgstr ""
+
+#. Review the unidentified output as a payment, without loading a descriptor
+#: src/seedsigner/views/psbt_views.py
+msgid "Continue as payment"
+msgstr ""
+
+#. A loaded multisig descriptor did not match an output that looked like change
+#: src/seedsigner/views/psbt_views.py
+msgid "The loaded descriptor doesn't identify it. Shown as a payment."
+msgstr ""
+
+#. Multisig change can't be told apart from a payment without the wallet
+#. descriptor
+#: src/seedsigner/views/psbt_views.py
+msgid "Load descriptor to identify change."
+msgstr ""
+
+#. Headline when multisig change cannot be identified
+#: src/seedsigner/views/psbt_views.py
+msgid "Change Not Identified"
+msgstr ""
+
+#. Shown when the miner fee is a large share of what's being spent
+#: src/seedsigner/views/psbt_views.py
+msgid "The fee is an unusually large share of this transaction."
+msgstr ""
+
+#. The fee per byte is high compared to recent blocks.
+#: src/seedsigner/views/psbt_views.py
+msgid "The fee rate is high compared to recent blocks."
+msgstr ""
+
+#. The coordinator did not include the previous transactions that prove the
+#. input amounts
+#: src/seedsigner/views/psbt_views.py
+msgid ""
+"Input amounts are unproven (no previous transactions); the fee may be "
+"higher than shown."
+msgstr ""
+
+#: src/seedsigner/views/psbt_views.py
+msgid "One output is below the dust threshold and may be unspendable."
+msgstr ""
+
+#: src/seedsigner/views/psbt_views.py
+msgid "This transaction cannot confirm until a future date."
+msgstr ""
+
+#. The transaction is locked years beyond when it was created.
+#: src/seedsigner/views/psbt_views.py
+msgid "This transaction is locked for years and cannot confirm until then."
+msgstr ""
+
+#. BIP-68 relative timelock; the delay runs from when the
+#. input confirmed, so no fixed date can be shown.
+#: src/seedsigner/views/psbt_views.py
+msgid "An input is time-locked and cannot be spent yet."
+msgstr ""
+
+#. An output's script (CLTV/CSV) locks the funds it
+#. receives, so whoever gets them cannot spend them until later.
+#: src/seedsigner/views/psbt_views.py
+msgid ""
+"An output is time-locked by its script; those funds cannot be spent until"
+" later."
+msgstr ""
+
+#: src/seedsigner/views/psbt_views.py
+msgid "This transaction is marked replaceable (RBF)."
+msgstr ""
+
+#. Bitcoin sent to an OP_RETURN output can never be spent by anyone
+#: src/seedsigner/views/psbt_views.py
+msgid "An OP_RETURN output burns bitcoin; it is destroyed, not sent."
+msgstr ""
+
+#. Headline above a list of things to check before approving
+#: src/seedsigner/views/psbt_views.py
+msgid "Review Carefully!"
+msgstr ""
+
 #: src/seedsigner/views/psbt_views.py
 msgid "Unsupported Script Type!"
 msgstr ""
@@ -1987,6 +2569,20 @@ msgstr ""
 msgid ""
 "This transaction spends its entire input value. No change is coming back "
 "to your wallet."
+msgstr ""
+
+#: src/seedsigner/views/psbt_views.py
+msgid "High Fee!"
+msgstr ""
+
+#. Variable is the percentage of the total output value (excluding change) that
+#. the fee exceeds. (e.g. "This transaction has a fee higher than 25% of the
+#. total output value (excluding change).")
+#: src/seedsigner/views/psbt_views.py
+#, python-format
+msgid ""
+"This transaction has a fee higher than {}% of the total output value "
+"(excluding change)."
 msgstr ""
 
 #. Future-tense used to indicate that this transaction will send this amount,
@@ -2054,19 +2650,22 @@ msgid "Transaction's {} address could not be generated from your seed."
 msgstr ""
 
 #: src/seedsigner/views/psbt_views.py
-msgid "Suspicious Transaction"
-msgstr ""
-
-#: src/seedsigner/views/psbt_views.py
 msgid "Address Verification Failed"
 msgstr ""
 
 #: src/seedsigner/views/psbt_views.py
-msgid "Discard transaction"
+msgid "Approve transaction"
 msgstr ""
 
+#. Inserts a month and year, e.g. "Locked until Mar 2031"
 #: src/seedsigner/views/psbt_views.py
-msgid "Approve transaction"
+msgid "Locked until {}"
+msgstr ""
+
+#. Inserts an approximate month and year derived from a
+#. block height, e.g. "Locked until ~Mar 2031"
+#: src/seedsigner/views/psbt_views.py
+msgid "Locked until ~{}"
 msgstr ""
 
 #: src/seedsigner/views/psbt_views.py
@@ -2109,6 +2708,580 @@ msgstr ""
 msgid "Signing with this seed did not add a valid signature."
 msgstr ""
 
+#: src/seedsigner/views/resign_views.py
+msgid "Check Release"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Resign Release"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Re-Key: Export Pubkeys"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Re-Key: Sign Rootfs Digest"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Re-Key: Sign Boot Chain"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Sign Digests on Card"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Provision MicroSD"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Force Rootfs Check"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Arm eFuse Burn"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Low memory: {free} free of {total}, app using {rss}."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Peak so far: {peak}."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Done:"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Skipped:"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Warnings:"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Verified afterwards: {}"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Nothing needed changing."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "action"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Cannot continue"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Signing blind"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid ""
+"Signs {n} digest(s) without seeing what they cover. Only sign digests "
+"your own PC just made."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Deriving keys..."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Air-Gap Signing"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Danger Zone"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "No MicroSD"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Insert a MicroSD card holding a release folder."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py src/seedsigner/views/tools_views.py
+msgid "Luckfox Build Tools"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Not supported here"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid ""
+"Resign Release needs more memory than this board has and crashes it. Use "
+"Air-Gap Signing instead: your PC lays digests on the card (airgap-"
+"sign.py), you sign them here, and the PC splices the signatures back into"
+" the release."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid ""
+"Force Rootfs Check is too heavy for this board and crashes it. Do it from"
+" your PC instead: airgap-sign.py force <bundle> --card <mount> reworks "
+"boot.img there and leaves its digest on the card - sign it there with "
+"Air-Gap Signing -> Sign Digests on Card, then splice."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "BIP85 Derive"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Load from MicroSD"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py src/seedsigner/views/seed_views.py
+msgid "Load from SeedKeeper"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Key Source"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "No key files"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "No small files on the MicroSD that could hold a key."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "RSA Key File"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Ed25519 Key File"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Not usable"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Pick another"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Listing secrets..."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "This SeedKeeper holds no secrets."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "RSA Key Secret"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Ed25519 Key Secret"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Reading secret..."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "SeedKeeper"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py src/seedsigner/views/seed_views.py
+msgid "Load a seed"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Select the signing seed"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Load the signing seed"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "RSA Key Index"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Ed25519 Key Index"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "No release"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid ""
+"No release folder found on the MicroSD. A release folder holds "
+"idblock.img, download.bin, uboot.img and boot.img."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Select Folder"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "The check streams the rootfs and usually fits."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Low memory"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Checking..."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "The check could not run: {}"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "VALID: every signature checks out."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "INVALID: see Signatures."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Your keys, your releases"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid ""
+"Re-signs everything with your own keys. Keep a backup: a fused board "
+"needs them."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "{n} files, {keys}. Overwritten in place."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "update.img is deleted."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "This may run out; Air-Gap Signing needs far less."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Confirm Resign"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "keys from MicroSD files"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "keys from SeedKeeper"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "RSA index {rsa}, Ed25519 index {ed}"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Could not load the keys: {}"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Signing..."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Signing failed, nothing was written: {}"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "These did NOT verify afterwards: {}"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "update.img"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Stale file deleted"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "It held the old signatures. Flash the separate images instead."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "No bundle needed"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid ""
+"Signs bare digests from the card's seedsigner-release-sign/ folder: a few"
+" dozen bytes in, one signature out. The PC lays the digests there and "
+"splices the signatures back."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Take the card back to the PC and run `airgap-sign.py splice`."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Round 0 - Export Pubkeys"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Round 1 - Sign Rootfs Digest"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Round 2 - Sign Boot Chain"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Export failed: {}"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid ""
+"Public halves on the card ({dir}):\n"
+"- release-rsa.pub\n"
+"- release-rootfs.pub\n"
+"\n"
+"RSA fingerprint:\n"
+"{fp}\n"
+"\n"
+"Rootfs key id:\n"
+"{kid}\n"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "They were already there and match, so nothing was rewritten.\n"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid ""
+"\n"
+"On the PC, with the card mounted:\n"
+"  airgap-sign.py rekey <bundle> --card <mount>\n"
+"  airgap-sign.py digests <bundle> --card <mount> --only rootfs\n"
+"\n"
+"Then take the card back here and run Round 1."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Insert the card first - it must carry the digests the PC wrote."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Fix this on the PC and bring the card back."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid ""
+"The card carries no rootfs digest. On the PC run\n"
+"  airgap-sign.py rekey <bundle> --card <mount>\n"
+"  airgap-sign.py digests <bundle> --card <mount> --only rootfs\n"
+"then bring the card back."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid ""
+"The card already carries the boot-chain digests, so Round 1 is done. Use "
+"Round 2 - Sign Boot Chain."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid ""
+"\n"
+"On the PC, with the card mounted:\n"
+"  airgap-sign.py splice <bundle> --card <mount> \\\n"
+"      --only rootfs --no-check\n"
+"  airgap-sign.py digests <bundle> --card <mount> \\\n"
+"      --only download,idblock,uboot,boot\n"
+"\n"
+"Then take the card back here and run Round 2."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid ""
+"The card carries no boot-chain digests. On the PC run\n"
+"  airgap-sign.py splice <bundle> --card <mount> \\\n"
+"      --only rootfs --no-check\n"
+"  airgap-sign.py digests <bundle> --card <mount> \\\n"
+"      --only download,idblock,uboot,boot\n"
+"then bring the card back."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid ""
+"\n"
+"On the PC, with the card mounted:\n"
+"  airgap-sign.py splice <bundle> --card <mount>\n"
+"\n"
+"It must print RESULT: VALID. Then flash to a sacrificial, unfused board "
+"before trusting it."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Copy to card"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "This release cannot be auto-flashed from MicroSD:"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "sd_update.txt would truncate {}. It is corrected before copying."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Replaces the sd_update.txt and images already at the card root."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Check {i}/{n}"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "unknown board"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Copy {n} files ({mib} MiB) to the card root and check each copy."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Already at the card root; only the script is corrected."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Copying..."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Copy failed: {}"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Card ready"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid ""
+"Boot the Luckfox with it inserted. Then REMOVE the card, or it reflashes "
+"on every boot."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid ""
+"The rootfs signature is checked at boot only once secure boot is enabled "
+"(fuse burned)."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid ""
+"Without secure boot the checker itself can be replaced. It proves "
+"integrity only."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Off unless secure boot"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Harmless, not protection"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Turn on"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Turn off"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Could not read this release: {}"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid ""
+"This release's rootfs verifier predates the forced check, so it cannot be"
+" turned on. Use a newer build."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Currently on"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Currently off"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid ""
+"Re-signs boot.img: needs the seed and RSA index this release is signed "
+"with."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Key derivation failed: {}"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Nothing was changed: {}"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "IRREVERSIBLE"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid ""
+"Its next boot burns this key into OTP. The board then runs ONLY images it"
+" signs, forever."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Not armed:"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Arm the burn"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Not armed: {}"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Final Warning"
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Burns a fuse. Forever."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Key {fp}, RSA index {i}. Flash this only to the board you mean to lock."
+msgstr ""
+
+#: src/seedsigner/views/resign_views.py
+msgid "Arming..."
+msgstr ""
+
 #: src/seedsigner/views/scan_views.py
 msgid "Scan a QR code"
 msgstr ""
@@ -2141,6 +3314,14 @@ msgstr ""
 
 #: src/seedsigner/views/scan_views.py
 msgid "Select Seed Type"
+msgstr ""
+
+#: src/seedsigner/views/scan_views.py
+msgid "Invalid PSBT"
+msgstr ""
+
+#: src/seedsigner/views/scan_views.py
+msgid "This transaction could not be read. It may be corrupted or malformed."
 msgstr ""
 
 #: src/seedsigner/views/scan_views.py
@@ -2272,10 +3453,6 @@ msgstr ""
 #. This is on the opening splash screen, displayed above the Seedsigner logo
 #: src/seedsigner/views/screensaver.py
 msgid "An unofficial fork of:"
-msgstr ""
-
-#: src/seedsigner/views/seed_views.py
-msgid "Load a seed"
 msgstr ""
 
 #: src/seedsigner/views/seed_views.py
@@ -2463,10 +3640,6 @@ msgstr ""
 
 #: src/seedsigner/views/seed_views.py
 msgid "Scan Passphrase"
-msgstr ""
-
-#: src/seedsigner/views/seed_views.py
-msgid "Load from SeedKeeper"
 msgstr ""
 
 #: src/seedsigner/views/seed_views.py
@@ -2895,6 +4068,12 @@ msgstr ""
 msgid "Skip 10"
 msgstr ""
 
+#. Shown after a list of multisig cosigner paths that was cut short, e.g. "+3
+#. more"
+#: src/seedsigner/views/seed_views.py
+msgid "+{} more"
+msgstr ""
+
 #: src/seedsigner/views/seed_views.py
 msgid "Next 100"
 msgstr ""
@@ -2982,11 +4161,16 @@ msgstr ""
 msgid "Hardware"
 msgstr ""
 
+#. Settings submenu holding the checks applied to transactions before signing
+#: src/seedsigner/views/settings_views.py
+msgid "PSBT Safety"
+msgstr ""
+
 #: src/seedsigner/views/settings_views.py
 msgid "I/O test"
 msgstr ""
 
-#: src/seedsigner/views/settings_views.py
+#: src/seedsigner/views/settings_views.py src/seedsigner/views/view.py
 msgid "Test Smartcard"
 msgstr ""
 
@@ -3008,6 +4192,14 @@ msgstr ""
 
 #: src/seedsigner/views/settings_views.py
 msgid "System info"
+msgstr ""
+
+#: src/seedsigner/views/settings_views.py
+msgid "Memory info"
+msgstr ""
+
+#: src/seedsigner/views/settings_views.py
+msgid "Test hardening"
 msgstr ""
 
 #: src/seedsigner/views/settings_views.py
@@ -3052,8 +4244,20 @@ msgstr ""
 msgid "Unavailable"
 msgstr ""
 
-#: src/seedsigner/views/smartcard_views.py
-msgid "Common Functions"
+#: src/seedsigner/views/settings_views.py
+msgid "Internal"
+msgstr ""
+
+#: src/seedsigner/views/settings_views.py
+msgid "NOT HARDENED: {count} of {total} exposed"
+msgstr ""
+
+#: src/seedsigner/views/settings_views.py
+msgid "Hardened ({count} unverifiable)"
+msgstr ""
+
+#: src/seedsigner/views/settings_views.py
+msgid "Hardened: all checks passed"
 msgstr ""
 
 #: src/seedsigner/views/smartcard_views.py
@@ -3069,39 +4273,15 @@ msgid "SeedKeeper Functions"
 msgstr ""
 
 #: src/seedsigner/views/smartcard_views.py
+msgid "Satodime Functions"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
 msgid "Specter-DIY Functions"
 msgstr ""
 
 #: src/seedsigner/views/smartcard_views.py
 msgid "DIY Tools"
-msgstr ""
-
-#: src/seedsigner/views/smartcard_views.py
-msgid "Card Info"
-msgstr ""
-
-#: src/seedsigner/views/smartcard_views.py
-msgid "Genuine Check"
-msgstr ""
-
-#: src/seedsigner/views/smartcard_views.py
-msgid "Change PIN"
-msgstr ""
-
-#: src/seedsigner/views/smartcard_views.py
-msgid "Change Label"
-msgstr ""
-
-#: src/seedsigner/views/smartcard_views.py
-msgid "Change NFC Policy"
-msgstr ""
-
-#: src/seedsigner/views/smartcard_views.py
-msgid "Configure NDEF"
-msgstr ""
-
-#: src/seedsigner/views/smartcard_views.py
-msgid "Factory Reset Card"
 msgstr ""
 
 #: src/seedsigner/views/smartcard_views.py
@@ -3193,11 +4373,47 @@ msgid "Clone Card Secrets"
 msgstr ""
 
 #: src/seedsigner/views/smartcard_views.py
+msgid "Card Settings"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Card Info"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Genuine Check"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Change PIN"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Change Label"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Change NFC Policy"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Configure NDEF"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Factory Reset Card"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
 msgid "Exit to Home"
 msgstr ""
 
 #: src/seedsigner/views/smartcard_views.py
 msgid "Initialise with Seed"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "View Master Fingerprint"
 msgstr ""
 
 #: src/seedsigner/views/smartcard_views.py
@@ -3259,6 +4475,106 @@ msgid ""
 msgstr ""
 
 #: src/seedsigner/views/smartcard_views.py
+msgid "Enable"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Restore Key"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Use Nickname Only"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Retry"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Take Ownership"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Claim Card"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Show QR Code"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Skip Anyway"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Scan It Back"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Show QR Again"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load Ownership Key from MicroSD"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Scan Ownership Key"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load Anyway"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Key Slots"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Claim Ownership"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Transfer Ownership"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Seal Slot (Initialise New Key)"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "View Address (QR)"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Unseal Slot (Access Private Key)"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "View Private Key (QR)"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load Key to SeedSigner"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Reset Slot"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Back Up Ownership Key"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Restore Ownership Key"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Seal Slot"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
 msgid "Change Card PIN"
 msgstr ""
 
@@ -3288,6 +4604,10 @@ msgstr ""
 
 #: src/seedsigner/views/smartcard_views.py
 msgid "Uninstall Applet"
+msgstr ""
+
+#: src/seedsigner/views/smartcard_views.py
+msgid "Mount Status"
 msgstr ""
 
 #: src/seedsigner/views/smartcard_views.py
@@ -3422,6 +4742,14 @@ msgstr ""
 msgid "Unable to load network information."
 msgstr ""
 
+#. Shown when the camera fails to collect enough frames for a new seed.
+#. "expected" and "actual" are the number of frames.
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"Entropy collection failed. Expected {expected} preview frames, got "
+"{actual}"
+msgstr ""
+
 #: src/seedsigner/views/tools_views.py
 msgid "12 words"
 msgstr ""
@@ -3547,11 +4875,23 @@ msgid "Seeds"
 msgstr ""
 
 #: src/seedsigner/views/view.py
+msgid "Flash Applet"
+msgstr ""
+
+#: src/seedsigner/views/view.py
+msgid "Testing"
+msgstr ""
+
+#: src/seedsigner/views/view.py
 msgid "Restart"
 msgstr ""
 
 #: src/seedsigner/views/view.py
 msgid "Power off"
+msgstr ""
+
+#: src/seedsigner/views/view.py
+msgid "Reboot to flash mode"
 msgstr ""
 
 #: src/seedsigner/views/view.py
