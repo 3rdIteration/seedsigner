@@ -3144,7 +3144,19 @@ class ToolsGPGEncryptMessageView(View):
             else:
                 length = (secret_list[0] << 8) + secret_list[1]
                 msg_bytes = bytes(secret_list[2:2 + length])
-            message = msg_bytes.decode("utf-8")
+            try:
+                message = msg_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                # Data secrets written by other tools aren't guaranteed to be text
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline="Unreadable Message",
+                    text="This Data secret is not stored as text and can't be used as a message.",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
         signkey_blob = None
         result = run([
             "gpg",
