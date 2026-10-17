@@ -1659,6 +1659,9 @@ class SeedAddressVerificationSuccessScreen(LargeIconStatusScreen):
     derivation_path: str = None
     script_type_display: str = None
     is_non_standard: bool = False
+    # Multisig whose cosigners sit at different paths: (label, is_non_standard)
+    # rows, one per cosigner, shown instead of the single derivation_path.
+    cosigner_paths: list = None
 
 
     def __post_init__(self):
@@ -1689,8 +1692,21 @@ class SeedAddressVerificationSuccessScreen(LargeIconStatusScreen):
             screen_y=self.components[-1].screen_y + self.components[-1].height + GUIConstants.COMPONENT_PADDING,
         ))
 
+        if self.cosigner_paths:
+            # One tightly spaced block rather than a TextArea per row, so the rows
+            # read as one list and fit above the button.
+            any_non_standard = any(is_odd for _label, is_odd in self.cosigner_paths)
+            self.components.append(TextArea(
+                text="\n".join(label for label, _is_odd in self.cosigner_paths),
+                font_size=GUIConstants.LABEL_FONT_SIZE,
+                font_color=GUIConstants.WARNING_COLOR if any_non_standard else GUIConstants.LABEL_FONT_COLOR,
+                is_text_centered=True,
+                line_spacing=GUIConstants.LIST_ITEM_PADDING // 2,
+                screen_y=self.components[-1].screen_y + self.components[-1].height,
+            ))
+
         # Show derivation path and script type
-        if self.derivation_path:
+        elif self.derivation_path:
             path_label = self.derivation_path
             if self.script_type_display:
                 path_label = f"{self.derivation_path} ({self.script_type_display})"

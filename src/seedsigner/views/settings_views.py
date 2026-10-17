@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 class SettingsMenuView(View):
     ADVANCED = ButtonOption("Advanced", right_icon_name=SeedSignerIconConstants.CHEVRON_RIGHT)
     HARDWARE = ButtonOption("Hardware", right_icon_name=SeedSignerIconConstants.CHEVRON_RIGHT)
+    # TRANSLATOR_NOTE: Settings submenu holding the checks applied to transactions before signing
+    PSBT_SAFETY = ButtonOption("PSBT Safety", right_icon_name=SeedSignerIconConstants.CHEVRON_RIGHT)
     IO_TEST = ButtonOption("I/O test")
     SCARD_TEST = ButtonOption("Test Smartcard")
     LIST_READERS = ButtonOption("List card readers")
@@ -64,6 +66,7 @@ class SettingsMenuView(View):
             title = _("Settings")
 
             # Set up the next nested level of menuing
+            button_data.append(self.PSBT_SAFETY)
             button_data.append(self.ADVANCED)
             button_data.append(self.HARDWARE)
             advanced_destination = Destination(
@@ -103,6 +106,9 @@ class SettingsMenuView(View):
                 button_data.append(self.SCARD_TEST)
                 button_data.append(self.NFC_TEST)
 
+        elif self.visibility == SettingsConstants.VISIBILITY__PSBT_SAFETY:
+            title = _(self.PSBT_SAFETY.button_label)
+
         elif self.visibility == SettingsConstants.VISIBILITY__DEVELOPER:
             title = _("Dev Options")
 
@@ -134,6 +140,8 @@ class SettingsMenuView(View):
                 return Destination(SettingsMenuView)
             elif self.visibility == SettingsConstants.VISIBILITY__HARDWARE:
                 return Destination(SettingsMenuView)
+            elif self.visibility == SettingsConstants.VISIBILITY__PSBT_SAFETY:
+                return Destination(SettingsMenuView, view_args={"selected_button_option": self.PSBT_SAFETY})
             else:
                 return Destination(SettingsMenuView, view_args={"visibility": SettingsConstants.VISIBILITY__ADVANCED})
         
@@ -142,6 +150,9 @@ class SettingsMenuView(View):
 
         elif button_data[selected_menu_num] == self.HARDWARE:
             return hardware_destination
+
+        elif button_data[selected_menu_num] == self.PSBT_SAFETY:
+            return Destination(SettingsMenuView, view_args={"visibility": SettingsConstants.VISIBILITY__PSBT_SAFETY})
 
         elif button_data[selected_menu_num] == self.LOAD_BACKUP_FILES:
             return Destination(LoadBackupFilesSettingsView)
