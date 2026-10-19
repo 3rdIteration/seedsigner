@@ -42,24 +42,18 @@ DESCRIPTOR_STRING = (
 
 
 def _fresh_controller_with_descriptor():
-    base.BaseTest.reset_controller()
+    # Re-creating the Controller restarts the MicroSD thread singleton, which
+    # can only be started once per process, so only build it the first time.
+    if Controller._instance is None:
+        base.BaseTest.reset_controller()
     base.BaseTest.reset_settings()
     controller = Controller.get_instance()
     controller.multisig_wallet_descriptor = Descriptor.from_string(DESCRIPTOR_STRING)
     return controller
 
 
-def test_seedkeeper_save_descriptor_reads_back_v2_without_crashing(monkeypatch):
-    """Regression for #416.
-
-    The view must be able to read back an already-stored V2 "Descriptor" secret
-    (2-byte length prefix) without crashing on the utf-8 decode, and therefore
-    detect it as a duplicate and skip re-importing it.
-    """
-    desc = _fresh_controller_with_descriptor().multisig_wallet_descriptor
-    stored_text = desc.to_string()
-    stored_len = len(stored_text.encode("utf-8"))
-    stored_payload = list(stored_len.to_bytes(2, "big")) + list(stored_text.encode("utf-8"))
+def _run_save_view_with_stored_payload(monkeypatch, stored_payload):
+    """Run the save view against a fake card holding one V2 Descriptor secret."""
 
     class FakeLabelScreen:
         def __init__(self, **kwargs):
@@ -136,6 +130,22 @@ def test_seedkeeper_save_descriptor_reads_back_v2_without_crashing(monkeypatch):
 
     view = ToolsSeedkeeperSaveDescriptorView()
     view.run()
+    return fake, shown_screens
+
+
+def test_seedkeeper_save_descriptor_reads_back_v2_without_crashing(monkeypatch):
+    """Regression for #416.
+
+    The view must be able to read back an already-stored V2 "Descriptor" secret
+    (2-byte length prefix) without crashing on the utf-8 decode, and therefore
+    detect it as a duplicate and skip re-importing it.
+    """
+    desc = _fresh_controller_with_descriptor().multisig_wallet_descriptor
+    stored_text = desc.to_string()
+    stored_len = len(stored_text.encode("utf-8"))
+    stored_payload = list(stored_len.to_bytes(2, "big")) + list(stored_text.encode("utf-8"))
+
+    fake, shown_screens = _run_save_view_with_stored_payload(monkeypatch, stored_payload)
 
     # The pre-existing V2 Descriptor was read back (exported) without a utf-8
     # crash, and since it matches the descriptor being saved it was skipped. The
@@ -143,6 +153,23 @@ def test_seedkeeper_save_descriptor_reads_back_v2_without_crashing(monkeypatch):
     # try/except swallows a decode failure into an "Error" WarningScreen).
     assert fake.exported == [0x0001]
     assert fake.imported == []
+    assert smartcard_views.LargeIconStatusScreen in shown_screens
+    assert smartcard_views.WarningScreen not in shown_screens
+
+
+def test_seedkeeper_save_descriptor_skips_existing_non_text_secret(monkeypatch):
+    """An existing Descriptor secret that isn't utf-8 text (e.g. written by
+    another tool) is only read for the duplicate check, so it must be skipped
+    rather than aborting the save with ``can't decode byte 0x83``.
+    """
+    _fresh_controller_with_descriptor()
+    binary = bytes([0x83, 0x01, 0xff, 0xfe])
+    stored_payload = list(len(binary).to_bytes(2, "big")) + list(binary)
+
+    fake, shown_screens = _run_save_view_with_stored_payload(monkeypatch, stored_payload)
+
+    assert fake.exported == [0x0001]
+    assert len(fake.imported) == 1
     assert smartcard_views.LargeIconStatusScreen in shown_screens
     assert smartcard_views.WarningScreen not in shown_screens
 
@@ -281,3 +308,53 @@ def test_ensure_capacity_reraises_a_genuine_status_failure(monkeypatch):
 
     with pytest.raises(FakeSW12Error):
         seedkeeper_utils.ensure_seedkeeper_capacity(connector, secret_dic)
+
+
+def test_gpg_encrypt_message_rejects_non_text_data_secret(monkeypatch):
+    """Picking a SeedKeeper Data secret that isn't utf-8 text as the message to
+    encrypt shows a clear "Unreadable Message" warning instead of crashing on
+    the decode.
+    """
+    import subprocess
+    from seedsigner.gui.screens.screen import WarningScreen
+    from seedsigner.views import tools_views  # noqa: F401 -- must load before gpg_views (circular import)
+    from seedsigner.views import gpg_views
+    from seedsigner.views.view import BackStackView
+
+    _fresh_controller_with_descriptor()
+    binary = bytes([0x83, 0x01, 0xff, 0xfe])
+    payload = list(len(binary).to_bytes(2, "big")) + list(binary)
+
+    connector = MagicMock()
+    connector.seedkeeper_list_secret_headers.return_value = [
+        {"id": 0x0001, "type": 0xC0, "label": "msg", "export_rights": 0x01},
+    ]
+    connector.seedkeeper_export_secret.return_value = {"secret_list": payload}
+    connector.card_get_status.return_value = (None, None, None, {"protocol_minor_version": 2})
+
+    monkeypatch.setattr(gpg_views, "SEEDKEEPER_DIC_TYPE", {0xC0: "Data"}, raising=False)
+    monkeypatch.setattr(
+        gpg_views, "SEEDKEEPER_DIC_EXPORT_RIGHTS", {0x01: "Plaintext export allowed"}, raising=False
+    )
+    monkeypatch.setattr(seedkeeper_utils, "init_satochip", lambda *a, **k: connector)
+    monkeypatch.setattr("seedsigner.gui.screens.screen.LoadingScreenThread", MagicMock)
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: MagicMock(stdout=""))
+
+    # Select Key -> Skip, Message Source -> Load Seedkeeper, Select Message -> first
+    selections = iter([0, 1, 0])
+    shown = []
+
+    def fake_run_screen(self, screen, *a, **k):
+        shown.append((screen, k))
+        if screen is WarningScreen:
+            return 0
+        return next(selections)
+
+    monkeypatch.setattr(gpg_views.ToolsGPGEncryptMessageView, "run_screen", fake_run_screen)
+
+    destination = gpg_views.ToolsGPGEncryptMessageView().run()
+
+    warnings = [k for screen, k in shown if screen is WarningScreen]
+    assert len(warnings) == 1
+    assert warnings[0]["status_headline"] == "Unreadable Message"
+    assert destination.View_cls is BackStackView
