@@ -2491,3 +2491,92 @@ msgstr "Codificar texto"
 msgid "Decode QR code"
 msgstr "Decodificar código QR"
 
+#. FORK: translated by Claude 2026-10-17
+#. Settings submenu holding the checks applied to transactions before signing
+#: src/seedsigner/views/settings_views.py
+msgid "PSBT Safety"
+msgstr "Seguridad PSBT"
+
+#. FORK: translated by Claude 2026-10-17
+#. Setting for multisig wallets whose cosigners use different or unusual
+#. derivation paths
+#: src/seedsigner/models/settings_definition.py
+msgid "Unusual Multisig Paths"
+msgstr "Rutas multifirma inusuales"
+
+#. FORK: translated by Claude 2026-10-17
+#: src/seedsigner/models/settings_definition.py
+msgid "Without a matching descriptor"
+msgstr "Sin un descriptor coincidente"
+
+#. FORK: translated by Claude 2026-10-17
+#: src/seedsigner/models/settings_definition.py
+msgid "Block"
+msgstr "Bloquear"
+
+#. FORK: translated by Claude 2026-10-17
+#: src/seedsigner/models/settings_definition.py
+msgid "Warn"
+msgstr "Avisar"
+
+#. FORK: translated by Claude 2026-10-17
+#: src/seedsigner/models/settings_definition.py
+msgid "Off"
+msgstr "Desactivado"
+
+#. FORK: translated by Claude 2026-10-17
+#. Setting for transactions that send bitcoin to an unspendable OP_RETURN
+#. output
+#: src/seedsigner/models/settings_definition.py
+msgid "OP_RETURN Burn"
+msgstr "Quema OP_RETURN"
+
+#. FORK: translated by Claude 2026-10-17
+#: src/seedsigner/models/settings_definition.py
+msgid "Value sent to OP_RETURN is destroyed"
+msgstr "Lo enviado a OP_RETURN se destruye"
+
+#. FORK: translated by Claude 2026-10-17
+#. Headline when a multisig's cosigners use unusual derivation paths
+#: src/seedsigner/views/psbt_views.py
+msgid "Unusual Key Paths"
+msgstr "Rutas de claves inusuales"
+
+#. FORK: translated by Claude 2026-10-17
+#. Multisig cosigners use different account numbers in their derivation paths
+#: src/seedsigner/views/psbt_views.py
+msgid "Cosigners use different accounts. Load the descriptor to verify."
+msgstr "Los cofirmantes usan cuentas distintas. Carga el descriptor para verificar."
+
+#. FORK: translated by Claude 2026-10-17
+#. Shown under "Unusual Key Paths" when multisig cosigners are on non-standard
+#. derivation paths
+#: src/seedsigner/views/psbt_views.py
+msgid "Load the wallet descriptor to sign."
+msgstr "Carga el descriptor de billetera para firmar."
+
+#. FORK: translated by Claude 2026-10-17
+#. The loaded multisig descriptor does not describe the wallet this transaction
+#. spends from
+#: src/seedsigner/views/psbt_views.py
+msgid "The loaded descriptor doesn't match this transaction's inputs."
+msgstr "El descriptor cargado no coincide con las entradas de esta transacción."
+
+#. FORK: translated by Claude 2026-10-17
+#. Bitcoin sent to an OP_RETURN output can never be spent by anyone
+#: src/seedsigner/views/psbt_views.py
+msgid "An OP_RETURN output burns bitcoin; it is destroyed, not sent."
+msgstr "Una salida OP_RETURN quema bitcoin; se destruye, no se envía."
+
+#. FORK: translated by Claude 2026-10-17
+#. Shown after a list of multisig cosigner paths that was cut short, e.g. "+3
+#. more"
+#: src/seedsigner/views/seed_views.py
+msgid "+{} more"
+msgstr "+{} más"
+
+#. FORK: translated by Claude 2026-10-17
+#: src/seedsigner/views/psbt_views.py
+msgid "Load descriptor"
+msgstr "Cargar descriptor"
+

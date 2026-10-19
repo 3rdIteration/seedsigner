@@ -798,7 +798,9 @@ class PSBTOverviewView(View):
         # Run the overview screen
         selected_menu_num = self.run_screen(
             PSBTOverviewScreen,
-            spend_amount=psbt_parser.spend_amount,
+            # Value burned in an OP_RETURN leaves the wallet like any payment;
+            # PSBTMathView counts it the same way.
+            spend_amount=psbt_parser.spend_amount + psbt_parser.op_return_amount,
             change_amount=psbt_parser.change_amount,
             fee_amount=psbt_parser.fee_amount,
             num_inputs=psbt_parser.num_inputs,
@@ -812,6 +814,9 @@ class PSBTOverviewView(View):
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             self.controller.psbt_seed = None
             return Destination(BackStackView)
+
+        if key_path_review_policy(psbt_parser, self.settings):
+            return Destination(PSBTMultisigKeyPathsView)
 
         if psbt_parser.unidentified_change_outputs:
             return Destination(PSBTIdentifyChangeView)
@@ -852,6 +857,97 @@ def post_overview_destination(psbt_parser: PSBTParser, skip_current_view: bool =
 
     else:
         return Destination(PSBTMathView, skip_current_view=skip_current_view)
+
+
+
+def key_path_review_policy(psbt_parser: PSBTParser, settings) -> str | None:
+    """
+    SETTING__MULTISIG_KEY_PATHS, if this psbt still needs PSBTMultisigKeyPathsView:
+    its cosigners' paths are unusual, no loaded descriptor accounts for its inputs,
+    and the user hasn't already chosen to continue past the warning.
+    """
+    if not psbt_parser.has_nonstandard_key_paths or psbt_parser.inputs_match_descriptor:
+        return None
+    policy = settings.get_value(SettingsConstants.SETTING__MULTISIG_KEY_PATHS)
+    if policy == SettingsConstants.MULTISIG_KEY_PATHS__OFF:
+        return None
+    if psbt_parser.key_path_irregularity == PSBTParser.KEY_PATHS__MIXED_ACCOUNTS:
+        # An everyday provider layout, and the user may not have the descriptor to
+        # hand: worth a check, never a refusal.
+        policy = SettingsConstants.MULTISIG_KEY_PATHS__WARN
+    if policy == SettingsConstants.MULTISIG_KEY_PATHS__WARN and psbt_parser.key_paths_acknowledged:
+        return None
+    return policy
+
+
+
+class PSBTMultisigKeyPathsView(View):
+    """
+    The multisig's cosigners sit at different accounts (e.g. a managed-multisig
+    provider keeping its key at m/48h/1h/778h/2h, issue #477), at paths no
+    coordinator derives by default, or don't agree on a scheme. Honest wallets do
+    this, but so would a psbt built for a lookalike wallet, and only the wallet's
+    descriptor tells them apart. Mixed accounts only ever warn; see
+    key_path_review_policy. Per SETTING__MULTISIG_KEY_PATHS
+    the user either has to load a matching descriptor (Block) or may continue
+    without one (Warn).
+    """
+    LOAD_DESCRIPTOR = ButtonOption("Load descriptor")
+    CONTINUE = ButtonOption("Continue")
+    DISCARD = ButtonOption("Discard transaction")
+
+    def run(self):
+        psbt_parser: PSBTParser = self.controller.psbt_parser
+        if not psbt_parser:
+            # Should not be able to get here
+            return Destination(MainMenuView)
+
+        policy = key_path_review_policy(psbt_parser, self.settings)
+        if policy is None:
+            return Destination(PSBTOverviewView, skip_current_view=True)
+
+        if self.controller.multisig_wallet_descriptor:
+            # TRANSLATOR_NOTE: The loaded multisig descriptor does not describe the wallet this transaction spends from
+            text = _("The loaded descriptor doesn't match this transaction's inputs.")
+        elif psbt_parser.key_path_irregularity == PSBTParser.KEY_PATHS__MIXED_ACCOUNTS:
+            # TRANSLATOR_NOTE: Multisig cosigners use different account numbers in their derivation paths
+            text = _("Cosigners use different accounts. Load the descriptor to verify.")
+        else:
+            # TRANSLATOR_NOTE: Shown under "Unusual Key Paths" when multisig cosigners are on non-standard derivation paths
+            text = _("Load the wallet descriptor to sign.")
+
+        if policy == SettingsConstants.MULTISIG_KEY_PATHS__BLOCK:
+            button_data = [self.LOAD_DESCRIPTOR, self.DISCARD]
+        else:
+            button_data = [self.LOAD_DESCRIPTOR, self.CONTINUE]
+
+        selected_menu_num = self.run_screen(
+            WarningScreen,
+            # TRANSLATOR_NOTE: Headline when a multisig's cosigners use unusual derivation paths
+            status_headline=_("Unusual Key Paths"),
+            text=text,
+            button_data=button_data,
+            show_back_button=False,
+        )
+
+        if button_data[selected_menu_num] == self.LOAD_DESCRIPTOR:
+            from seedsigner.controller import Controller
+            from seedsigner.views.seed_views import LoadMultisigWalletDescriptorView
+            self.controller.resume_main_flow = Controller.FLOW__PSBT
+            return Destination(LoadMultisigWalletDescriptorView)
+
+        if button_data[selected_menu_num] == self.CONTINUE:
+            psbt_parser.key_paths_acknowledged = True
+            if psbt_parser.unidentified_change_outputs:
+                return Destination(PSBTIdentifyChangeView, skip_current_view=True)
+            return post_overview_destination(psbt_parser, skip_current_view=True)
+
+        # Discard
+        self.controller.psbt = None
+        self.controller.psbt_parser = None
+        self.controller.psbt_seed = None
+        self.controller.psbt_sign_with_satochip = False
+        return Destination(MainMenuView, clear_history=True)
 
 
 
@@ -928,6 +1024,8 @@ class PSBTRiskWarningView(View):
         # receives, so whoever gets them cannot spend them until later.
         RiskWarning.SCRIPT_TIMELOCK: _mft("An output is time-locked by its script; those funds cannot be spent until later."),
         RiskWarning.RBF: _mft("This transaction is marked replaceable (RBF)."),
+        # TRANSLATOR_NOTE: Bitcoin sent to an OP_RETURN output can never be spent by anyone
+        RiskWarning.OP_RETURN_BURN: _mft("An OP_RETURN output burns bitcoin; it is destroyed, not sent."),
     }
 
     def run(self):
@@ -1486,6 +1584,10 @@ class PSBTFinalizeView(View):
 
         if not self.controller.psbt_sign_with_satochip and psbt_parser is None:
             return Destination(MainMenuView)
+
+        if psbt_parser is not None and key_path_review_policy(psbt_parser, self.settings):
+            # The overview routes here only once this is settled; never sign past it.
+            return Destination(PSBTMultisigKeyPathsView, clear_history=True)
 
         selected_menu_num = self.run_screen(
             PSBTFinalizeScreen,
