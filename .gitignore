@@ -26,3 +26,7 @@ docs/os/
 # Generated section landing pages for the docs sidebar (docs_front_matter.py)
 docs/nav/
 *.FCBak
+/electronics/SmartcardHat/kicad/.history
+/electronics/SeedSigner-Plus-smartcard-luckfoxpicozero/SeedSigner-Plus-smartcard-pico-backups
+/electronics/SeedSigner-Plus-smartcard-luckfoxpicozero/.history
+/electronics/SmartcardHat/kicad/Smartcard_Hat-backups
