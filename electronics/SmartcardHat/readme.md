@@ -88,3 +88,8 @@ There are two resistors, R36 and R39, which together, set the current limit for 
 
 **V1.0.8**
 * A couple more DFM tweaks
+
+**V1.0.9**
+* Add alternative pins for UART connection (For use with Waveshare ESP32-P4 4.3' or 5' LCD) (Default R44/R45 populated for Pi, R47/R48 populated for ESP32-P4)
+* Remove redundant C4 and C8 pins
+* Tie test pin to ground
