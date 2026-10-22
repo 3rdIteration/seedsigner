@@ -53,6 +53,23 @@ from binascii import unhexlify
 logger = logging.getLogger(__name__)
 
 
+# UI display-behavior signal (distinct from secret-type tags like "aezeed:"/"SLIP39:"/"XPRV:").
+# A companion app can label a Password secret "blind:<name>" to request that SeedSigner
+# auto-blind it on the passphrase confirmation screen (Settings: Blind Passphrase = Auto)
+# and show <name> (prefix stripped) as the loaded-secret identity line.
+BLIND_SEEDKEEPER_LABEL_PREFIX = "blind:"
+
+
+def parse_blind_seedkeeper_label(label: str):
+    """
+    Returns (display_name, requested_blind) for a SeedKeeper secret label, stripping
+    the BLIND_SEEDKEEPER_LABEL_PREFIX (case-insensitive) when present.
+    """
+    if label.lower().startswith(BLIND_SEEDKEEPER_LABEL_PREFIX.lower()):
+        return label[len(BLIND_SEEDKEEPER_LABEL_PREFIX):], True
+    return label, False
+
+
 class SeedsMenuView(View):
     LOAD = ButtonOption("Load a seed")
 
@@ -1325,6 +1342,13 @@ class SeedAddPassphraseView(View):
                     return Destination(SeedAddPassphraseView)
             raise
 
+        # Manually typed passphrases are never blinded on the Review screen: the user
+        # already knows what they just typed, so hiding it here only risks transcription
+        # errors with no security benefit.
+        self.seed.passphrase_origin = Seed.PASSPHRASE_ORIGIN__MANUAL
+        self.seed.passphrase_source_name = None
+        self.seed.passphrase_source_requests_blind = False
+
         if "is_back_button" in ret_dict:
             if isinstance(self.seed, AezeedSeed):
                 return Destination(SeedAezeedPassphraseModeView)
@@ -1407,6 +1431,12 @@ class SeedScanPassphraseView(View):
         time.sleep(0.1)
         if decoder.is_complete:
             passphrase = self.seed.passphrase_display + decoder.get_passphrase()
+            # Once any portion of the passphrase includes scanned content, treat the
+            # whole thing as QR-origin for blinding purposes (fail-safe: the scanned
+            # portion was never shown in plaintext anywhere prior to the Review screen).
+            self.seed.passphrase_origin = Seed.PASSPHRASE_ORIGIN__QR
+            self.seed.passphrase_source_name = None
+            self.seed.passphrase_source_requests_blind = False
             if isinstance(self.seed, Slip39Seed):
                 self.controller.storage.get_pending_seed().set_slip39_passphrase(passphrase)
                 return Destination(SeedReviewPassphraseView)
@@ -1522,6 +1552,9 @@ class SeedLoadSeedKeeperPassphraseView(View):
 
             secret_passphrase = binascii.unhexlify(secret_dict['secret'])[1:password_length+1].decode()
 
+            selected_label = headers_parsed[selected_menu_num][1]
+            display_name, requested_blind = parse_blind_seedkeeper_label(selected_label)
+
         except Exception as e:
             print(e)
             self.loading_screen.stop()
@@ -1536,6 +1569,10 @@ class SeedLoadSeedKeeperPassphraseView(View):
             if isinstance(self.seed, AezeedSeed):
                 return Destination(SeedAezeedPassphraseModeView)
             return Destination(BackStackView)
+
+        self.seed.passphrase_origin = Seed.PASSPHRASE_ORIGIN__SEEDKEEPER
+        self.seed.passphrase_source_name = display_name if display_name else None
+        self.seed.passphrase_source_requests_blind = requested_blind
 
         # The new passphrase will be the return value; it might be empty.
         if isinstance(self.seed, Slip39Seed):
@@ -1580,6 +1617,23 @@ class SeedReviewPassphraseView(View):
         self.seed = self.controller.storage.get_pending_seed()
 
 
+    @staticmethod
+    def _should_blind(seed: Seed, blind_setting: str) -> bool:
+        if seed.passphrase_origin == Seed.PASSPHRASE_ORIGIN__MANUAL:
+            # Never blind a passphrase the user just typed themselves.
+            return False
+        if blind_setting == SettingsConstants.OPTION__DISABLED:
+            return False
+        if blind_setting == SettingsConstants.OPTION__ENABLED:
+            return True
+        if blind_setting == SettingsConstants.BLIND_PASSPHRASE__AUTO:
+            # Auto only blinds SeedKeeper loads whose label requested it; QR has no
+            # label to carry the signal, so Auto behaves like Off for QR.
+            return (seed.passphrase_origin == Seed.PASSPHRASE_ORIGIN__SEEDKEEPER
+                    and seed.passphrase_source_requests_blind)
+        return False
+
+
     def run(self):
         # Get the before/after fingerprints
         network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
@@ -1597,6 +1651,9 @@ class SeedReviewPassphraseView(View):
 
         button_data = [self.DONE, self.EDIT, self.SCAN]
 
+        blind_setting = self.settings.get_value(SettingsConstants.SETTING__BLIND_PASSPHRASE)
+        should_blind = self._should_blind(self.seed, blind_setting)
+
         # Because we have an explicit "Edit" button, we disable "BACK" to keep the
         # routing options sane.
         selected_menu_num = self.run_screen(
@@ -1604,6 +1661,8 @@ class SeedReviewPassphraseView(View):
             fingerprint_without=fingerprint_without,
             fingerprint_with=fingerprint_with,
             passphrase=self.seed.passphrase_display,
+            should_blind=should_blind,
+            passphrase_source_name=self.seed.passphrase_source_name if should_blind else None,
             button_data=button_data
         )
 

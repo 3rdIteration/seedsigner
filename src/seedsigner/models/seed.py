@@ -25,6 +25,17 @@ class SeedWordsUnavailableException(Exception):
 
 
 class Seed:
+    # Where the current `passphrase` value came from. Class-level attributes (not just
+    # set in __init__) so that subclasses which don't call Seed.__init__ (e.g. Slip39Seed)
+    # still inherit safe "never blind" defaults via normal attribute lookup.
+    PASSPHRASE_ORIGIN__MANUAL = "manual"
+    PASSPHRASE_ORIGIN__QR = "qr"
+    PASSPHRASE_ORIGIN__SEEDKEEPER = "seedkeeper"
+
+    passphrase_origin: str = PASSPHRASE_ORIGIN__MANUAL
+    passphrase_source_name: str = None
+    passphrase_source_requests_blind: bool = False
+
     def __init__(self,
                  mnemonic: List[str] = None,
                  passphrase: str = "",
