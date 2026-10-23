@@ -44,6 +44,15 @@ class SettingsConstants:
         (OPTION__REQUIRED, _mft("Required")),
     ]
 
+    BLIND_PASSPHRASE__AUTO = "auto"
+    ALL_BLIND_PASSPHRASE_OPTIONS = [
+        (OPTION__DISABLED, _mft("Off")),
+        # TRANSLATOR_NOTE: Only blind passphrases loaded from a SeedKeeper secret labeled with the "blind:" prefix
+        (BLIND_PASSPHRASE__AUTO, _mft("Auto")),
+        (OPTION__ENABLED, _mft("On")),
+    ]
+    DEFAULT_BLIND_PASSPHRASE = BLIND_PASSPHRASE__AUTO
+
     # User-facing selection options
     XPUB_QR_FORMAT__UR_CRYPTO_ACCOUNT = "urca"
     XPUB_QR_FORMAT__STATIC = "sta"
@@ -549,6 +558,7 @@ class SettingsConstants:
     SETTING__SEED_WORD_LENGTHS = "seed_word_lengths"
     SETTING__XPUB_DETAILS = "xpub_details"
     SETTING__PASSPHRASE = "passphrase"
+    SETTING__BLIND_PASSPHRASE = "blind_passphrase"
     SETTING__CAMERA_ROTATION = "camera_rotation"
     SETTING__CAMERA_DEVICE = "camera_device"
     SETTING__COMPACT_SEEDQR = "compact_seedqr"
@@ -1089,6 +1099,15 @@ class SettingsDefinition:
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       selection_options=SettingsConstants.OPTIONS__ENABLED_DISABLED_REQUIRED,
                       default_value=SettingsConstants.OPTION__ENABLED),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__BLIND_PASSPHRASE,
+                      display_name=_mft("Blind Passphrase"),
+                      help_text=_mft("Hide QR/SeedKeeper-loaded passphrases on the confirm screen"),
+                      type=SettingsConstants.TYPE__SELECT_1,
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      selection_options=SettingsConstants.ALL_BLIND_PASSPHRASE_OPTIONS,
+                      default_value=SettingsConstants.DEFAULT_BLIND_PASSPHRASE),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__CAMERA_ROTATION,
