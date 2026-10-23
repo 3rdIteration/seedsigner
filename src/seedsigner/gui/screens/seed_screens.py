@@ -3,7 +3,7 @@ import math
 import time
 
 from dataclasses import dataclass
-from gettext import gettext as _
+from gettext import gettext as _, ngettext
 from PIL import Image, ImageDraw, ImageFilter
 from typing import List
 
@@ -1108,7 +1108,7 @@ class SeedReviewPassphraseScreen(ButtonListScreen):
 
     def __post_init__(self):
         # Customize defaults
-        self.title = _("Verify Passphrase") if not self.should_blind else _("Verify Passphrase (Hidden)")
+        self.title = _("Verify Passphrase") if not self.should_blind else _("Hidden Passphrase")
         self.is_bottom_list = True
         self.num_display_buttons = 2
 
@@ -1127,17 +1127,30 @@ class SeedReviewPassphraseScreen(ButtonListScreen):
         if self.should_blind:
             if self.passphrase_source_name:
                 self.components.append(IconTextLine(
-                    icon_name=SeedSignerIconConstants.LOCK,
+                    icon_name=SeedSignerIconConstants.PASSPHRASE,
                     icon_color=GUIConstants.INFO_COLOR,
                     # TRANSLATOR_NOTE: Identifies which SeedKeeper secret the hidden passphrase was loaded from
                     label_text=_("loaded secret"),
                     value_text=self.passphrase_source_name,
                     is_text_centered=True,
-                    screen_y = self.components[-1].screen_y - GUIConstants.COMPONENT_PADDING - int(GUIConstants.get_body_font_size()*2.5)
+                    # Stack tightly on the fingerprint row to leave room for the length line
+                    screen_y = self.components[-1].screen_y - self.components[-1].height - int(GUIConstants.COMPONENT_PADDING/2)
                 ))
-            # Full hiding: reveal length only, never content.
-            self.passphrase = "\u2022" * len(self.passphrase)
-        elif " " in self.passphrase:
+            # Full hiding: reveal length only, never content. A single line always
+            # fits, even with the extra secret-name row.
+            available_height = self.components[-1].screen_y - self.top_nav.height
+            font_size = GUIConstants.get_top_nav_title_font_size()
+            self.components.append(TextArea(
+                # TRANSLATOR_NOTE: Length of a passphrase whose content is hidden from view
+                text=ngettext("{} character", "{} characters", len(self.passphrase)).format(len(self.passphrase)),
+                font_size=font_size,
+                font_color="orange",
+                is_text_centered=True,
+                screen_y=self.top_nav.height + int((available_height - font_size) / 2),
+            ))
+            return
+
+        if " " in self.passphrase:
             self.passphrase = self.passphrase.replace(" ", "\u2589")
         available_height = self.components[-1].screen_y - self.top_nav.height + GUIConstants.COMPONENT_PADDING
         max_font_size = GUIConstants.get_top_nav_title_font_size() + 8
@@ -1194,6 +1207,9 @@ class SeedReviewPassphraseScreen(ButtonListScreen):
                             break
                     buffer += "\u2026"
                     passphrase[-1] = buffer
+
+                # Short passphrases can run out before filling every line
+                num_lines = len(passphrase)
 
                 for i in range(0, num_lines):
                     while textwidth(passphrase[i]) < chars_per_line:
