@@ -495,6 +495,17 @@ class Settings(Singleton):
                         # as [value, label] pairs.
                         new_settings[entry.attr_name] = [v[0] for v in new_settings[entry.attr_name]]
 
+                    elif (
+                        new_settings[entry.attr_name] is not None
+                        and not isinstance(new_settings[entry.attr_name], list)
+                    ):
+                        # A single chosen option arrives as a bare value: an int
+                        # from a SettingsQR ("seedlen=24") or from settings.json.
+                        # set_value() requires a list, so leaving it unwrapped
+                        # raised out of the middle of the update, with the keys
+                        # ahead of it already applied.
+                        new_settings[entry.attr_name] = [new_settings[entry.attr_name]]
+
                     if not new_settings[entry.attr_name]:
                         # Multiselect cannot be empty; load defaults to avoid issues
                         new_settings[entry.attr_name] = entry.default_value
