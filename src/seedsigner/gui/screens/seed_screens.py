@@ -1103,10 +1103,12 @@ class SeedReviewPassphraseScreen(ButtonListScreen):
     fingerprint_without: str = None
     fingerprint_with: str = None
     passphrase: str = None
+    should_blind: bool = False
+    passphrase_source_name: str = None
 
     def __post_init__(self):
         # Customize defaults
-        self.title = _("Verify Passphrase")
+        self.title = _("Verify Passphrase") if not self.should_blind else _("Verify Passphrase (Hidden)")
         self.is_bottom_list = True
         self.num_display_buttons = 2
 
@@ -1122,7 +1124,20 @@ class SeedReviewPassphraseScreen(ButtonListScreen):
             screen_y = self.buttons[0].screen_y - GUIConstants.COMPONENT_PADDING - int(GUIConstants.get_body_font_size()*2.5)
         ))
 
-        if " " in self.passphrase:
+        if self.should_blind:
+            if self.passphrase_source_name:
+                self.components.append(IconTextLine(
+                    icon_name=SeedSignerIconConstants.LOCK,
+                    icon_color=GUIConstants.INFO_COLOR,
+                    # TRANSLATOR_NOTE: Identifies which SeedKeeper secret the hidden passphrase was loaded from
+                    label_text=_("loaded secret"),
+                    value_text=self.passphrase_source_name,
+                    is_text_centered=True,
+                    screen_y = self.components[-1].screen_y - GUIConstants.COMPONENT_PADDING - int(GUIConstants.get_body_font_size()*2.5)
+                ))
+            # Full hiding: reveal length only, never content.
+            self.passphrase = "\u2022" * len(self.passphrase)
+        elif " " in self.passphrase:
             self.passphrase = self.passphrase.replace(" ", "\u2589")
         available_height = self.components[-1].screen_y - self.top_nav.height + GUIConstants.COMPONENT_PADDING
         max_font_size = GUIConstants.get_top_nav_title_font_size() + 8
