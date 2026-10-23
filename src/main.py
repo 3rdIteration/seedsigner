@@ -41,6 +41,15 @@ def main(sys_argv=None):
         help="Launch with the testing build's Home menu (I/O Test, Test Smartcard, Flash Applet, Settings)",
     )
 
+    parser.add_argument(
+        "--fullscreen",
+        action="store_true",
+        help=(
+            "Desktop mode: scale the UI to fill the whole screen at its native "
+            "resolution (same as SEEDSIGNER_DESKTOP_FULLSCREEN=1)"
+        ),
+    )
+
     args = parser.parse_args(sys_argv)
 
     root_logger = logging.getLogger()
@@ -59,6 +68,10 @@ def main(sys_argv=None):
 
     if args.testing_build:
         os.environ["SEEDSIGNER_TESTING_BUILD"] = "1"
+
+    if args.fullscreen:
+        # Read by DesktopDisplay when the display driver is created.
+        os.environ["SEEDSIGNER_DESKTOP_FULLSCREEN"] = "1"
 
     # Get the one and only Controller instance and start our main loop
     initial_destination = None

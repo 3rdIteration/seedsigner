@@ -1480,22 +1480,10 @@ msgstr ""
 msgid "QR background color"
 msgstr ""
 
-#: src/seedsigner/views/desktop_warning.py
-msgid "Desktop Mode"
-msgstr ""
-
-#: src/seedsigner/views/desktop_warning.py
 #: src/seedsigner/views/developer_os_warning.py
 msgid "Not secure!"
 msgstr ""
 
-#: src/seedsigner/views/desktop_warning.py
-msgid ""
-"This desktop version is for testing only.\n"
-"Do NOT use with real seeds or private keys."
-msgstr ""
-
-#: src/seedsigner/views/desktop_warning.py
 #: src/seedsigner/views/developer_os_warning.py
 #: src/seedsigner/views/gpg_views.py
 #: src/seedsigner/views/password_generator_views.py
