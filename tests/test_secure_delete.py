@@ -10,8 +10,11 @@ from embit import bip39
 
 from seedsigner.helpers.secure_delete import (
     _is_shared,
+    wipe_bytes,
+    wipe_dict,
     wipe_list,
     wipe_string,
+    wipe_value,
 )
 
 
@@ -114,3 +117,67 @@ def test_full_lifecycle_wordlist_integrity():
             f"WORDLIST[{i}] corrupted after discard: "
             f"expected {original_wordlist[i]!r}, got {bip39.WORDLIST[i]!r}"
         )
+
+
+def test_wipe_list_overwrites_int_elements_before_clearing():
+    """A PIN or an unlock secret held as list(bytes) has no buffer of its own
+    to zero: the secret is which cached int each slot points at. clear() alone
+    frees the slot array with those pointers still in it."""
+
+    class RecordingList(list):
+        def __init__(self, items):
+            super().__init__(items)
+            self.writes = []
+
+        def __setitem__(self, index, value):
+            self.writes.append((index, value))
+            super().__setitem__(index, value)
+
+    pin = RecordingList(b"123456")
+
+    wipe_list(pin)
+
+    assert pin.writes == [(i, 0) for i in range(6)]
+    assert pin == []
+
+
+def test_wipe_dict_zeroes_only_the_named_values():
+    """Metadata next to a secret is often a code constant (a type tag, a
+    source name). On CPython < 3.12 zeroing one in place corrupts it for the
+    whole process, so only the values named as secret are wiped."""
+    key = "".join("00112233445566778899AABBCCDDEEFF")
+    tag = "".join("single")
+    d = {"type": tag, "key": key}
+
+    wipe_dict(d, ("key",))
+
+    assert key == "\x00" * len(key)
+    assert tag == "single"
+    assert d == {}
+
+
+def test_wipe_value_ignores_what_it_cannot_zero():
+    """A value of another type is left alone rather than guessed at: a str
+    walked as a list would hand wipe_string() its one-character pieces."""
+    for value in (None, 7, ("a", "b"), object()):
+        wipe_value(value)
+
+    secret = "".join("hunter2")
+    wipe_value(secret)
+    assert secret == "\x00" * len("hunter2")
+
+
+def test_wipe_bytes_skips_a_shared_one_byte_object():
+    """CPython keeps one object per one-byte value. Zeroing it in place would
+    turn that byte into NUL for every bytes value that uses it."""
+    one_byte = bytes([7])
+
+    wipe_bytes(one_byte)
+
+    assert bytes([7])[0] == 7
+
+
+def test_one_character_str_is_shared():
+    """The same holds for one-character strings; before 3.11 their refcount
+    is ordinary, so only the length gives them away."""
+    assert _is_shared("".join(["q"]))
