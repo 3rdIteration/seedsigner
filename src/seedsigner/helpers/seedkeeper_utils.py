@@ -20,6 +20,7 @@ from seedsigner.helpers.keycard_connector import KeycardSatochipConnector
 
 
 import hashlib
+from pathlib import Path
 import os
 import re
 import time
@@ -696,12 +697,29 @@ def _connect_card(parentObject, connector):
     return status
 
 
-def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend_preference: str | None = None, allow_unseeded: bool = False):
+def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend_preference: str | None = None, allow_unseeded: bool = False, offer_applet_install: bool = True):
     from seedsigner.models.settings import (
         Settings,
         SettingsConstants,
         SettingsDefinition,
     )
+
+    def handle_missing_applet():
+        """Offer to install a missing applet; returns (handled, connector)."""
+        if not offer_applet_install:
+            return False, None
+        outcome = offer_missing_applet_install(parentObject, init_card_filter)
+        if outcome == APPLET_OFFER__INSTALLED:
+            # Reconnect once; the fresh applet takes the normal setup/PIN path below.
+            return True, init_satochip(
+                parentObject,
+                init_card_filter=init_card_filter,
+                require_pin=require_pin,
+                backend_preference=backend_preference,
+                allow_unseeded=allow_unseeded,
+                offer_applet_install=False,
+            )
+        return outcome == APPLET_OFFER__HANDLED, None
 
     # Check for existing card connector
     print("Checking existing card connector...")
@@ -748,6 +766,11 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend
                 "keycard" if getattr(Satochip_Connector, "is_keycard_backend", False) else "pysatochip",
             )
     except Exception as e:
+        # A card with no matching applet fails here too (pysatochip drops the
+        # connection when SELECT fails), so check for that before blaming the reader.
+        handled, connector = handle_missing_applet()
+        if handled:
+            return connector
         parentObject.run_screen(
             WarningScreen,
             title="Failure",
@@ -763,24 +786,9 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend
     # require_pin=True must not prompt for one -- see the Satodime branch below.
     is_satodime = getattr(Satochip_Connector, "card_type", None) == "Satodime"
 
-    if require_pin and not is_satodime:
-        # Prompt for pin if one hasn't been set, otherwise a cached pin will be used
-        if parentObject.controller.Satochip_PIN is None:
-            print("No Cached pin, prompting for pin")
-            pin_str = prompt_for_pin(
-                parentObject,
-                "Card PIN",
-                numeric_only=is_keycard_backend,
-                exact_length=6 if is_keycard_backend else None,
-            )
-            if pin_str is None:
-                return None
-            card_pin = list(pin_str.encode("utf-8"))
-        else:
-            card_pin = parentObject.controller.Satochip_PIN
-    elif is_satodime:
-        # Satodime has no PIN; bind the variable so the cache step below stays safe.
-        card_pin = None
+    # The PIN is only asked for once the card is connected and known to be set up:
+    # a blank card has no PIN yet, and asking for one first just confuses.
+    card_pin = None
 
     # Some readers only serve CPLC/IIN/CIN intermittently, so a connection can complete
     # while UID_SHA1 is still unset or at the empty-hash sentinel (see is_usable_uid).
@@ -826,7 +834,10 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend
             Satochip_Connector.card_disconnect()
         except Exception:
             pass
-        filter_txt = ""
+        handled, connector = handle_missing_applet()
+        if handled:
+            return connector
+        filter_str = ""
         if init_card_filter:
             if isinstance(init_card_filter, (list, tuple)):
                 filter_str = ", ".join(init_card_filter)
@@ -859,13 +870,14 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend
         if require_pin:
             # Check for an existing Seedkeeper card that we may have been using with this PIN,
             # prompt to re-enter pin if the card has been swapped...
+            card_pin = parentObject.controller.Satochip_PIN
             last_uid = parentObject.controller.Satochip_Last_UID_SHA1
             current_uid = Satochip_Connector.UID_SHA1
             # Trust "same card" only when both ids are usable AND equal: an unusable id on
             # either side (empty / empty-hash sentinel) means we cannot confirm it is the
             # same physical card, and a cached PIN applied to the wrong one would burn one
             # of its limited tries.
-            if last_uid is not None and not (
+            if card_pin is not None and last_uid is not None and not (
                 is_usable_uid(last_uid)
                 and is_usable_uid(current_uid)
                 and last_uid == current_uid
@@ -873,71 +885,90 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend
                 print("Found Card:", current_uid)
                 print("Expecting Card:", last_uid)
                 print("Card has changed or cannot be confirmed, prompting for new PIN")
-                pin_str = prompt_for_pin(
-                    parentObject,
-                    "Card PIN",
-                    numeric_only=is_keycard_backend,
-                    exact_length=6 if is_keycard_backend else None,
-                )
-                if pin_str is None:
-                    return None
-                card_pin = list(pin_str.encode("utf-8"))
-            print("Same card, using existing PIN, already loaded...")
+                card_pin = None
+            elif card_pin is not None:
+                print("Same card, using existing PIN, already loaded...")
 
-            # Check PIN
-            Satochip_Connector.set_pin(0, card_pin)
-
-            try:
-                parentObject.loading_screen = LoadingScreenThread(text="Verifying PIN")
-                parentObject.loading_screen.start()
-
-                print("Verifying PIN")
-                (response, sw1, sw2) = Satochip_Connector.card_verify_PIN()
-
-                parentObject.loading_screen.stop()
-
-                if sw1 == 0x90 and sw2 == 0x00:
-                    print("Pin Correct")
-                    pass  # Pin is correct
-                elif sw1 == 0x63 and (sw2 & 0xF0) == 0xC0:
-                    show_incorrect_pin_warning(
+            # Loop so a mistyped PIN can be re-entered; the card itself counts the tries
+            # and every prompt can be backed out of.
+            while True:
+                if card_pin is None:
+                    print("No Cached pin, prompting for pin")
+                    pin_str = prompt_for_pin(
                         parentObject,
-                        connector=Satochip_Connector,
-                        sw1=sw1,
-                        sw2=sw2,
+                        "Card PIN",
+                        numeric_only=is_keycard_backend,
+                        exact_length=6 if is_keycard_backend else None,
                     )
-                    return None
-                else:
-                    parentObject.run_screen(
-                        WarningScreen,
-                        title="Failure",
-                        status_headline=None,
-                        text=format_sw_error(sw1, sw2),
-                        show_back_button=True,
-                    )
-                    return None
+                    if pin_str is None:
+                        return None
+                    card_pin = list(pin_str.encode("utf-8"))
 
-            # Any number of things could have gone wrong, so just report the error and return none...
-            except Exception as e:
-                parentObject.loading_screen.stop()
-                time.sleep(0.1)  # Sleep for 100ms
-                logger.exception("Pin check failed")
+                # Check PIN
+                Satochip_Connector.set_pin(0, card_pin)
 
-                # clear any cached PIN as it's obviously wrong and was mistakenly cached somewhere...
-                # (This can happen when the card UID is incorrectly read which happens sometimes)
                 try:
-                    parentObject.controller.Satochip_PIN = None
-                except:
-                    pass
+                    parentObject.loading_screen = LoadingScreenThread(text="Verifying PIN")
+                    parentObject.loading_screen.start()
 
-                parentObject.run_screen(
-                    WarningScreen,
-                    title="Failed",
-                    status_headline=None,
-                    text=str(e)[:100],
-                    show_back_button=True,
+                    print("Verifying PIN")
+                    (response, sw1, sw2) = Satochip_Connector.card_verify_PIN()
+
+                    parentObject.loading_screen.stop()
+
+                    if sw1 == 0x90 and sw2 == 0x00:
+                        print("Pin Correct")
+                        break  # Pin is correct
+                    elif sw1 == 0x63 and (sw2 & 0xF0) == 0xC0:
+                        attempts_left = _decode_attempts_from_sw(sw1, sw2)
+                    else:
+                        parentObject.run_screen(
+                            WarningScreen,
+                            title="Failure",
+                            status_headline=None,
+                            text=format_sw_error(sw1, sw2),
+                            show_back_button=True,
+                        )
+                        return None
+
+                # Any number of things could have gone wrong, so just report the error and return none...
+                except Exception as e:
+                    parentObject.loading_screen.stop()
+                    time.sleep(0.1)  # Sleep for 100ms
+
+                    # clear any cached PIN as it's obviously wrong and was mistakenly cached somewhere...
+                    # (This can happen when the card UID is incorrectly read which happens sometimes)
+                    try:
+                        parentObject.controller.Satochip_PIN = None
+                    except:
+                        pass
+
+                    # pysatochip reports a wrong PIN by raising rather than returning 63Cx.
+                    attempts_left = getattr(e, "pin_left", None)
+                    if not isinstance(attempts_left, int) or not 0 <= attempts_left <= 0x0F:
+                        attempts_left = None  # legacy applets report -1 when unknown
+                    if type(e).__name__ != "WrongPinError":
+                        logger.exception("Pin check failed")
+                        parentObject.run_screen(
+                            WarningScreen,
+                            title="Failed",
+                            status_headline=None,
+                            text=str(e)[:100],
+                            show_back_button=True,
+                        )
+                        return None
+
+                # Wrong PIN: say how many tries are left, then let the user try again.
+                parentObject.controller.Satochip_PIN = None
+                show_incorrect_pin_warning(
+                    parentObject,
+                    connector=None if attempts_left is not None else Satochip_Connector,
+                    sw1=0x63 if attempts_left is not None else None,
+                    sw2=(0xC0 | attempts_left) if attempts_left is not None else None,
                 )
-                return None
+                if attempts_left == 0:
+                    return None
+                card_pin = None
 
     else:
         if getattr(Satochip_Connector, "is_keycard_backend", False):
@@ -963,117 +994,121 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend
             show_back_button=True,
         )
 
-        pin_str = prompt_for_new_pin(
-            parentObject,
-            "New Card PIN",
-            numeric_only=is_keycard_backend,
-            exact_length=6 if is_keycard_backend else None,
-            confirm_title="Confirm Card PIN",
-        )
-
-        if pin_str is None:
-            return None
-
-        duress_pin_str = None
-        if is_keycard_backend:
-            # Keycard applet v3.1+: an optional duress PIN unlocks a decoy
-            # wallet. It can only be set now — the applet does not allow
-            # adding or changing it after initialization.
-            selected = parentObject.run_screen(
-                WarningScreen,
-                title="Duress PIN?",
-                status_headline=None,
-                text="Optional decoy-wallet PIN.\nCannot be added later.",
-                show_back_button=False,
-                button_data=[ButtonOption("Set Duress PIN"), ButtonOption("Skip")],
+        while True:
+            pin_str = prompt_for_new_pin(
+                parentObject,
+                "New Card PIN",
+                numeric_only=is_keycard_backend,
+                exact_length=6 if is_keycard_backend else None,
+                confirm_title="Confirm Card PIN",
             )
-            if selected == 0:
-                while True:
-                    duress_pin_str = prompt_for_new_pin(
-                        parentObject,
-                        "Duress PIN",
-                        numeric_only=True,
-                        exact_length=6,
-                        confirm_title="Confirm Duress PIN",
-                    )
-                    if duress_pin_str is None:
-                        return None
-                    if duress_pin_str != pin_str:
-                        break
-                    parentObject.run_screen(
-                        WarningScreen,
-                        title="Invalid PIN",
-                        status_headline=None,
-                        text="Duress PIN must differ\nfrom the main PIN.",
-                        show_back_button=True,
-                    )
 
-        """Run the initial card setup process"""
-        pin_0 = list(pin_str.encode("utf8"))
-        # Allow configurable PIN attempt limit
-        pin_tries_0 = Settings.get_instance().get_value(
-            SettingsConstants.SETTING__SCARD_PIN_ATTEMPTS
-        )
-        ublk_tries_0 = 0x01
-        # PUK code can be used when PIN is unknown and the card is locked
-        # We use a random value as the PUK is not used currently and is not user friendly
-        ublk_0 = list(urandom(16))
-        pin_tries_1 = 0x01
-        ublk_tries_1 = 0x01
-        pin_1 = list(urandom(16))  # the second pin is not used currently
-        ublk_1 = list(urandom(16))
-        secmemsize = 32  # 0x0000 # => for satochip - TODO: hardcode value?
-        memsize = 0x0000  # RFU
-        create_object_ACL = 0x01  # RFU
-        create_key_ACL = 0x01  # RFU
-        create_pin_ACL = 0x01  # RFU
+            if pin_str is None:
+                return None
 
-        setup_kwargs = {}
-        if duress_pin_str:
-            # Only the keycard backend understands the duress PIN.
-            setup_kwargs["duress_pin"] = duress_pin_str
+            duress_pin_str = None
+            if is_keycard_backend:
+                # Keycard applet v3.1+: an optional duress PIN unlocks a decoy
+                # wallet. It can only be set now — the applet does not allow
+                # adding or changing it after initialization.
+                selected = parentObject.run_screen(
+                    WarningScreen,
+                    title="Duress PIN?",
+                    status_headline=None,
+                    text="Optional decoy-wallet PIN.\nCannot be added later.",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Set Duress PIN"), ButtonOption("Skip")],
+                )
+                if selected == 0:
+                    while True:
+                        duress_pin_str = prompt_for_new_pin(
+                            parentObject,
+                            "Duress PIN",
+                            numeric_only=True,
+                            exact_length=6,
+                            confirm_title="Confirm Duress PIN",
+                        )
+                        if duress_pin_str is None:
+                            return None
+                        if duress_pin_str != pin_str:
+                            break
+                        parentObject.run_screen(
+                            WarningScreen,
+                            title="Invalid PIN",
+                            status_headline=None,
+                            text="Duress PIN must differ\nfrom the main PIN.",
+                            show_back_button=True,
+                        )
 
-        (response, sw1, sw2) = Satochip_Connector.card_setup(
-            pin_tries_0,
-            ublk_tries_0,
-            pin_0,
-            ublk_0,
-            pin_tries_1,
-            ublk_tries_1,
-            pin_1,
-            ublk_1,
-            secmemsize,
-            memsize,
-            create_object_ACL,
-            create_key_ACL,
-            create_pin_ACL,
-            option_flags=0,
-            hmacsha160_key=None,
-            amount_limit=0,
-            **setup_kwargs,
-        )
-        if sw1 != 0x90 or sw2 != 0x00:
-            print("ERROR: Setup Failed")
-            parentObject.run_screen(
-                WarningScreen,
-                title="Invalid PIN",
-                status_headline=None,
-                text=format_sw_error(sw1, sw2),
-                show_back_button=True,
+            """Run the initial card setup process"""
+            pin_0 = list(pin_str.encode("utf8"))
+            # Allow configurable PIN attempt limit
+            pin_tries_0 = Settings.get_instance().get_value(
+                SettingsConstants.SETTING__SCARD_PIN_ATTEMPTS
             )
-            return None
-        else:
+            ublk_tries_0 = 0x01
+            # PUK code can be used when PIN is unknown and the card is locked
+            # We use a random value as the PUK is not used currently and is not user friendly
+            ublk_0 = list(urandom(16))
+            pin_tries_1 = 0x01
+            ublk_tries_1 = 0x01
+            pin_1 = list(urandom(16))  # the second pin is not used currently
+            ublk_1 = list(urandom(16))
+            secmemsize = 32  # 0x0000 # => for satochip - TODO: hardcode value?
+            memsize = 0x0000  # RFU
+            create_object_ACL = 0x01  # RFU
+            create_key_ACL = 0x01  # RFU
+            create_pin_ACL = 0x01  # RFU
+
+            setup_kwargs = {}
+            if duress_pin_str:
+                # Only the keycard backend understands the duress PIN.
+                setup_kwargs["duress_pin"] = duress_pin_str
+
+            (response, sw1, sw2) = Satochip_Connector.card_setup(
+                pin_tries_0,
+                ublk_tries_0,
+                pin_0,
+                ublk_0,
+                pin_tries_1,
+                ublk_tries_1,
+                pin_1,
+                ublk_1,
+                secmemsize,
+                memsize,
+                create_object_ACL,
+                create_key_ACL,
+                create_pin_ACL,
+                option_flags=0,
+                hmacsha160_key=None,
+                amount_limit=0,
+                **setup_kwargs,
+            )
+            if sw1 != 0x90 or sw2 != 0x00:
+                # The card refused this PIN; let the user pick another rather than
+                # abandoning the flow they were in the middle of.
+                print("ERROR: Setup Failed")
+                parentObject.run_screen(
+                    WarningScreen,
+                    title="PIN Rejected",
+                    status_headline=None,
+                    text=f"{format_sw_error(sw1, sw2)}\nTry a different PIN.",
+                    show_back_button=True,
+                )
+                continue
+
             Satochip_Connector.set_pin(0, pin_0)
             print("Setup Succeeded")
             parentObject.run_screen(
                 LargeIconStatusScreen,
                 title="Card Setup",
                 status_headline=None,
-                text="PIN set. Import seed next.",
+                text="Card PIN set.",
                 show_back_button=False,
             )
             # Save the PIN for the newly set up card...
             card_pin = pin_0
+            break
 
     # Everything works, so save object and also note the PIN & UID of the card we last successfully connected to...
     parentObject.controller.Satochip_Connector = Satochip_Connector
@@ -1130,3 +1165,322 @@ def pygp_format_error(e):
     elif "Failed to open secure channel" in err_str or "SCARD_W_RESET_CARD" in err_str:
         return "Unable to complete secure connection... (App or reader may need restart)"
     return err_str
+
+
+"""****************************************************************************
+    Bundled applet install
+****************************************************************************"""
+# Instance AIDs of the pysatochip-family applets. SELECTing these needs no card keys,
+# so they are safe to probe on any card, retail or blank.
+APPLET_AIDS = {
+    "satochip": "5361746F43686970",
+    "seedkeeper": "536565644B6565706572",
+    "satodime": "5361746F44696D65",
+}
+
+APPLET_DISPLAY_NAMES = {
+    "satochip": "Satochip",
+    "seedkeeper": "SeedKeeper",
+    "satodime": "Satodime",
+}
+
+# Official applets shipped in javacard-cap/ that a blank card can be offered.
+BUNDLED_APPLET_CAPS = {
+    "satochip": "SatoChip-0.12-official.cap",
+    "seedkeeper": "SeedKeeper-0.2-official.cap",
+    "satodime": "SatoDime-0.1.2-official.cap",
+}
+
+# Secret storage passed to the SeedKeeper applet at install (8 KB, the manual default).
+SEEDKEEPER_DEFAULT_STORAGE = "1FFF"
+
+# GlobalPlatform test key that blank DIY JavaCards ship with.
+DEFAULT_GP_KEY = "404142434445464748494A4B4C4D4E4F"
+
+CAP_CHECKSUM_FILENAME = "javacard-cap.sha256"
+
+# Virtual readers that answer connect with an ATR but are never a JavaCard.
+_IGNORED_READER_MARKERS = ("windows hello",)
+
+# offer_missing_applet_install() outcomes
+APPLET_OFFER__NOT_APPLICABLE = "not_applicable"  # caller shows its usual error
+APPLET_OFFER__HANDLED = "handled"                # user already saw why; just stop
+APPLET_OFFER__INSTALLED = "installed"            # caller should reconnect
+
+
+def get_internal_cap_dir() -> Path:
+    """The javacard-cap directory shipped alongside the source tree."""
+    return Path(__file__).resolve().parents[3] / "javacard-cap"
+
+
+def verify_bundled_cap(cap_path) -> bool:
+    """True when ``cap_path`` matches its entry in the shipped ``javacard-cap.sha256``.
+
+    A file with no checksum entry (or a missing checksum file) does not verify: the
+    guided install runs without the user picking the file, so it must only ever put
+    exactly the applet that was shipped onto the card.
+    """
+    cap_path = Path(cap_path)
+    checksum_file = cap_path.parent / CAP_CHECKSUM_FILENAME
+    try:
+        lines = checksum_file.read_text(encoding="utf-8").splitlines()
+        digest = hashlib.sha256(cap_path.read_bytes()).hexdigest()
+    except OSError:
+        return False
+
+    for line in lines:
+        parts = line.split()
+        if len(parts) == 2 and parts[1].lstrip("*") == cap_path.name:
+            return parts[0].lower() == digest
+    return False
+
+
+def _single_applet_from_filter(init_card_filter) -> str | None:
+    """The one bundled applet a flow asked for, or None when it asked for several/none."""
+    if init_card_filter is None:
+        return None
+    values = init_card_filter
+    if not isinstance(values, (list, tuple, set)):
+        values = [values]
+    values = [str(v).lower() for v in values]
+    if len(values) == 1 and values[0] in BUNDLED_APPLET_CAPS:
+        return values[0]
+    return None
+
+
+def probe_card_applets(names=None):
+    """SELECT each known applet on the first card found in any reader.
+
+    Returns ``(reader_name, {applet: present})``, or None when no card is present.
+    Only SELECT is sent -- no GlobalPlatform authentication -- so this is safe on
+    retail cards whose card-manager keys are locked.
+    """
+    try:
+        from smartcard.System import readers
+    except Exception:
+        logger.debug("pyscard unavailable; cannot probe card applets", exc_info=True)
+        return None
+
+    names = list(names or APPLET_AIDS)
+    try:
+        reader_list = readers()
+    except Exception:
+        logger.debug("Could not list smartcard readers", exc_info=True)
+        return None
+
+    for reader in reader_list:
+        reader_name = str(reader)
+        if any(marker in reader_name.lower() for marker in _IGNORED_READER_MARKERS):
+            continue
+        connection = reader.createConnection()
+        try:
+            connection.connect()
+        except Exception:
+            continue  # no card in this reader
+
+        try:
+            found = {}
+            for name in names:
+                aid = list(bytes.fromhex(APPLET_AIDS[name]))
+                try:
+                    _response, sw1, sw2 = connection.transmit([0x00, 0xA4, 0x04, 0x00, len(aid)] + aid)
+                    found[name] = (sw1, sw2) == (0x90, 0x00)
+                except Exception:
+                    found[name] = False
+            return reader_name, found
+        finally:
+            try:
+                connection.disconnect()
+            except Exception:
+                pass
+    return None
+
+
+def install_applet_cap(
+    parent_view,
+    cap_path,
+    *,
+    storage_param: str | None = None,
+    instance_aids=None,
+    reader_name: str | None = None,
+    require_auth: bool = False,
+) -> bool:
+    """Install one .cap file with pygp, reporting progress and errors on screen.
+
+    Authenticates with the session's loaded JavaCard keys, else the default test key.
+    With ``require_auth`` an authentication failure stops the install (the guided
+    flow); without it the install is attempted anyway, as the manual DIY tool always
+    has. Returns True when the applet was installed.
+    """
+    import pygp
+
+    cap_path = str(cap_path)
+    installed = False
+    parent_view.loading_screen = LoadingScreenThread(text="Installing Applet")
+    parent_view.loading_screen.start()
+    try:
+        if reader_name:
+            pygp.terminal(reader_name)
+        else:
+            pygp.terminal()
+        pygp.card()
+
+        # Always establish secure channel, using provided keys or default test key
+        keys = getattr(getattr(parent_view, "controller", None), "javacard_keys", None)
+        try:
+            if keys and keys.get("type") == "single":
+                enc = mac = dek = keys.get("key")
+            elif keys:  # type == "set"
+                enc, mac, dek = keys.get("enc"), keys.get("mac"), keys.get("dek")
+            else:
+                enc = mac = dek = DEFAULT_GP_KEY
+            pygp.auth(enc_key=enc, mac_key=mac, dek_key=dek, keysetversion="00", securitylevel=pygp.SECURITY_LEVEL_C_MAC)
+            logger.info("Card authentication successful with %s keys", "custom" if keys else "default")
+        except BaseException as e:
+            if require_auth:
+                parent_view.loading_screen.stop()
+                logger.warning("Card authentication failed: %s", e)
+                parent_view.run_screen(
+                    WarningScreen,
+                    title="Card Keys Locked",
+                    status_headline=None,
+                    text="Card keys not accepted.\nLoad them in DIY Tools > Card Keys.",
+                    show_back_button=False,
+                )
+                return False
+            logger.warning(f"Card authentication failed: {str(e)}, attempting install anyway")
+
+        kwargs = {}
+        if instance_aids is not None:
+            kwargs["instance_aids"] = instance_aids
+        if storage_param is not None:
+            kwargs["application_specific_parameters"] = storage_param
+        result = pygp.install_capfile(cap_path, **kwargs)
+
+        # Handle both old return format (list) and new format (dict)
+        ndef_conflict_detected = isinstance(result, dict) and result.get("ndef_skipped", False)
+
+        parent_view.loading_screen.stop()
+        installed = True
+
+        # Inform user if PyGP reported NDEF conflict handling
+        if ndef_conflict_detected:
+            parent_view.run_screen(
+                WarningScreen,
+                title="Info",
+                status_headline=None,
+                text="NDEF applet was automatically skipped to avoid conflicts.",
+                show_back_button=False,
+            )
+
+    except BaseException as e:
+        # PyGP <=0.2a raised bare BaseException, so `except Exception` let
+        # ordinary card errors escape and kill the app.
+        parent_view.loading_screen.stop()
+        error_msg = pygp_format_error(e)[:100]
+        logger.error(f"Install failed: {str(e)}")
+        parent_view.run_screen(WarningScreen, title="Failed", status_headline=None, text=error_msg, show_back_button=False)
+        # Try to uninstall if it failed partially
+        if "0x6444" in str(e) or "0x6F00" in str(e) or "SCARD_E_NOT_TRANSACTED" in str(e):
+            rollback_ok = False
+            try:
+                with LoadingScreenThread(text="Uninstalling Applet") as parent_view.loading_screen:
+                    pkg_aid = pygp.get_cap_info(cap_path).get_aid()
+                    pygp.delete_package(pkg_aid)
+                rollback_ok = True
+            except BaseException as rollback_error:
+                logger.error(f"Rollback failed: {str(rollback_error)}")
+
+            if rollback_ok:
+                parent_view.run_screen(WarningScreen, title="Failed", status_headline=None, text="Mis-Installed Applet Uninstalled", show_back_button=False)
+
+    finally:
+        from seedsigner.models.settings import Settings, SettingsConstants
+        settings = getattr(parent_view, "settings", None) or Settings.get_instance()
+        restart_pn532(settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES))
+
+    return installed
+
+
+def offer_missing_applet_install(parent_view, init_card_filter) -> str:
+    """After a failed connect, offer to install the applet the flow needed.
+
+    Only offered when a card is present, none of the known applets answer SELECT
+    (so it is not, say, a retail Satochip in a SeedKeeper flow) and the flow asked
+    for exactly one bundled applet. Returns one of the ``APPLET_OFFER__*`` outcomes.
+    """
+    applet = _single_applet_from_filter(init_card_filter)
+    if applet is None:
+        return APPLET_OFFER__NOT_APPLICABLE
+
+    probe = probe_card_applets()
+    if probe is None:
+        return APPLET_OFFER__NOT_APPLICABLE
+    reader_name, found = probe
+
+    if found.get(applet):
+        return APPLET_OFFER__NOT_APPLICABLE  # applet is there; the failure was something else
+
+    name = APPLET_DISPLAY_NAMES[applet]
+    other = next((n for n, present in found.items() if present), None)
+    if other is not None:
+        parent_view.run_screen(
+            WarningScreen,
+            title="Wrong Card",
+            status_headline=None,
+            text=f"This is a {APPLET_DISPLAY_NAMES[other]} card,\nnot a {name}.",
+            show_back_button=False,
+        )
+        return APPLET_OFFER__HANDLED
+
+    selected = parent_view.run_screen(
+        WarningScreen,
+        title="Applet Not Found",
+        status_headline=None,
+        text=f"No {name} applet on this card.\nInstall it? (blank DIY cards only)",
+        show_back_button=True,
+        button_data=[ButtonOption(f"Install {name}"), ButtonOption("Cancel")],
+    )
+    if selected != 0:
+        return APPLET_OFFER__HANDLED
+
+    cap_path = get_internal_cap_dir() / BUNDLED_APPLET_CAPS[applet]
+    if not verify_bundled_cap(cap_path):
+        logger.error("Bundled applet %s missing or failed checksum", cap_path)
+        parent_view.run_screen(
+            WarningScreen,
+            title="Applet Unavailable",
+            status_headline=None,
+            text="Bundled applet file is missing\nor failed its checksum.",
+            show_back_button=False,
+        )
+        return APPLET_OFFER__HANDLED
+
+    storage = SEEDKEEPER_DEFAULT_STORAGE if applet == "seedkeeper" else None
+    installed = install_applet_cap(
+        parent_view,
+        cap_path,
+        storage_param=storage,
+        reader_name=reader_name,
+        require_auth=True,
+    )
+
+    # Release pygp's session (and power-cycle the card) so the reconnect that
+    # follows starts from a clean SELECT of the new applet.
+    try:
+        import pygp
+        pygp.close()
+    except BaseException:
+        logger.debug("pygp close after install failed", exc_info=True)
+
+    if not installed:
+        return APPLET_OFFER__HANDLED
+
+    parent_view.run_screen(
+        LargeIconStatusScreen,
+        title="Success",
+        status_headline=None,
+        text=f"{name} applet installed.",
+        show_back_button=False,
+    )
+    return APPLET_OFFER__INSTALLED
