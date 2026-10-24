@@ -115,7 +115,17 @@ not from SeedSigner's menus.
 
 ## Installing an applet
 
+**Shortcut for a blank card:** you can skip this menu. Start any SeedKeeper, Satochip or
+Satodime action with a blank DIY JavaCard in the reader. SeedSigner finds that the applet
+is missing and offers to install the bundled official one (SeedKeeper gets 8 KB of
+storage). It then goes straight on to setting the card PIN and the action you started.
+SeedSigner only offers this when no Satochip, SeedKeeper or Satodime applet answers on
+the card, and only installs a bundled `.cap` that matches `javacard-cap.sha256`. Cards
+with locked GlobalPlatform keys need those keys loaded first under **DIY Tools → Card Keys**.
+
 ![Smartcard Tools menu](img/guide/smartcard/ToolsSmartcardMenuView.png)
+
+To pick the applet, storage size or `.cap` file yourself:
 
 1. Go to **Tools → Smartcard Tools → DIY Tools**.
 2. Choose **Install Applet**.

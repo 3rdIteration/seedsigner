@@ -911,36 +911,50 @@ class ToolsSatochipChangePinView(View):
         if not Satochip_Connector:
             return Destination(BackStackView)
 
-        new_pin_str = seedkeeper_utils.prompt_for_new_pin(self, "New PIN")
+        # Loop so a PIN the card refuses can be replaced without restarting the flow.
+        while True:
+            new_pin_str = seedkeeper_utils.prompt_for_new_pin(self, "New PIN")
 
-        if new_pin_str is None:
-            return Destination(BackStackView)
+            if new_pin_str is None:
+                return Destination(BackStackView)
 
-        new_pin = list(new_pin_str.encode('utf8'))
-        response, sw1, sw2 = Satochip_Connector.card_change_PIN(0, Satochip_Connector.pin, new_pin)
-        if sw1 == 0x90 and sw2 == 0x00:
-            logger.info("Success: Pin Changed")
-            self.run_screen(
-                LargeIconStatusScreen,
-                title="Success",
-                status_headline=None,
-                text=f"PIN Updated",
-                show_back_button=False,
-            )
-            # Update cached pin
-            self.controller.Satochip_PIN = new_pin
+            new_pin = list(new_pin_str.encode('utf8'))
+            try:
+                response, sw1, sw2 = Satochip_Connector.card_change_PIN(0, Satochip_Connector.pin, new_pin)
+            except Exception as e:
+                # The current PIN was just verified, so a raise here (wrong/blocked
+                # PIN, card removed) is not something a different new PIN can fix.
+                logger.exception("Pin change failed")
+                self.run_screen(
+                    WarningScreen,
+                    title="Failed",
+                    status_headline=None,
+                    text=str(e)[:100],
+                    show_back_button=False,
+                )
+                return Destination(BackStackView)
 
-        else:
+            if sw1 == 0x90 and sw2 == 0x00:
+                logger.info("Success: Pin Changed")
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Success",
+                    status_headline=None,
+                    text=f"PIN Updated",
+                    show_back_button=False,
+                )
+                # Update cached pin
+                self.controller.Satochip_PIN = new_pin
+                return Destination(BackStackView)
+
             logger.info("Failure: Pin Change Failed")
             self.run_screen(
                 WarningScreen,
-                title="Invalid PIN",
+                title="PIN Rejected",
                 status_headline=None,
-                text=f"Invalid PIN entered, select another and try again.",
+                text=f"{format_sw_error(sw1, sw2)}\nTry a different PIN.",
                 show_back_button=True,
             )
-        
-        return Destination(BackStackView)
     
 class ToolsSatochipChangeNFCView(View):
     def __init__(self, card_filter=None):
@@ -6631,16 +6645,6 @@ class ToolsSpecterDIYChangePinView(View):
                 new_pin = _prompt_specter_new_pin(self, "Set New PIN")
                 if new_pin is None:
                     return Destination(BackStackView)
-                if not new_pin:
-                    self.run_screen(
-                        WarningScreen,
-                        title="Invalid PIN",
-                        status_headline=None,
-                        text="PIN cannot be empty.",
-                        show_back_button=False,
-                        button_data=[ButtonOption("I Understand")],
-                    )
-                    return Destination(BackStackView)
                 secure_applet.set_pin(secure_channel, new_pin.encode("utf-8"))
                 self.run_screen(
                     LargeIconStatusScreen,
@@ -6652,36 +6656,12 @@ class ToolsSpecterDIYChangePinView(View):
                 return Destination(BackStackView)
 
             # PIN is set; prompt for the current PIN once, then the new PIN.
-            ret = seed_screens.SeedAddPassphraseScreen(
-                title="Current PIN",
-                initial_keyboard=seed_screens.SeedAddPassphraseScreen.KEYBOARD__DIGITS_BUTTON_TEXT,
-            ).display()
-            if isinstance(ret, dict) and "is_back_button" in ret:
-                return Destination(BackStackView)
-            old_pin = ret.get("passphrase", "")
-            if not old_pin:
-                self.run_screen(
-                    WarningScreen,
-                    title="Invalid PIN",
-                    status_headline=None,
-                    text="PIN cannot be empty.",
-                    show_back_button=False,
-                    button_data=[ButtonOption("I Understand")],
-                )
+            old_pin = _prompt_specter_pin_once(self, "Current PIN")
+            if old_pin is None:
                 return Destination(BackStackView)
 
             new_pin = _prompt_specter_new_pin(self, "New PIN")
             if new_pin is None:
-                return Destination(BackStackView)
-            if not new_pin:
-                self.run_screen(
-                    WarningScreen,
-                    title="Invalid PIN",
-                    status_headline=None,
-                    text="PIN cannot be empty.",
-                    show_back_button=False,
-                    button_data=[ButtonOption("I Understand")],
-                )
                 return Destination(BackStackView)
 
             try:
@@ -7044,6 +7024,18 @@ def _prompt_specter_pin_once(parent_view, title: str) -> str | None:
             return None
 
         pin = ret.get("passphrase", "")
+        if not pin:
+            # Re-prompt rather than abandon the flow over an empty entry.
+            parent_view.run_screen(
+                WarningScreen,
+                title="Invalid PIN",
+                status_headline=None,
+                text="PIN cannot be empty.",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            continue
+
         if all(ch in "0123456789" for ch in pin):
             return pin
 
@@ -7474,16 +7466,6 @@ class ToolsJavacardSaveMnemonicView(View):
             if status.get("status") in ("disabled", "no_pin") and not existing_data:
                 new_pin = _prompt_specter_new_pin(self, "Create PIN")
                 if new_pin is None:
-                    return Destination(BackStackView)
-                if not new_pin:
-                    self.run_screen(
-                        WarningScreen,
-                        title="Invalid PIN",
-                        status_headline=None,
-                        text="PIN cannot be empty.",
-                        show_back_button=False,
-                        button_data=[ButtonOption("I Understand")],
-                    )
                     return Destination(BackStackView)
                 secure_applet.set_pin(secure_channel, new_pin.encode("utf-8"))
 
@@ -8360,7 +8342,7 @@ class ToolsDIYBuildAppletsView(View):
 def _get_internal_cap_dir() -> Path:
     """Return the internal javacard-cap directory. Extracted as a module-level
     function so tests can monkeypatch it to isolate from the real filesystem."""
-    return Path(__file__).resolve().parents[3] / "javacard-cap"
+    return seedkeeper_utils.get_internal_cap_dir()
 
 
 class ToolsDIYInstallAppletView(View):
@@ -8462,95 +8444,22 @@ class ToolsDIYInstallAppletView(View):
             selected_option = storage_options[selected_storage_num]
             storage_param = selected_option.return_data or "1FFF"
 
-        cap_path = None
-        self.loading_screen = LoadingScreenThread(text="Installing Applet")
-        self.loading_screen.start()
-        try:
-            import pygp
-            pygp.terminal()
-            pygp.card()
-            
-            # Always establish secure channel, using provided keys or default test key
-            DEFAULT_GP_KEY = "404142434445464748494A4B4C4D4E4F"
-            try:
-                if self.controller.javacard_keys:
-                    keys = self.controller.javacard_keys
-                    if keys.get("type") == "single":
-                        pygp.auth(enc_key=keys.get('key'), mac_key=keys.get('key'), dek_key=keys.get('key'), keysetversion="00", securitylevel=pygp.SECURITY_LEVEL_C_MAC)
-                    else:  # type == "set"
-                        pygp.auth(enc_key=keys.get('enc'), mac_key=keys.get('mac'), dek_key=keys.get('dek'), keysetversion="00", securitylevel=pygp.SECURITY_LEVEL_C_MAC)
-                    logger.info("Card authentication successful with custom keys")
-                else:
-                    # No custom keys provided, try default test key
-                    pygp.auth(enc_key=DEFAULT_GP_KEY, mac_key=DEFAULT_GP_KEY, dek_key=DEFAULT_GP_KEY, keysetversion="00", securitylevel=pygp.SECURITY_LEVEL_C_MAC)
-                    logger.info("Card authentication successful with default key")
-            except BaseException as e:
-                logger.warning(f"Card authentication failed: {str(e)}, attempting install anyway")
-            
-            cap_path = f"{cap_dir}/{applet_file}"
-            
-            ndef_conflict_detected = False
-            
-            if "smartpgp" in applet_file.lower():
-                serial_hex = secrets.token_bytes(4).hex().upper()
-                aid = f"D276000124010304C0FE{serial_hex}0000"
-                logger.info("SmartPGP AID: %s", aid)
-                result = pygp.install_capfile(cap_path, instance_aids=[aid])
-                success_text = f"Applet Installed\nSerial: {serial_hex}"
-            elif "seedkeeper" in applet_file.lower():
-                result = pygp.install_capfile(cap_path, application_specific_parameters=storage_param)
-                success_text = "Applet Installed"
-            else:
-                result = pygp.install_capfile(cap_path)
-                success_text = "Applet Installed"
-            
-            # Handle both old return format (list) and new format (dict)
-            if isinstance(result, dict):
-                ndef_conflict_detected = result.get('ndef_skipped', False)
-            else:
-                # Fallback for older PyGP versions that return list
-                ndef_conflict_detected = False
+        cap_path = f"{cap_dir}/{applet_file}"
+        install_kwargs = {}
+        if "smartpgp" in applet_file.lower():
+            serial_hex = secrets.token_bytes(4).hex().upper()
+            aid = f"D276000124010304C0FE{serial_hex}0000"
+            logger.info("SmartPGP AID: %s", aid)
+            install_kwargs["instance_aids"] = [aid]
+            success_text = f"Applet Installed\nSerial: {serial_hex}"
+        elif "seedkeeper" in applet_file.lower():
+            install_kwargs["storage_param"] = storage_param
+            success_text = "Applet Installed"
+        else:
+            success_text = "Applet Installed"
 
-            self.loading_screen.stop()
-            
-            # Inform user if PyGP reported NDEF conflict handling
-            if ndef_conflict_detected:
-                self.run_screen(
-                    WarningScreen,
-                    title="Info",
-                    status_headline=None,
-                    text="NDEF applet was automatically skipped to avoid conflicts.",
-                    show_back_button=False,
-                )
-            
+        if seedkeeper_utils.install_applet_cap(self, cap_path, **install_kwargs):
             self.run_screen(LargeIconStatusScreen, title="Success", status_headline=None, text=success_text, show_back_button=False)
-            
-        except BaseException as e:
-            # PyGP <=0.2a raised bare BaseException, so `except Exception` let
-            # ordinary card errors escape and kill the app.
-            self.loading_screen.stop()
-            error_msg = seedkeeper_utils.pygp_format_error(e)[:100]
-            logger.error(f"Install failed: {str(e)}")
-            self.run_screen(WarningScreen, title="Failed", status_headline=None, text=error_msg, show_back_button=False)
-            # Try to uninstall if it failed partially. cap_path is only bound
-            # once the applet file has been chosen; a failure before that (e.g.
-            # pygp.card() surfacing SCARD_E_NOT_TRANSACTED) would otherwise
-            # raise UnboundLocalError here instead of reporting the real error.
-            if cap_path is not None and ("0x6444" in str(e) or "0x6F00" in str(e) or "SCARD_E_NOT_TRANSACTED" in str(e)):
-                rollback_ok = False
-                try:
-                    with LoadingScreenThread(text="Uninstalling Applet") as self.loading_screen:
-                        pkg_aid = pygp.get_cap_info(cap_path).get_aid()
-                        pygp.delete_package(pkg_aid)
-                    rollback_ok = True
-                except BaseException as rollback_error:
-                    logger.error(f"Rollback failed: {str(rollback_error)}")
-
-                if rollback_ok:
-                    self.run_screen(WarningScreen, title="Failed", status_headline=None, text="Mis-Installed Applet Uninstalled", show_back_button=False)
-
-        finally:
-            seedkeeper_utils.restart_pn532(self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES))
 
         return Destination(BackStackView)
 

@@ -24,7 +24,8 @@ readers and wiring.
 ## Requirements and setup
 
 - The **SeedKeeper applet** flashed to a JavaCard (see
-  [Install Applet](./javacard_applets.md#installing-an-applet)).
+  [Install Applet](./javacard_applets.md#installing-an-applet)). On a blank DIY card,
+  SeedSigner offers to install it for you the first time you use a SeedKeeper action.
 - **Smartcard support** enabled (default **Enabled**) in
   Settings → Advanced → Smartcard support.
 - A supported reader: USB PC/SC, PN532 NFC, SEC1210 hat, or a Phoenix "sim reader".
