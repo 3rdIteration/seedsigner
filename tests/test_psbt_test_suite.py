@@ -1057,6 +1057,20 @@ class TestOpReturnPayload:
     def test_direct_push_is_shown_exactly(self, name):
         assert parse_vector(VECTORS_BY_NAME[name]).op_return_data == self.MSG
 
+    @pytest.mark.parametrize("name,expected", [
+        # OP_13 is kept as its opcode byte, ahead of the runestone's push
+        ("XTRAS.OP_RETURN_RUNESTONE", b"\x5d" + bytes.fromhex("00c0a2331414010203")),
+        ("XTRAS.OP_RETURN_RUNESTONE_V2", b"\x5d" + bytes.fromhex("00c0a2331414010203")),
+        # OP_0, OP_1NEGATE, OP_1, OP_16
+        ("XTRAS.OP_RETURN_SMALLINT", b"\x00\x4f\x51\x60"),
+        ("XTRAS.OP_RETURN_SMALLINT_V2", b"\x00\x4f\x51\x60"),
+        ("XTRAS.OP_RETURN_MULTI_PUSH", b"helloabcde"),
+        ("XTRAS.OP_RETURN_MULTI_PUSH_V2", b"helloabcde"),
+    ])
+    def test_push_only_payload_is_shown_exactly(self, name, expected):
+        """Anything Core's IsPushOnly accepts is shown, not refused."""
+        assert parse_vector(VECTORS_BY_NAME[name]).op_return_data == expected
+
     @pytest.mark.parametrize("script,expected", [
         (b"j(" + MSG, MSG),                            # direct push (<= 75 bytes)
         (b"jLP" + b"x" * 80, b"x" * 80),             # OP_PUSHDATA1
@@ -1064,11 +1078,18 @@ class TestOpReturnPayload:
         (b"j", b""),                                       # bare OP_RETURN
         (b"j\x03ab", None),                         # truncated push: refused, not partly shown
         (b"j\x4c", None),                           # OP_PUSHDATA1 with no length byte
-        (b"j\x51", None),                           # a non-push opcode
-        (b"j\x00\x02hi", b"hi"),                  # OP_0 is an empty push
+        (b"j\xac", None),                           # a non-push opcode (OP_CHECKSIG)
+        (b"j\x00\x02hi", b"\x00hi"),              # OP_0 counts as a push; its byte is kept
+        (b"j\x51", b"\x51"),                       # OP_1: push-only per Core's IsPushOnly
+        (b"j\x5d\x03abc", b"\x5dabc"),            # Runes: OP_RETURN OP_13 <pushes>
     ])
     def test_payload_parsing(self, script, expected):
-        assert PSBTParser._op_return_payload(script) == expected
+        if expected is None:
+            with pytest.raises(InvalidPSBTError) as excinfo:
+                PSBTParser._parse_op_return_payload(script)
+            assert excinfo.value.code == RejectCode.MALFORMED_OP_RETURN
+        else:
+            assert PSBTParser._parse_op_return_payload(script) == expected
 
     def test_malformed_payload_is_refused(self):
         """A push that runs past the end would be shown as data the output doesn't carry."""
@@ -1079,7 +1100,7 @@ class TestOpReturnPayload:
         with pytest.raises(InvalidPSBTError) as excinfo:
             PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK,
                        max_fee_rate=SUITE_MAX_FEE_RATE)
-        assert excinfo.value.code == RejectCode.UNDISPLAYABLE_OUTPUT
+        assert excinfo.value.code == RejectCode.MALFORMED_OP_RETURN
 
     def test_every_op_return_is_shown(self):
         """Each OP_RETURN's payload is kept, in output order -- not just the last one."""

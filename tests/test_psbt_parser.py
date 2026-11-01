@@ -10,8 +10,9 @@ from embit.ec import PublicKey
 from embit.networks import NETWORKS
 from embit.psbt import PSBT, DerivationPath, OutputScope
 from embit.descriptor import Descriptor
+from embit.script import Script
 
-from seedsigner.models.psbt_parser import InvalidPSBTError, PSBTParser, RejectCode
+from seedsigner.models.psbt_parser import OPCODES, InvalidPSBTError, PSBTParser, RejectCode
 
 
 def raises_reject(code):
@@ -37,8 +38,9 @@ from seedsigner.models.seed import Seed
 from seedsigner.models.settings_definition import SettingsConstants
 
 from psbt_testing_util import (NUMS_INTERNAL_KEY, PSBTTestData, claim_seed_owns_key,
-    create_output, foreign_output, foreign_public_key, input_at_new_outpoint,
-    p2tr_with_script_tree, root_for_seed, tapleaf_hash)
+    create_op_return_output, create_op_return_psbt, create_output, foreign_output,
+    foreign_public_key, input_at_new_outpoint, op_return_script, p2tr_with_script_tree,
+    root_for_seed, tapleaf_hash)
 
 
 
@@ -72,13 +74,13 @@ class TestPSBTParser:
             assert len(psbt.outputs) == 2
             psbt_parser = PSBTParser(p=psbt, seed=self.seed, network=SettingsConstants.REGTEST)
             assert psbt_parser.num_inputs == len(psbt.inputs)
-            assert psbt_parser.input_amount == input_amount
+            assert psbt_parser.verified_input_amount == input_amount
             assert psbt_parser.num_destinations == 1
             assert psbt_parser.num_change_outputs == 1
             assert psbt_parser.spend_amount == recipient_amount
             assert psbt_parser.change_amount == input_amount - recipient_amount - fee_amount
             assert psbt_parser.fee_amount == fee_amount
-            assert psbt_parser.input_amount == psbt_parser.spend_amount + psbt_parser.change_amount + psbt_parser.fee_amount
+            assert psbt_parser.verified_input_amount == psbt_parser.spend_amount + psbt_parser.change_amount + psbt_parser.fee_amount
 
             # No self-transfer here, so all change is true change
             assert psbt_parser.get_total_output_value() == psbt_parser.spend_amount
@@ -91,13 +93,13 @@ class TestPSBTParser:
         assert len(psbt.outputs) == 1
         psbt_parser = PSBTParser(p=psbt, seed=self.seed, network=SettingsConstants.REGTEST)
         assert psbt_parser.num_inputs == len(psbt.inputs)
-        assert psbt_parser.input_amount == input_amount
+        assert psbt_parser.verified_input_amount == input_amount
         assert psbt_parser.num_destinations == 0    # No external recipients == no destinations
         assert psbt_parser.num_change_outputs == 1  # PSBTParser considers self-transfers == change
         assert psbt_parser.spend_amount == 0        # No external recipients == nothing spent (ignores fee)
         assert psbt_parser.change_amount == input_amount - fee_amount  # PSBTParser considers self-transfers == change
         assert psbt_parser.fee_amount == fee_amount
-        assert psbt_parser.input_amount == psbt_parser.spend_amount + psbt_parser.change_amount + psbt_parser.fee_amount
+        assert psbt_parser.verified_input_amount == psbt_parser.spend_amount + psbt_parser.change_amount + psbt_parser.fee_amount
 
         # Only self-transfer, and no "true" change, so `change_amount` is included in total output
         # Both calls should return the same value
@@ -115,13 +117,13 @@ class TestPSBTParser:
             assert len(psbt.outputs) == 1
             psbt_parser = PSBTParser(p=psbt, seed=self.seed, network=SettingsConstants.REGTEST)
             assert psbt_parser.num_inputs == len(psbt.inputs)
-            assert psbt_parser.input_amount == input_amount
+            assert psbt_parser.verified_input_amount == input_amount
             assert psbt_parser.num_destinations == 1
             assert psbt_parser.num_change_outputs == 0
             assert psbt_parser.spend_amount == recipient_amount
             assert psbt_parser.change_amount == 0
             assert psbt_parser.fee_amount == fee_amount
-            assert psbt_parser.input_amount == psbt_parser.spend_amount + psbt_parser.change_amount + psbt_parser.fee_amount
+            assert psbt_parser.verified_input_amount == psbt_parser.spend_amount + psbt_parser.change_amount + psbt_parser.fee_amount
 
             # No self-transfer here, so all change is true change
             assert psbt_parser.get_total_output_value() == psbt_parser.spend_amount
@@ -141,13 +143,13 @@ class TestPSBTParser:
         assert len(psbt.outputs) == len(PSBTTestData.ALL_EXTERNAL_OUTPUTS) + 1
         psbt_parser = PSBTParser(p=psbt, seed=self.seed, network=SettingsConstants.REGTEST)
         assert psbt_parser.num_inputs == len(psbt.inputs)
-        assert psbt_parser.input_amount == input_amount
+        assert psbt_parser.verified_input_amount == input_amount
         assert psbt_parser.num_destinations == len(PSBTTestData.ALL_EXTERNAL_OUTPUTS)
         assert psbt_parser.num_change_outputs == 1
         assert psbt_parser.spend_amount == input_amount - change_amount - fee_amount
         assert psbt_parser.change_amount == change_amount
         assert psbt_parser.fee_amount == fee_amount
-        assert psbt_parser.input_amount == psbt_parser.spend_amount + psbt_parser.change_amount + psbt_parser.fee_amount
+        assert psbt_parser.verified_input_amount == psbt_parser.spend_amount + psbt_parser.change_amount + psbt_parser.fee_amount
 
         # No self-transfer here, so all change is true change
         assert psbt_parser.get_total_output_value() == psbt_parser.spend_amount
@@ -297,6 +299,13 @@ class TestPSBTParser:
         # script, and _validate_input refuses a prevout described two inconsistent ways
         # (the BIP-143 amount-binding shape). A segwit input carrying witness_utxo alone
         # is legal and is what this fixture means.
+        taproot_input.non_witness_utxo = None
+
+        # Re-keying the input invalidates the non_witness_utxo, which still pays to the
+        # original script. Editing it to match is not an option either: that changes the
+        # txid it hashes to, so it would no longer be the tx this input claims to spend.
+        # Drop it. Taproot is segwit, so a witness-only input is what a coordinator would
+        # normally send anyway.
         taproot_input.non_witness_utxo = None
 
         # The zeroed-fingerprint fallback check must recognize this input as the seed's,
@@ -517,6 +526,232 @@ class TestPSBTParser:
         psbt_parser = PSBTParser(p=psbt, seed=PSBTTestData.seed, network=SettingsConstants.REGTEST)
         assert psbt_parser.is_high_fee is True
         assert psbt_parser.is_high_fee == psbt_parser.has_high_fee()
+
+
+
+class TestPSBTInputAmountVerification:
+    """
+    A compromised coordinator can declare whatever input amounts it likes. Unless we check
+    them against each input's non_witness_utxo, the fee we display is whatever the
+    coordinator wants it to be.
+    """
+    seed = PSBTTestData.seed
+
+    # Fixtures that ship a witness_utxo alongside their non_witness_utxo
+    WITNESS_UTXO_INPUTS = [
+        PSBTTestData.SINGLE_SIG_NATIVE_SEGWIT_1_INPUT,
+        PSBTTestData.SINGLE_SIG_NESTED_SEGWIT_1_INPUT,
+        PSBTTestData.SINGLE_SIG_TAPROOT_1_INPUT,
+        PSBTTestData.MULTISIG_NATIVE_SEGWIT_1_INPUT,
+        PSBTTestData.MULTISIG_NESTED_SEGWIT_1_INPUT,
+    ]
+
+    # Legacy sighashes commit no input amount, so these must always be verifiable
+    LEGACY_INPUTS = [
+        PSBTTestData.SINGLE_SIG_LEGACY_P2PKH_1_INPUT,
+        PSBTTestData.MULTISIG_LEGACY_P2SH_1_INPUT,
+    ]
+
+
+    def build_psbt(self, psbt_base64: str) -> PSBT:
+        """ Turn an input-only fixture into a complete psbt that spends to an external recipient """
+        psbt: PSBT = PSBT.parse(a2b_base64(psbt_base64))
+        input_amount = sum([inp.utxo.value for inp in psbt.inputs])
+        psbt.outputs.clear()
+        psbt.outputs.append(create_output(PSBTTestData.SINGLE_SIG_NATIVE_SEGWIT_RECEIVE, input_amount - 5_000))
+        return psbt
+
+
+    @pytest.mark.parametrize("psbt_base64", PSBTTestData.ALL_INPUTS)
+    def test_untampered_psbts_verify(self, psbt_base64: str):
+        """
+        There is one test psbt per script type. Each one includes the previous transaction
+        (non_witness_utxo) for every input. With nothing missing, there's no excuse for any
+        input not to verify: parsing should mark every input is_verified and total their amounts.
+        """
+        psbt = self.build_psbt(psbt_base64)
+        assert all(inp.is_verified is False for inp in psbt.inputs)  # not verified until we do it
+
+        psbt_parser = PSBTParser(p=psbt, seed=self.seed, network=SettingsConstants.REGTEST)
+
+        assert all(inp.is_verified for inp in psbt.inputs)
+        assert psbt_parser.verified_input_amount == sum([inp.utxo.value for inp in psbt.inputs])
+
+
+    @pytest.mark.parametrize("psbt_base64", PSBTTestData.ALL_INPUTS)
+    def test_tampered_non_witness_utxo_raises(self, psbt_base64: str):
+        """
+        Should raise PSBTInputAmountVerificationError if the input's txid doesn't match its
+        non_witness_utxo. Covers every supported script type.
+        """
+        psbt = self.build_psbt(psbt_base64)
+
+        # Editing the non_witness_utxo changes the txid it hashes to, so it no longer matches
+        # the txid the input claims to spend.
+        psbt.inputs[0].non_witness_utxo.vout[0].value += 100_000
+
+        with raises_reject(RejectCode.UTXO_MISMATCH):
+            PSBTParser(p=psbt, seed=self.seed, network=SettingsConstants.REGTEST)
+
+
+    @pytest.mark.parametrize("psbt_base64", WITNESS_UTXO_INPUTS)
+    def test_witness_utxo_value_disagreeing_with_non_witness_utxo_raises(self, psbt_base64: str):
+        """
+        The non_witness_utxo still hashes correctly here, so embit's verify() is satisfied.
+        But embit's PSBT.utxo()/fee() prefer witness_utxo, so an inflated witness_utxo would
+        still drive the fee we display. Must be caught by the cross-check.
+        """
+        psbt = self.build_psbt(psbt_base64)
+        psbt.inputs[0].witness_utxo.value += 100_000
+
+        # Confirm the premise: the non_witness_utxo is untouched and still verifies
+        assert psbt.inputs[0].verify() is True
+
+        with raises_reject(RejectCode.UTXO_MISMATCH):
+            PSBTParser(p=psbt, seed=self.seed, network=SettingsConstants.REGTEST)
+
+
+    @pytest.mark.parametrize("psbt_base64", WITNESS_UTXO_INPUTS)
+    def test_witness_utxo_script_pubkey_disagreeing_with_non_witness_utxo_raises(self, psbt_base64: str):
+        """
+        The input has both utxo fields. Its non_witness_utxo matches the input's txid, and its
+        witness_utxo has the same amount but a different scriptPubKey. The two contradict, so
+        the parse should raise PSBTInputAmountVerificationError.
+        """
+        psbt = self.build_psbt(psbt_base64)
+        witness_utxo = psbt.inputs[0].witness_utxo
+        original_value = witness_utxo.value
+
+        # Same value, different scriptPubKey
+        witness_utxo.script_pubkey = Script(b"\x00\x14" + b"\x11" * 20)
+
+        # Confirm the premise: only the scriptPubKey moved, and the non_witness_utxo still verifies
+        prevout = psbt.inputs[0].non_witness_utxo.vout[psbt.inputs[0].vout]
+        assert witness_utxo.value == original_value
+        assert witness_utxo.script_pubkey.data != prevout.script_pubkey.data
+        assert psbt.inputs[0].verify() is True
+
+        with raises_reject(RejectCode.UTXO_MISMATCH):
+            PSBTParser(p=psbt, seed=self.seed, network=SettingsConstants.REGTEST)
+
+
+    @pytest.mark.parametrize("psbt_base64", LEGACY_INPUTS)
+    def test_legacy_input_without_non_witness_utxo_raises(self, psbt_base64: str):
+        """
+        BIP-174 reserves witness_utxo for segwit inputs, so for a legacy input, a
+        well-formed psbt would only provide its non_witness_utxo. In this test we create
+        an unusual psbt that presents a legacy input and only a witness_utxo. In this case
+        we can't verify the input's amount or the fee we would display. The parse should
+        raise PSBTInputAmountVerificationError.
+        """
+        psbt = self.build_psbt(psbt_base64)
+        inp = psbt.inputs[0]
+        inp.witness_utxo = inp.non_witness_utxo.vout[inp.vout]
+        inp.witness_utxo.value += 100_000
+        inp.non_witness_utxo = None
+
+        # The fork refuses this as INVALID_WITNESS_UTXO (a witness_utxo describing an
+        # input whose sighash commits to no amount); upstream raises
+        # PSBTInputAmountVerificationError.
+        with raises_reject(RejectCode.INVALID_WITNESS_UTXO):
+            PSBTParser(p=psbt, seed=self.seed, network=SettingsConstants.REGTEST)
+
+
+    def test_unrecognized_script_type_without_non_witness_utxo_raises(self):
+        """
+        Covers the None entry in UNCOMMITTED_AMOUNT_SCRIPT_TYPES. embit's script_type() returns
+        None for any scriptPubKey it doesn't recognize, and an unknown script type gives us no
+        basis to assume its sighash commits the input amount. So an unprovable amount on an
+        unrecognized input has to be refused rather than trusted.
+        """
+        psbt = self.build_psbt(PSBTTestData.SINGLE_SIG_NATIVE_SEGWIT_1_INPUT)
+        inp = psbt.inputs[0]
+
+        # Bare multisig: a real scriptPubKey form that embit doesn't recognize, since it only
+        # knows the p2sh- and p2wsh-wrapped forms.
+        OP_1 = b"\x51"
+        OP_PUSHBYTES_33 = b"\x21"
+        OP_CHECKMULTISIG = b"\xae"
+        pubkey = list(inp.bip32_derivations.keys())[0].sec()
+        inp.witness_utxo = inp.non_witness_utxo.vout[inp.vout]
+        inp.witness_utxo.script_pubkey = Script(OP_1 + OP_PUSHBYTES_33 + pubkey + OP_1 + OP_CHECKMULTISIG)
+        inp.non_witness_utxo = None
+
+        # Confirm the premise: this really is an unrecognized script type
+        assert inp.witness_utxo.script_pubkey.script_type() is None
+
+        # The fork refuses this as INVALID_WITNESS_UTXO (a witness_utxo describing an
+        # input whose sighash commits to no amount); upstream raises
+        # PSBTInputAmountVerificationError.
+        with raises_reject(RejectCode.INVALID_WITNESS_UTXO):
+            PSBTParser(p=psbt, seed=self.seed, network=SettingsConstants.REGTEST)
+
+
+    @pytest.mark.parametrize("psbt_base64", WITNESS_UTXO_INPUTS)
+    def test_segwit_input_without_non_witness_utxo_is_allowed(self, psbt_base64: str):
+        """
+        Coordinators routinely omit non_witness_utxo for segwit inputs. BIP143/BIP341 commit
+        the input amount to the sighash, so a lie there invalidates the signature rather than
+        burning funds. Rejecting these would break almost every normal signing.
+        """
+        psbt = self.build_psbt(psbt_base64)
+        psbt.inputs[0].non_witness_utxo = None
+
+        # Parses without raising an exception
+        psbt_parser = PSBTParser(p=psbt, seed=self.seed, network=SettingsConstants.REGTEST)
+        assert psbt_parser.verified_input_amount == psbt.inputs[0].witness_utxo.value
+
+
+    @pytest.mark.parametrize("psbt_base64", PSBTTestData.ALL_INPUTS)
+    def test_input_with_no_utxo_data_raises(self, psbt_base64: str):
+        """
+        Nothing to verify against and nothing to sum; refuse rather than guess.
+        """
+        psbt = self.build_psbt(psbt_base64)
+        psbt.inputs[0].witness_utxo = None
+        psbt.inputs[0].non_witness_utxo = None
+
+        with raises_reject(RejectCode.MISSING_UTXO):
+            PSBTParser(p=psbt, seed=self.seed, network=SettingsConstants.REGTEST)
+
+
+    def test_outpoint_index_past_end_of_non_witness_utxo_raises(self):
+        """
+        The input's vout points to an output index past the end of its non_witness_utxo's
+        output list. Basically, it's claiming to spend an output that doesn't exist. When
+        this happens, the parse should raise PSBTMissingInputUtxoError.
+        """
+        psbt = self.build_psbt(PSBTTestData.SINGLE_SIG_NATIVE_SEGWIT_1_INPUT)
+        inp = psbt.inputs[0]
+
+        # Confirm the premise: the prev tx really is shorter than the index we then claim
+        assert inp.vout < len(inp.non_witness_utxo.vout)
+        inp.vout = len(inp.non_witness_utxo.vout)
+
+        # The fork grades a previous tx that lacks the spent output as UTXO_MISMATCH;
+        # upstream raises PSBTMissingInputUtxoError.
+        with raises_reject(RejectCode.UTXO_MISMATCH):
+            PSBTParser(p=psbt, seed=self.seed, network=SettingsConstants.REGTEST)
+
+
+    def test_every_input_is_checked_not_just_the_first(self):
+        """
+        A tampered input shouldn't be able to hide behind a legit one. Tampering the second
+        input of a 2-input psbt must raise, and the error must name the input that failed.
+        """
+        psbt: PSBT = PSBT.parse(a2b_base64(PSBTTestData.SINGLE_SIG_NATIVE_SEGWIT_2_INPUTS))
+        assert len(psbt.inputs) == 2
+
+        # Untampered, both inputs verify and their amounts are summed
+        psbt_parser = PSBTParser(p=psbt, seed=PSBTTestData.two_input_seed, network=SettingsConstants.REGTEST)
+        assert psbt_parser.num_inputs == 2
+        assert psbt_parser.verified_input_amount == 56_522_834 + 1_990_245_069
+
+        psbt.inputs[1].non_witness_utxo.vout[0].value += 100_000
+
+        with raises_reject(RejectCode.UTXO_MISMATCH):
+            PSBTParser(p=psbt, seed=PSBTTestData.two_input_seed, network=SettingsConstants.REGTEST)
+
 
 
 
@@ -745,7 +980,7 @@ class TestPSBTParserOptimizations:
         psbt is compared too, not just the parser's own attributes.
         """
         assert parser_a.policy == parser_b.policy
-        assert parser_a.input_amount == parser_b.input_amount
+        assert parser_a.verified_input_amount == parser_b.verified_input_amount
         assert parser_a.spend_amount == parser_b.spend_amount
         assert parser_a.change_amount == parser_b.change_amount
         assert parser_a.fee_amount == parser_b.fee_amount
@@ -1027,10 +1262,10 @@ class TestPSBTParserOptimizations:
 
 
 
-class TestPSBTParserSeedOwnership:
+class PSBTParserOwnershipTestBase:
     """
-    The ownership scan: what the signing seed provably owns in a psbt, and the rejection
-    of any psbt whose ownership claims do not hold up.
+    Shared fixtures for tests of how PSBTParser verifies a psbt's claims about its inputs
+    and outputs.
     """
     seed = PSBTTestData.seed
 
@@ -1053,6 +1288,11 @@ class TestPSBTParserSeedOwnership:
         return psbt
 
 
+    def _foreign_multisig_script(self) -> script.Script:
+        """A 2-of-3 built entirely from someone else's keys."""
+        return script.multisig(2, [foreign_public_key(f"m/48h/1h/0h/2h/0/{i}") for i in range(3)])
+
+
     def _parse(self, psbt: PSBT) -> PSBTParser:
         # TODO: Rename this helper. "parse" does not convey that a new PSBTParser instance
         # is being created and it creates confusion in tests that also call PSBT.parse()
@@ -1060,6 +1300,13 @@ class TestPSBTParserSeedOwnership:
         return PSBTParser(psbt, self.seed, network=SettingsConstants.REGTEST)
 
 
+
+
+class TestPSBTParserSeedOwnership(PSBTParserOwnershipTestBase):
+    """
+    The ownership scan: what the signing seed provably owns in a psbt, and the rejection
+    of any psbt whose ownership claims do not hold up.
+    """
     def test__seed_owns_pubkey__accepts_the_seeds_own_key(self):
         """
         seed_owns_pubkey should confirm the simple base case that a pubkey directly
@@ -1174,6 +1421,8 @@ class TestPSBTParserSeedOwnership:
         # The other party's input: their utxo, carrying no derivation info
         foreign_input = input_at_new_outpoint(psbt.inputs[0], 0)
         foreign_input.bip32_derivations.clear()
+
+        # Alter the input so it's owned by the other party
         foreign_input.witness_utxo.script_pubkey = script.p2wpkh(foreign_public_key())
         # See the note in test_missing_fingerprint_handling: the copied non_witness_utxo
         # still describes our own script, which _validate_input reads as a prevout
@@ -1460,7 +1709,7 @@ class TestPSBTParserSeedOwnership:
 # TODO: Refactor all tests to be in the TestPSBTParser class(?)
 
 
-class TestPSBTParserOutputOwnership(TestPSBTParserSeedOwnership):
+class TestPSBTParserOutputOwnership(PSBTParserOwnershipTestBase):
     """
     A psbt annotates its outputs with claims about which keys own them by providing
     derivation path entries for each key.
@@ -1470,11 +1719,6 @@ class TestPSBTParserOutputOwnership(TestPSBTParserSeedOwnership):
     These tests cover invalid claims as well as the ways that the claims and the script
     can disagree and how PSBTParser handles such discrepancies.
     """
-    def _foreign_multisig_script(self) -> script.Script:
-        """A 2-of-3 built entirely from someone else's keys."""
-        return script.multisig(2, [foreign_public_key(f"m/48h/1h/0h/2h/0/{i}") for i in range(3)])
-
-
     def _rebuild_around_foreign_keys(self, out: OutputScope):
         """
         Replace a multisig output's script to pay to a different quorum made entirely of
@@ -2147,6 +2391,115 @@ class TestPSBTParserOutputOwnership(TestPSBTParserSeedOwnership):
                 self._parse(psbt)
 
 
+    def test__parse__counts_nested_single_sig_change_without_its_redeem_script_as_change(self):
+        """
+        A legitimate nested single sig (p2sh-p2wpkh) change output can omit its redeem
+        script (BIP-174 makes it optional) while still claiming (via bip32_derivations)
+        that a key owned by our seed will receive the change.
+
+        But the parser's proof of ownership check does not care about the missing redeem
+        script: the parser rebuilds p2sh(p2wpkh(K)) from the seed's own key at the claimed
+        path regardless. So the output should still be verifiable as change.
+        """
+        psbt = self._psbt_with_change(PSBTTestData.SINGLE_SIG_NESTED_SEGWIT_1_INPUT, PSBTTestData.SINGLE_SIG_NESTED_SEGWIT_CHANGE)
+
+        # The output claims a single key and our seed really does derive it there.
+        assert len(psbt.outputs[0].bip32_derivations) == 1
+        public_key, derivation_path = list(psbt.outputs[0].bip32_derivations.items())[0]
+        assert PSBTParser.seed_owns_pubkey(self._root(), derivation_path.derivation, public_key, child_key_derivation_cache=None) is True
+
+        psbt.outputs[0].redeem_script = None
+
+        psbt_parser = self._parse(psbt)
+        assert psbt_parser.change_amount == 10_000
+        assert psbt_parser.spend_amount == 0
+
+
+    def test__parse__rejects_a_bare_p2sh_output_that_claims_this_seed_but_pays_someone_else(self):
+        """
+        Variation on the prior test: the redeem script is still omitted but this time the
+        psbt repoints its output at a stranger's p2sh-p2wpkh. Crucially, the output keeps
+        its claim on this seed, making this an attempt at deception (if there was no claim
+        on the output, it would simply be a typical external spend output).
+
+        When the parser rebuilds p2sh(p2wpkh(K)), the resulting scriptPubKey will not
+        match what the output commits to. The psbt should be refused with
+        PSBTOutputOwnershipContradictionError.
+        """
+        psbt = self._psbt_with_change(PSBTTestData.SINGLE_SIG_NESTED_SEGWIT_1_INPUT, PSBTTestData.SINGLE_SIG_NESTED_SEGWIT_CHANGE)
+        psbt.outputs[0].redeem_script = None
+        psbt.outputs[0].script_pubkey = script.p2sh(script.p2wpkh(foreign_public_key()))
+
+        with raises_reject(RejectCode.FORGED_OUTPUT_OWNERSHIP):
+            self._parse(psbt)
+
+
+    def test__parse__rejects_a_bare_p2sh_output_that_pays_this_seed_but_lists_another_key(self):
+        """
+        Another variation: the redeem script is omitted and the output still pays our key,
+        but its one derivation path entry lists another seed's key and fingerprint at the
+        same path.
+
+        The parser rebuilds p2sh(p2wpkh(K)) from our own key at that path and ignores the
+        fingerprint the entry lists. The result based on our key matches what the output
+        commits to, so it actually is our output even though the psbt claimed that it paid
+        to a different key. The psbt should be refused with
+        PSBTOutputOwnershipContradictionError.
+        """
+        psbt = self._psbt_with_change(PSBTTestData.SINGLE_SIG_NESTED_SEGWIT_1_INPUT, PSBTTestData.SINGLE_SIG_NESTED_SEGWIT_CHANGE)
+        psbt.outputs[0].redeem_script = None
+
+        # Swap the output's entry for another seed's key at the same path. The
+        # scriptPubKey still pays our key there.
+        derivation_path = list(psbt.outputs[0].bip32_derivations.values())[0]
+        path = bip32.path_to_str(derivation_path.derivation)
+        psbt.outputs[0].bip32_derivations.clear()
+        claim_seed_owns_key(psbt.outputs[0], path, foreign_public_key(path), seed=PSBTTestData.recipient_seed)
+
+        # The fork's code for an output that pays this seed while naming another
+        # wallet's fingerprint; upstream raises PSBTOutputOwnershipContradictionError.
+        with raises_reject(RejectCode.MISLABELED_OUTPUT_OWNERSHIP):
+            self._parse(psbt)
+
+
+    def test__parse__counts_a_payment_to_another_wallet_of_this_seed_as_a_spend(self):
+        """
+        A psbt can pay another wallet of this seed, such as its native segwit account or a
+        multisig it belongs to, and annotate that output with our key. Each case below is
+        such a payment. Each should parse and be counted as a spend.
+
+        The parser makes an exception for nested single sig change that omits its redeem
+        script. An output must meet three criteria to qualify for the exception:
+          * inputs: the inputs are nested single sig
+          * output type: the output is parsed as plain p2sh
+          * redeem script: the output omits its redeem script
+
+        These outputs should be categorized as external spends if any of the three
+        criteria are not met. Each scenario in this test sets up one criterion to fail
+        while the other two are met.
+        """
+        # Fails the inputs condition: a native segwit input instead of nested single sig
+        psbt = self._psbt_with_change(PSBTTestData.SINGLE_SIG_NATIVE_SEGWIT_1_INPUT, PSBTTestData.SINGLE_SIG_NESTED_SEGWIT_CHANGE)
+        psbt.outputs[0].redeem_script = None
+        psbt_parser = self._parse(psbt)
+        assert psbt_parser.change_amount == 0
+        assert psbt_parser.spend_amount == 10_000
+
+        # Fails the output type condition: p2wpkh is not parsed as a plain p2sh output
+        psbt = self._psbt_with_change(PSBTTestData.SINGLE_SIG_NESTED_SEGWIT_1_INPUT, PSBTTestData.SINGLE_SIG_NATIVE_SEGWIT_CHANGE)
+        psbt_parser = self._parse(psbt)
+        assert psbt_parser.change_amount == 0
+        assert psbt_parser.spend_amount == 10_000
+
+        # Fails the redeem script condition: legacy multisig is parsed as plain p2sh even
+        # when it supplies its redeem script.
+        psbt = self._psbt_with_change(PSBTTestData.SINGLE_SIG_NESTED_SEGWIT_1_INPUT, PSBTTestData.MULTISIG_LEGACY_P2SH_CHANGE)
+        assert psbt.outputs[0].redeem_script is not None
+        psbt_parser = self._parse(psbt)
+        assert psbt_parser.change_amount == 0
+        assert psbt_parser.spend_amount == 10_000
+
+
     def test_get_cosigners_returns_a_sorted_list(self):
         """
         Two multisig scripts can list the same wallet's keys in different orders, so the
@@ -2419,4 +2772,397 @@ class TestPSBTParserOutputOwnership(TestPSBTParserSeedOwnership):
         assert psbt.outputs[0].script_pubkey.script_type() is None
 
         with raises_reject(RejectCode.UNDISPLAYABLE_OUTPUT):
+            self._parse(psbt)
+
+
+    def test__parse__rejects_outputs_that_exceed_inputs(self):
+        """
+        Outputs that spend more than the inputs bring in produce a negative fee. `parse`
+        should raise PSBTNegativeFeeError rather than carry that impossible figure into
+        the review screens.
+
+        Note that `psbt.tx` is rebuilt from the output scopes on every access, so the
+        amount has to be changed on the scope itself.
+        """
+        psbt = self._psbt_with_change()
+        input_total = sum(inp.utxo.value for inp in psbt.inputs)
+
+        # One satoshi more than the inputs fund, i.e. the smallest negative fee there is
+        psbt.outputs[0].value = input_total + 1
+
+        with raises_reject(RejectCode.NEGATIVE_FEE):
+            self._parse(psbt)
+
+
+    def test__parse__accepts_a_zero_fee(self):
+        """
+        A transaction that pays no fee is pointless but not malformed (and can still be
+        relayed as part of a package), so only a strictly negative fee is rejected. This
+        pins the boundary the check is written against.
+        """
+        psbt = self._psbt_with_change()
+        psbt.outputs[0].value = sum(inp.utxo.value for inp in psbt.inputs)
+
+        assert self._parse(psbt).fee_amount == 0
+
+
+
+def test_parse_op_return_payload_push_encodings():
+    """
+        Should extract the payload whichever push opcode carries it.
+
+        Opcodes 0x01-0x4b are themselves the byte count; OP_PUSHDATA1, 2, and 4 are
+        followed by a 1, 2, or 4 byte little-endian length. Bitcoin Core emits the
+        minimal encoding, so a payload of 75 bytes or fewer arrives as a direct push and
+        the push opcode has to be read rather than assumed. 75/76 is the boundary between
+        the two.
+    """
+    # Pin the constants: every assertion below is written in terms of them, so a typo
+    # in one would otherwise make this test agree with the bug it is meant to catch.
+    assert (OPCODES.OP_RETURN, OPCODES.OP_PUSHDATA_MAX_DIRECT) == (0x6a, 0x4b)
+    assert (OPCODES.OP_PUSHDATA1, OPCODES.OP_PUSHDATA2, OPCODES.OP_PUSHDATA4) == (0x4c, 0x4d, 0x4e)
+    assert OPCODES.OP_16 == 0x60
+
+    op_return = bytes([OPCODES.OP_RETURN])
+
+    # Direct push: the encoding Bitcoin Core produces for payloads up to 75 bytes
+    for length in [1, 2, 40, OPCODES.OP_PUSHDATA_MAX_DIRECT]:
+        payload = b"A" * length
+        assert PSBTParser._parse_op_return_payload(op_return + bytes([length]) + payload) == payload
+
+    # OP_PUSHDATA1 carries a 1-byte length; 76 is the first payload that needs it
+    for length in [76, 80, 0xff]:
+        payload = b"B" * length
+        script_data = op_return + bytes([OPCODES.OP_PUSHDATA1, length]) + payload
+        assert PSBTParser._parse_op_return_payload(script_data) == payload
+
+    # OP_PUSHDATA2 carries a 2-byte length. Now that Bitcoin Core v30 defaults
+    # `-datacarriersize` to 100,000 bytes this is an ordinary encoding, not an exotic one.
+    payload = b"C" * 300
+    script_data = op_return + bytes([OPCODES.OP_PUSHDATA2]) + len(payload).to_bytes(2, "little") + payload
+    assert PSBTParser._parse_op_return_payload(script_data) == payload
+
+    # OP_PUSHDATA4 carries a 4-byte length
+    payload = b"D" * 300
+    script_data = op_return + bytes([OPCODES.OP_PUSHDATA4]) + len(payload).to_bytes(4, "little") + payload
+    assert PSBTParser._parse_op_return_payload(script_data) == payload
+
+    # A non-minimal encoding is unusual but a coordinator is free to produce one
+    payload = b"E" * 10
+    script_data = op_return + bytes([OPCODES.OP_PUSHDATA2]) + len(payload).to_bytes(2, "little") + payload
+    assert PSBTParser._parse_op_return_payload(script_data) == payload
+
+    # Several pushes in one script are legal; they are concatenated
+    script_data = op_return + bytes([4]) + b"data" + bytes([4]) + b"more"
+    assert PSBTParser._parse_op_return_payload(script_data) == b"datamore"
+
+    # Bare OP_RETURN, nothing pushed
+    assert PSBTParser._parse_op_return_payload(op_return) == b""
+
+    # An empty scriptPubKey must not index past the end
+    assert PSBTParser._parse_op_return_payload(b"") == b""
+
+    # OP_0 through OP_16 carry no data bytes but still count as pushes. Their opcode bytes
+    # are kept, and the walk carries on past them.
+    assert PSBTParser._parse_op_return_payload(op_return + bytes([0x00, 0x51])) == bytes([0x00, 0x51])
+    assert PSBTParser._parse_op_return_payload(op_return + bytes([0x4f, 0x50])) == bytes([0x4f, 0x50])
+    assert PSBTParser._parse_op_return_payload(op_return + bytes([0x00, 4]) + b"data") == b"\x00data"
+    assert PSBTParser._parse_op_return_payload(op_return + bytes([OPCODES.OP_16])) == bytes([OPCODES.OP_16])
+
+
+
+def test_parse_op_return_payload_rejects_malformed_scripts():
+    """
+        Should raise PSBTMalformedOpReturnError when the script after OP_RETURN is not made
+        of complete pushes, which Bitcoin Core treats as nonstandard.
+    """
+    op_return = bytes([OPCODES.OP_RETURN])
+
+    malformed_scripts = [
+        # A direct push claiming more data than the script carries
+        op_return + bytes([10]) + b"abc",
+
+        # An OP_PUSHDATA1 push claiming more data than the script carries
+        op_return + bytes([OPCODES.OP_PUSHDATA1, 80]) + b"abc",
+
+        # OP_PUSHDATA1 with no length byte at all
+        op_return + bytes([OPCODES.OP_PUSHDATA1]),
+
+        # A truncated OP_PUSHDATA2 length field
+        op_return + bytes([OPCODES.OP_PUSHDATA2, 0x01]),
+
+        # A truncated OP_PUSHDATA4 length field
+        op_return + bytes([OPCODES.OP_PUSHDATA4, 0x01, 0x00, 0x00]),
+
+        # The first opcode past OP_16 is not a push, and neither is anything above it
+        op_return + bytes([OPCODES.OP_16 + 1]),
+        op_return + bytes([0xff]),
+
+        # A non-push opcode after a valid push; the whole script is checked
+        op_return + bytes([4]) + b"data" + bytes([0xac]),
+    ]
+    for script_data in malformed_scripts:
+        with raises_reject(RejectCode.MALFORMED_OP_RETURN):
+            PSBTParser._parse_op_return_payload(script_data)
+
+    # The parser refuses the whole psbt, rather than parsing the rest of it
+    truncated_push = script.Script(op_return + bytes([10]) + b"abc")
+    psbt = create_op_return_psbt([create_op_return_output(b"", script_pubkey=truncated_push)])
+    with raises_reject(RejectCode.MALFORMED_OP_RETURN):
+        PSBTParser(p=psbt, seed=PSBTTestData.seed, network=SettingsConstants.REGTEST)
+
+
+
+def test_parse_op_return_content_direct_push():
+    """
+        Should parse an OP_RETURN whose payload uses a direct push.
+
+        This is the canonical encoding: `bitcoin-tx outdata=<hex>` and any Bitcoin Core
+        wallet produce it for payloads of 75 bytes or fewer.
+    """
+    message = "Chancellor on the brink of third bailout".encode()
+    assert len(message) <= OPCODES.OP_PUSHDATA_MAX_DIRECT
+
+    script_pubkey = op_return_script(message)
+    assert script_pubkey.data[:2] == bytes([OPCODES.OP_RETURN, len(message)])
+
+    psbt = create_op_return_psbt([create_op_return_output(message)])
+    psbt_parser = PSBTParser(p=psbt, seed=PSBTTestData.seed, network=SettingsConstants.REGTEST)
+
+    assert psbt_parser.op_return_data == message
+
+
+
+def test_parse_op_return_content_pushdata2():
+    """
+        Should parse an OP_RETURN payload large enough to require OP_PUSHDATA2.
+
+        Bitcoin Core v30 raised the default `-datacarriersize` to 100,000 bytes, so
+        payloads past the 255 bytes OP_PUSHDATA1 can describe now arrive from honest
+        coordinators. Consensus has never limited OP_RETURN data at all, so no payload
+        size can be assumed either way.
+    """
+    message = b"F" * 300
+
+    script_pubkey = op_return_script(message)
+    assert script_pubkey.data[:2] == bytes([OPCODES.OP_RETURN, OPCODES.OP_PUSHDATA2])
+
+    psbt = create_op_return_psbt([create_op_return_output(message)])
+    psbt_parser = PSBTParser(p=psbt, seed=PSBTTestData.seed, network=SettingsConstants.REGTEST)
+
+    assert psbt_parser.op_return_data == message
+
+
+
+def test_parse_op_return_with_no_payload():
+    """
+        A bare OP_RETURN output carries no data and must parse to empty, not crash.
+    """
+    psbt = create_op_return_psbt([
+        create_op_return_output(b"", script_pubkey=script.Script(bytes([OPCODES.OP_RETURN])))
+    ])
+    psbt_parser = PSBTParser(p=psbt, seed=PSBTTestData.seed, network=SettingsConstants.REGTEST)
+
+    assert psbt_parser.op_return_data == b""
+
+
+
+class TestPSBTParserInputScripts(PSBTParserOwnershipTestBase):
+    """
+    Tests that an input supplies exactly the scripts it commits to.
+
+    A p2sh or p2wsh input's scriptPubKey holds only a hash of the script it spends with,
+    so the psbt has to supply that script for anything to be checked. These tests cover
+    the parser requiring that script, requiring it to be the right one, and refusing an
+    extraneous one.
+    """
+    def _add_foreign_nested_segwit_input(self, psbt: PSBT, derivation_path: str = "m/49h/1h/0h/0/0"):
+        """
+        Adds a p2sh-p2wpkh input spending from another party's key with no derivation
+        paths specified. Its scriptPubKey and redeem script are both built from that key,
+        and its coin is described by a witness_utxo alone.
+
+        The supplied psbt's first input should carry a witness_utxo.
+        """
+        # Start from a copy of our own input for its witness_utxo, at an outpoint of its
+        # own (the fork refuses a transaction that spends one outpoint twice)
+        foreign_input = input_at_new_outpoint(psbt.inputs[0], len(psbt.inputs))
+
+        # Strip the derivation paths so the input claims none of the user's keys
+        foreign_input.bip32_derivations.clear()
+
+        # Give it the other party's key: a redeem script built from that key and a
+        # scriptPubKey that commits to that redeem script.
+        public_key = foreign_public_key(derivation_path)
+        foreign_input.redeem_script = script.p2wpkh(public_key)
+        foreign_input.witness_utxo.script_pubkey = script.p2sh(foreign_input.redeem_script)
+
+        # Drop the copied non_witness_utxo, which describes our own coin and contradicts
+        # the witness_utxo altered above.
+        foreign_input.non_witness_utxo = None
+
+        psbt.inputs.append(foreign_input)
+        return foreign_input
+
+
+    def test__parse__refuses_an_input_that_omits_the_script_it_commits_to(self):
+        """
+        The psbt leaves out a script that an input commits to:
+          * p2wsh: witness_script
+          * legacy p2sh multisig: redeem_script
+          * p2sh-p2wpkh: redeem_script
+          * p2sh-p2wsh: witness_script or redeem_script
+
+        Each case should raise PSBTMissingInputScriptError.
+        """
+        # Each case first confirms that the fixture really does carry the script it is
+        # about to omit.
+
+        # p2wsh: omit the witness script
+        psbt = self._psbt_with_change(PSBTTestData.MULTISIG_NATIVE_SEGWIT_1_INPUT, PSBTTestData.MULTISIG_NATIVE_SEGWIT_CHANGE)
+        assert psbt.inputs[0].witness_script is not None
+        psbt.inputs[0].witness_script = None
+        with raises_reject(RejectCode.MISSING_INPUT_SCRIPT):
+            self._parse(psbt)
+
+        # legacy p2sh multisig: omit the redeem script
+        psbt = self._psbt_with_change(PSBTTestData.MULTISIG_LEGACY_P2SH_1_INPUT, PSBTTestData.MULTISIG_LEGACY_P2SH_CHANGE)
+        assert psbt.inputs[0].redeem_script is not None
+        psbt.inputs[0].redeem_script = None
+        with raises_reject(RejectCode.MISSING_INPUT_SCRIPT):
+            self._parse(psbt)
+
+        # p2sh-p2wpkh: omit the redeem script
+        psbt = self._psbt_with_change(PSBTTestData.SINGLE_SIG_NESTED_SEGWIT_1_INPUT, PSBTTestData.SINGLE_SIG_NESTED_SEGWIT_CHANGE)
+        assert psbt.inputs[0].redeem_script is not None
+        psbt.inputs[0].redeem_script = None
+        with raises_reject(RejectCode.MISSING_INPUT_SCRIPT):
+            self._parse(psbt)
+
+        # p2sh-p2wsh: omit the witness script
+        psbt = self._psbt_with_change(PSBTTestData.MULTISIG_NESTED_SEGWIT_1_INPUT, PSBTTestData.MULTISIG_NESTED_SEGWIT_CHANGE)
+        assert psbt.inputs[0].witness_script is not None
+        psbt.inputs[0].witness_script = None
+        with raises_reject(RejectCode.MISSING_INPUT_SCRIPT):
+            self._parse(psbt)
+
+        # p2sh-p2wsh: omit the redeem script
+        psbt = self._psbt_with_change(PSBTTestData.MULTISIG_NESTED_SEGWIT_1_INPUT, PSBTTestData.MULTISIG_NESTED_SEGWIT_CHANGE)
+        assert psbt.inputs[0].redeem_script is not None
+        psbt.inputs[0].redeem_script = None
+        with raises_reject(RejectCode.MISSING_INPUT_SCRIPT):
+            self._parse(psbt)
+
+
+    def test__parse__refuses_an_input_that_supplies_the_wrong_script(self):
+        """
+        The psbt replaces one of an input's own scripts with a stranger's. A script that
+        hashes to the wrong value should raise PSBTInputScriptMismatchError, at each layer
+        of each script type that has one.
+        """
+        foreign_script = self._foreign_multisig_script()
+
+        # p2wsh: the witness script is the only layer
+        psbt = self._psbt_with_change(PSBTTestData.MULTISIG_NATIVE_SEGWIT_1_INPUT, PSBTTestData.MULTISIG_NATIVE_SEGWIT_CHANGE)
+        psbt.inputs[0].witness_script = foreign_script
+        with raises_reject(RejectCode.SCRIPT_HASH_MISMATCH):
+            self._parse(psbt)
+
+        # legacy p2sh multisig: the redeem script is the only layer
+        psbt = self._psbt_with_change(PSBTTestData.MULTISIG_LEGACY_P2SH_1_INPUT, PSBTTestData.MULTISIG_LEGACY_P2SH_CHANGE)
+        psbt.inputs[0].redeem_script = foreign_script
+        with raises_reject(RejectCode.SCRIPT_HASH_MISMATCH):
+            self._parse(psbt)
+
+        # p2sh-p2wpkh: a redeem script built from someone else's key
+        psbt = self._psbt_with_change(PSBTTestData.SINGLE_SIG_NESTED_SEGWIT_1_INPUT, PSBTTestData.SINGLE_SIG_NESTED_SEGWIT_CHANGE)
+        psbt.inputs[0].redeem_script = script.p2wpkh(foreign_public_key())
+        with raises_reject(RejectCode.SCRIPT_HASH_MISMATCH):
+            self._parse(psbt)
+
+        # p2sh-p2wsh, inner layer: the genuine redeem script, but a witness script other
+        # than the one it commits to
+        psbt = self._psbt_with_change(PSBTTestData.MULTISIG_NESTED_SEGWIT_1_INPUT, PSBTTestData.MULTISIG_NESTED_SEGWIT_CHANGE)
+        psbt.inputs[0].witness_script = foreign_script
+        with raises_reject(RejectCode.SCRIPT_HASH_MISMATCH):
+            self._parse(psbt)
+
+        # p2sh-p2wsh, outer layer: a redeem script other than the one the scriptPubKey
+        # commits to
+        psbt = self._psbt_with_change(PSBTTestData.MULTISIG_NESTED_SEGWIT_1_INPUT, PSBTTestData.MULTISIG_NESTED_SEGWIT_CHANGE)
+        psbt.inputs[0].redeem_script = script.p2wsh(foreign_script)
+        with raises_reject(RejectCode.SCRIPT_HASH_MISMATCH):
+            self._parse(psbt)
+
+
+    def test__parse__refuses_an_input_that_supplies_an_extra_script(self):
+        """
+        The psbt adds an extraneous script that is nonsensical to include for the input's
+        script type:
+          * legacy p2sh multisig: should never have a witness_script
+          * p2wpkh: should never have a redeem_script
+          * p2sh-p2wpkh: should never have a witness_script
+
+        The input's required script(s) must pass validation in order to reach the
+        extraneous script check, so those required scripts are preserved in their correct
+        form here.
+
+        By rule, an extraneous script should raise PSBTExtraneousInputScriptError.
+        """
+        # The extraneous script's content is irrelevant, so an arbitrary script will do
+        arbitrary_script = script.Script(b"\x51")  # OP_TRUE
+
+        # legacy p2sh multisig: add a witness script
+        psbt = self._psbt_with_change(PSBTTestData.MULTISIG_LEGACY_P2SH_1_INPUT, PSBTTestData.MULTISIG_LEGACY_P2SH_CHANGE)
+        psbt.inputs[0].witness_script = arbitrary_script
+        with raises_reject(RejectCode.EXTRANEOUS_WITNESS_SCRIPT):
+            self._parse(psbt)
+
+        # p2wpkh: add a redeem script
+        psbt = self._psbt_with_change()
+        psbt.inputs[0].redeem_script = arbitrary_script
+        with raises_reject(RejectCode.EXTRANEOUS_REDEEM_SCRIPT):
+            self._parse(psbt)
+
+        # p2sh-p2wpkh: add a witness script
+        psbt = self._psbt_with_change(PSBTTestData.SINGLE_SIG_NESTED_SEGWIT_1_INPUT, PSBTTestData.SINGLE_SIG_NESTED_SEGWIT_CHANGE)
+        psbt.inputs[0].witness_script = arbitrary_script
+        with raises_reject(RejectCode.EXTRANEOUS_WITNESS_SCRIPT):
+            self._parse(psbt)
+
+
+    def test__parse__checks_input_scripts_whoever_the_input_belongs_to(self):
+        """
+        The parser verifies the scripts on every input, whoever the psbt says the input
+        belongs to. So an input with no derivation paths, claiming none of the user's
+        keys, gets the same script checks as the user's own input.
+
+        The psbt will be rejected if a script is missing (PSBTMissingInputScriptError) or
+        wrong (PSBTInputScriptMismatchError).
+
+        Note: despite setting up a collaborative spend, this test is not meant to mimic a
+        realistic payjoin transaction. Certain types of payjoin inputs (e.g. nested
+        segwit) require special handling to pass the input script checks. See the separate
+        payjoin TODO in the parser.
+        """
+        psbt = self._psbt_with_change(PSBTTestData.SINGLE_SIG_NESTED_SEGWIT_1_INPUT, PSBTTestData.SINGLE_SIG_NESTED_SEGWIT_CHANGE)
+        foreign_input = self._add_foreign_nested_segwit_input(psbt)
+
+        # The other party's input carries its correct redeem script and none of the
+        # user's keys.
+        psbt_parser = self._parse(psbt)
+        assert psbt_parser.num_inputs == 2
+        assert psbt_parser.verified_input_derivation_paths[1] == []
+
+        # Omit its redeem script. Its scriptPubKey alone then reads as legacy p2sh, which
+        # needs a non_witness_utxo to prove its amount. The parse should still report the
+        # missing script.
+        foreign_input.redeem_script = None
+        with raises_reject(RejectCode.MISSING_INPUT_SCRIPT):
+            self._parse(psbt)
+
+        # With a redeem script built from the other party's key at the next address
+        # (index 1), rather than the index 0 key that the scriptPubKey commits to.
+        foreign_input.redeem_script = script.p2wpkh(foreign_public_key("m/49h/1h/0h/0/1"))
+        with raises_reject(RejectCode.SCRIPT_HASH_MISMATCH):
             self._parse(psbt)

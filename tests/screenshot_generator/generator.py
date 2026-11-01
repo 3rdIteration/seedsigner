@@ -12,7 +12,6 @@ from datetime import datetime
 from PIL import ImageFont
 from unittest.mock import Mock, patch, MagicMock
 
-from embit import compact
 from embit.psbt import PSBT, OutputScope
 from embit.script import Script
 
@@ -93,11 +92,13 @@ mnemonic_12b = ["abandon"] * 11 + ["about"]
 seed_12b = Seed(mnemonic=mnemonic_12b, wordlist_language_code=SettingsConstants.WORDLIST_LANGUAGE__ENGLISH)
 
 def add_op_return_to_psbt(psbt: PSBT, raw_payload_data: bytes):
-    data = (compact.to_bytes(OPCODES.OP_RETURN) + 
-        compact.to_bytes(OPCODES.OP_PUSHDATA1) + 
-        compact.to_bytes(len(raw_payload_data)) +
-        raw_payload_data)
-    script = Script(data)
+    # Push the payload the way Bitcoin Core does: directly for 75 bytes or fewer, via
+    # OP_PUSHDATA1 above that.
+    if len(raw_payload_data) <= OPCODES.OP_PUSHDATA_MAX_DIRECT:
+        push = bytes([len(raw_payload_data)])
+    else:
+        push = bytes([OPCODES.OP_PUSHDATA1, len(raw_payload_data)])
+    script = Script(bytes([OPCODES.OP_RETURN]) + push + raw_payload_data)
     output = OutputScope()
     output.script_pubkey = script
     output.value = 0
@@ -744,13 +745,20 @@ def generate_screenshots(locale):
                 ScreenshotConfig(psbt_views.PSBTOverviewView, screenshot_name="PSBTOverviewView_op_return",    mock_context_manager=mock_psbt_with_op_return_loaded),
                 ScreenshotConfig(psbt_views.PSBTOpReturnView, screenshot_name="PSBTOpReturnView_text",         mock_context_manager=mock_psbt_with_op_return_loaded),
                 ScreenshotConfig(psbt_views.PSBTOpReturnView, screenshot_name="PSBTOpReturnView_raw_hex_data", mock_context_manager=mock_psbt_with_op_return_raw_bytes_loaded),
+                ScreenshotConfig(psbt_views.PSBTMalformedOpReturnView),
+                ScreenshotConfig(psbt_views.PSBTMissingInputScriptView),
+                ScreenshotConfig(psbt_views.PSBTInputScriptMismatchView),
+                ScreenshotConfig(psbt_views.PSBTExtraneousInputScriptView),
                 ScreenshotConfig(psbt_views.PSBTAddressVerificationFailedView, dict(is_change=True, is_multisig=False),  screenshot_name="PSBTAddressVerificationFailedView_singlesig_change"),
                 ScreenshotConfig(psbt_views.PSBTAddressVerificationFailedView, dict(is_change=False, is_multisig=False), screenshot_name="PSBTAddressVerificationFailedView_singlesig_selftransfer"),
                 ScreenshotConfig(psbt_views.PSBTAddressVerificationFailedView, dict(is_change=True, is_multisig=True),   screenshot_name="PSBTAddressVerificationFailedView_multisig_change"),
                 ScreenshotConfig(psbt_views.PSBTAddressVerificationFailedView, dict(is_change=False, is_multisig=True),  screenshot_name="PSBTAddressVerificationFailedView_multisig_selftransfer"),
                 ScreenshotConfig(psbt_views.PSBTOutputOwnershipClaimFailedView),
                 ScreenshotConfig(psbt_views.PSBTInputOwnershipClaimFailedView),
+                ScreenshotConfig(psbt_views.PSBTNegativeFeeView),
                 ScreenshotConfig(psbt_views.PSBTSeedCannotSignView),
+                ScreenshotConfig(psbt_views.PSBTInputAmountVerificationFailedView),
+                ScreenshotConfig(psbt_views.PSBTMissingInputUtxoView),
                 ScreenshotConfig(psbt_views.PSBTFinalizeView,     mock_context_manager=mock_multisig_psbt_loaded),
                 #ScreenshotConfig(PSBTSignedQRDisplayViewScreenshotConfig),
                 ScreenshotConfig(psbt_views.PSBTSigningErrorView, mock_context_manager=mock_multisig_psbt_loaded),

@@ -578,6 +578,85 @@ REJECT_PRESENTATION = {
         button_label=_mft("Discard transaction"),
     ),
 
+    # The declared input amounts are unproven or false: a previous tx that doesn't hash
+    # to the txid it claims, a witness_utxo that contradicts it, or a legacy input with
+    # only a witness_utxo, whose amount no legacy signature commits to. Any of them lets
+    # the coordinator show whatever fee it likes. Upstream's
+    # PSBTInputAmountVerificationFailedView.
+    RejectCode.UTXO_MISMATCH: RejectPresentation(
+        screen=DireWarningScreen,
+        title=_mft("Suspicious Transaction"),
+        headline=_mft("Likely an Attack!"),
+        text=_mft("This transaction's input amounts cannot be verified, so its fee cannot be trusted."),
+        button_label=_mft("Discard transaction"),
+    ),
+
+    RejectCode.INVALID_WITNESS_UTXO: RejectPresentation(
+        screen=DireWarningScreen,
+        title=_mft("Suspicious Transaction"),
+        headline=_mft("Likely an Attack!"),
+        text=_mft("This transaction's input amounts cannot be verified, so its fee cannot be trusted."),
+        button_label=_mft("Discard transaction"),
+    ),
+
+    RejectCode.SCRIPT_HASH_MISMATCH: RejectPresentation(
+        screen=DireWarningScreen,
+        title=_mft("Suspicious Transaction"),
+        headline=_mft("Likely an Attack!"),
+        # TRANSLATOR_NOTE: The transaction/psbt contains a deception that we consider an attack.
+        text=_mft("This transaction supplied the wrong script for one of its inputs."),
+        button_label=_mft("Discard transaction"),
+    ),
+
+    # The rest are malformed psbts rather than proven deceptions: refused, but only at
+    # the "Warning" level.
+    RejectCode.MISSING_UTXO: RejectPresentation(
+        screen=WarningScreen,
+        title=_mft("Transaction Problem"),
+        # TRANSLATOR_NOTE: The transaction/psbt has an error but does not seem to be malicious.
+        text=_mft("This transaction is missing required data for one of its inputs."),
+        button_label=_mft("Discard transaction"),
+    ),
+
+    RejectCode.MISSING_INPUT_SCRIPT: RejectPresentation(
+        screen=WarningScreen,
+        title=_mft("Transaction Problem"),
+        # TRANSLATOR_NOTE: The transaction/psbt has an error but does not seem to be malicious.
+        text=_mft("This transaction left out a script that one of its inputs needs."),
+        button_label=_mft("Discard transaction"),
+    ),
+
+    RejectCode.EXTRANEOUS_REDEEM_SCRIPT: RejectPresentation(
+        screen=WarningScreen,
+        title=_mft("Transaction Problem"),
+        # TRANSLATOR_NOTE: The transaction/psbt has an error but does not seem to be malicious.
+        text=_mft("This transaction supplied an extra script for one of its inputs."),
+        button_label=_mft("Discard transaction"),
+    ),
+
+    RejectCode.EXTRANEOUS_WITNESS_SCRIPT: RejectPresentation(
+        screen=WarningScreen,
+        title=_mft("Transaction Problem"),
+        text=_mft("This transaction supplied an extra script for one of its inputs."),
+        button_label=_mft("Discard transaction"),
+    ),
+
+    RejectCode.NEGATIVE_FEE: RejectPresentation(
+        screen=WarningScreen,
+        title=_mft("Transaction Problem"),
+        # TRANSLATOR_NOTE: The transaction's outputs spend more than its inputs hold, which is impossible.
+        text=_mft("This transaction's outputs send more than its inputs provide."),
+        button_label=_mft("Discard transaction"),
+    ),
+
+    RejectCode.MALFORMED_OP_RETURN: RejectPresentation(
+        screen=WarningScreen,
+        title=_mft("Transaction Problem"),
+        # TRANSLATOR_NOTE: The transaction/psbt has an error but does not seem to be malicious.
+        text=_mft("This transaction's OP_RETURN data is malformed."),
+        button_label=_mft("Discard transaction"),
+    ),
+
     RejectCode.SEED_CANNOT_SIGN: RejectPresentation(
         # An informational mismatch, not a warning, so it uses the neutral info icon and
         # color rather than WarningScreen's alarming yellow edges.
@@ -610,6 +689,10 @@ class PSBTRefusalView(View):
     directly.
     """
     code: str = None
+
+    # Further codes a named subclass also stands for. Each is still drawn from its own
+    # REJECT_PRESENTATION entry; this only decides which View class it routes to.
+    also_codes: tuple = ()
 
     def __init__(self, code: str = None, message: str = None):
         super().__init__()
@@ -687,10 +770,73 @@ class PSBTSeedCannotSignView(PSBTRefusalView):
     SELECT_DIFFERENT_SEED = ButtonOption("Select a different seed")
 
 
+class PSBTInputAmountVerificationFailedView(PSBTRefusalView):
+    """
+    An input's declared amount is unproven or false, so the fee cannot be trusted. Shows
+    a dire warning and discards the psbt.
+    """
+    code = RejectCode.UTXO_MISMATCH
+    also_codes = (RejectCode.INVALID_WITNESS_UTXO,)
+    DISCARD = ButtonOption("Discard transaction")
+
+
+
+class PSBTMissingInputUtxoView(PSBTRefusalView):
+    """An input is missing the utxo it spends. Malformed rather than hostile."""
+    code = RejectCode.MISSING_UTXO
+    DISCARD = ButtonOption("Discard transaction")
+
+
+
+class PSBTMissingInputScriptView(PSBTRefusalView):
+    """An input commits to a script the psbt did not supply. Malformed rather than hostile."""
+    code = RejectCode.MISSING_INPUT_SCRIPT
+    DISCARD = ButtonOption("Discard transaction")
+
+
+
+class PSBTInputScriptMismatchView(PSBTRefusalView):
+    """
+    An input supplies a script other than the one its scriptPubKey commits to. Treated
+    as an attack: a dire warning, and the psbt is discarded.
+    """
+    code = RejectCode.SCRIPT_HASH_MISMATCH
+    DISCARD = ButtonOption("Discard transaction")
+
+
+
+class PSBTExtraneousInputScriptView(PSBTRefusalView):
+    """
+    An input supplies a redeem or witness script its scriptPubKey doesn't commit to. Not
+    graded as an attack or a mistake.
+    """
+    code = RejectCode.EXTRANEOUS_REDEEM_SCRIPT
+    also_codes = (RejectCode.EXTRANEOUS_WITNESS_SCRIPT,)
+    DISCARD = ButtonOption("Discard transaction")
+
+
+
+class PSBTNegativeFeeView(PSBTRefusalView):
+    """The outputs spend more than the inputs bring in. Malformed rather than hostile."""
+    code = RejectCode.NEGATIVE_FEE
+    DISCARD = ButtonOption("Discard transaction")
+
+
+
+class PSBTMalformedOpReturnView(PSBTRefusalView):
+    """An OP_RETURN script is not made of complete pushes. Malformed rather than hostile."""
+    code = RejectCode.MALFORMED_OP_RETURN
+    DISCARD = ButtonOption("Discard transaction")
+
+
 # The named subclasses above, keyed by the code each one fixes. A code without one is
 # rendered by PSBTRefusalView itself; give a code its own subclass when it is worth
 # naming in a flow test or a screenshot, and it lands here automatically.
-REFUSAL_VIEWS = {cls.code: cls for cls in PSBTRefusalView.__subclasses__()}
+REFUSAL_VIEWS = {
+    code: cls
+    for cls in PSBTRefusalView.__subclasses__()
+    for code in (cls.code, *cls.also_codes)
+}
 
 
 def refusal_destination(error: InvalidPSBTError) -> Destination:
@@ -1158,7 +1304,7 @@ class PSBTMathView(View):
         
         selected_menu_num = self.run_screen(
             PSBTMathScreen,
-            input_amount=psbt_parser.input_amount,
+            input_amount=psbt_parser.verified_input_amount,
             num_inputs=psbt_parser.num_inputs,
             # An OP_RETURN carrying value is value leaving the wallet with no
             # recipient. Counting it as spend is what makes
