@@ -1057,6 +1057,20 @@ class TestOpReturnPayload:
     def test_direct_push_is_shown_exactly(self, name):
         assert parse_vector(VECTORS_BY_NAME[name]).op_return_data == self.MSG
 
+    @pytest.mark.parametrize("name,expected", [
+        # OP_13 is kept as its opcode byte, ahead of the runestone's push
+        ("XTRAS.OP_RETURN_RUNESTONE", b"\x5d" + bytes.fromhex("00c0a2331414010203")),
+        ("XTRAS.OP_RETURN_RUNESTONE_V2", b"\x5d" + bytes.fromhex("00c0a2331414010203")),
+        # OP_0, OP_1NEGATE, OP_1, OP_16
+        ("XTRAS.OP_RETURN_SMALLINT", b"\x00\x4f\x51\x60"),
+        ("XTRAS.OP_RETURN_SMALLINT_V2", b"\x00\x4f\x51\x60"),
+        ("XTRAS.OP_RETURN_MULTI_PUSH", b"helloabcde"),
+        ("XTRAS.OP_RETURN_MULTI_PUSH_V2", b"helloabcde"),
+    ])
+    def test_push_only_payload_is_shown_exactly(self, name, expected):
+        """Anything Core's IsPushOnly accepts is shown, not refused."""
+        assert parse_vector(VECTORS_BY_NAME[name]).op_return_data == expected
+
     @pytest.mark.parametrize("script,expected", [
         (b"j(" + MSG, MSG),                            # direct push (<= 75 bytes)
         (b"jLP" + b"x" * 80, b"x" * 80),             # OP_PUSHDATA1

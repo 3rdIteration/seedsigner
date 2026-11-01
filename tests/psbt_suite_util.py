@@ -76,6 +76,9 @@ class RejectCode:
     EXTRANEOUS_WITNESS_SCRIPT = "EXTRANEOUS_WITNESS_SCRIPT"
     UTXO_MISMATCH = "UTXO_MISMATCH"
     SCRIPT_HASH_MISMATCH = "SCRIPT_HASH_MISMATCH"
+    MISSING_INPUT_SCRIPT = "MISSING_INPUT_SCRIPT"
+    EXTRANEOUS_REDEEM_SCRIPT = "EXTRANEOUS_REDEEM_SCRIPT"
+    MALFORMED_OP_RETURN = "MALFORMED_OP_RETURN"
     UNREACHABLE_CHANGE_PATH = "UNREACHABLE_CHANGE_PATH"
     NONZERO_OP_RETURN = "NONZERO_OP_RETURN"
     UNSUPPORTED_SIGHASH = "UNSUPPORTED_SIGHASH"
@@ -1062,6 +1065,171 @@ VECTORS = [
         "while the global tx's nLockTime is 0.",
         Expect.REJECT_FRAMING,
         reject_code=RejectCode.WRONG_VERSION_FIELD,
+    ),
+
+    # ------------------------------------------- follow-up of 2026-10-31
+    # Upstream #995/#1041/#1042/#1046/#1047 merge. Derived from the vendored
+    # fixtures by data/psbt_test_suite/derive_followup_vectors.py; see PROVENANCE.md.
+    Vector(
+        "XTRAS.OP_RETURN_RUNESTONE", "display",
+        "Negative control: a Runes runestone, OP_RETURN OP_13 <push>. OP_13 is "
+        "push-only per Bitcoin Core's IsPushOnly, so the output is standard and must "
+        "be shown, OP_13 byte included.",
+        Expect.PARSES,
+        input_amount=100_000_000, output_amount=99_990_000, num_outputs=3, owned_outputs=1,
+    ),
+    Vector(
+        "XTRAS.OP_RETURN_RUNESTONE_V2", "display",
+        "BIP-370 twin of XTRAS.OP_RETURN_RUNESTONE.",
+        Expect.PARSES,
+        input_amount=100_000_000, output_amount=99_990_000, num_outputs=3, owned_outputs=1,
+    ),
+    Vector(
+        "XTRAS.OP_RETURN_SMALLINT", "display",
+        "Negative control: OP_RETURN followed by OP_0, OP_1NEGATE, OP_1 and OP_16, "
+        "pushes that carry no data bytes. Shown as their opcode bytes.",
+        Expect.PARSES,
+        input_amount=100_000_000, output_amount=99_990_000, num_outputs=3, owned_outputs=1,
+    ),
+    Vector(
+        "XTRAS.OP_RETURN_SMALLINT_V2", "display",
+        "BIP-370 twin of XTRAS.OP_RETURN_SMALLINT.",
+        Expect.PARSES,
+        input_amount=100_000_000, output_amount=99_990_000, num_outputs=3, owned_outputs=1,
+    ),
+    Vector(
+        "XTRAS.OP_RETURN_MULTI_PUSH", "display",
+        "Negative control: a direct push, an OP_PUSHDATA2 and an OP_PUSHDATA1 in one "
+        "OP_RETURN. Their data is shown concatenated.",
+        Expect.PARSES,
+        input_amount=100_000_000, output_amount=99_990_000, num_outputs=3, owned_outputs=1,
+    ),
+    Vector(
+        "XTRAS.OP_RETURN_MULTI_PUSH_V2", "display",
+        "BIP-370 twin of XTRAS.OP_RETURN_MULTI_PUSH.",
+        Expect.PARSES,
+        input_amount=100_000_000, output_amount=99_990_000, num_outputs=3, owned_outputs=1,
+    ),
+    Vector(
+        "XTRAS.OP_RETURN_TRUNCATED_PUSH", "display",
+        "An OP_RETURN whose OP_PUSHDATA2 declares 255 bytes but carries 3. Any "
+        "display of it would show data the output does not carry.",
+        Expect.REJECT_PARSER,
+        input_amount=100_000_000, output_amount=99_990_000, num_outputs=3, reject_code=RejectCode.MALFORMED_OP_RETURN,
+    ),
+    Vector(
+        "XTRAS.OP_RETURN_TRUNCATED_PUSH_V2", "display",
+        "BIP-370 twin of XTRAS.OP_RETURN_TRUNCATED_PUSH.",
+        Expect.REJECT_PARSER,
+        input_amount=100_000_000, output_amount=99_990_000, num_outputs=3, reject_code=RejectCode.MALFORMED_OP_RETURN,
+    ),
+    Vector(
+        "XTRAS.OP_RETURN_NON_PUSH", "display",
+        "An OP_RETURN whose data push is followed by OP_CHECKSIG: not push-only, so "
+        "nonstandard and not readable as data.",
+        Expect.REJECT_PARSER,
+        input_amount=100_000_000, output_amount=99_990_000, num_outputs=3, reject_code=RejectCode.MALFORMED_OP_RETURN,
+    ),
+    Vector(
+        "XTRAS.OP_RETURN_NON_PUSH_V2", "display",
+        "BIP-370 twin of XTRAS.OP_RETURN_NON_PUSH.",
+        Expect.REJECT_PARSER,
+        input_amount=100_000_000, output_amount=99_990_000, num_outputs=3, reject_code=RejectCode.MALFORMED_OP_RETURN,
+    ),
+    Vector(
+        "XTRAS.STRAY_REDEEM_SCRIPT", "extras",
+        "A native segwit input carrying a redeem_script its scriptPubKey does not "
+        "commit to. It could only distort how the spending wallet is read.",
+        Expect.REJECT_PARSER,
+        input_amount=100_000_000, output_amount=99_990_000, num_outputs=2, reject_code=RejectCode.EXTRANEOUS_REDEEM_SCRIPT,
+    ),
+    Vector(
+        "XTRAS.STRAY_REDEEM_SCRIPT_V2", "extras",
+        "BIP-370 twin of XTRAS.STRAY_REDEEM_SCRIPT.",
+        Expect.REJECT_PARSER,
+        input_amount=100_000_000, output_amount=99_990_000, num_outputs=2, reject_code=RejectCode.EXTRANEOUS_REDEEM_SCRIPT,
+    ),
+    Vector(
+        "XTRAS.MISSING_REDEEM_SCRIPT", "extras",
+        "A nested segwit input with its redeem_script left out. Malformed rather than "
+        "deceptive.",
+        Expect.REJECT_PARSER,
+        input_amount=100_000_000, output_amount=99_990_000, num_outputs=2, reject_code=RejectCode.MISSING_INPUT_SCRIPT,
+    ),
+    Vector(
+        "XTRAS.MISSING_REDEEM_SCRIPT_V2", "extras",
+        "BIP-370 twin of XTRAS.MISSING_REDEEM_SCRIPT.",
+        Expect.REJECT_PARSER,
+        input_amount=100_000_000, output_amount=99_990_000, num_outputs=2, reject_code=RejectCode.MISSING_INPUT_SCRIPT,
+    ),
+    Vector(
+        "XTRAS.WRONG_REDEEM_SCRIPT", "extras",
+        "A nested segwit input whose redeem_script wraps a stranger's key, not the "
+        "one its scriptPubKey commits to.",
+        Expect.REJECT_PARSER,
+        input_amount=100_000_000, output_amount=99_990_000, num_outputs=2, reject_code=RejectCode.SCRIPT_HASH_MISMATCH,
+    ),
+    Vector(
+        "XTRAS.WRONG_REDEEM_SCRIPT_V2", "extras",
+        "BIP-370 twin of XTRAS.WRONG_REDEEM_SCRIPT.",
+        Expect.REJECT_PARSER,
+        input_amount=100_000_000, output_amount=99_990_000, num_outputs=2, reject_code=RejectCode.SCRIPT_HASH_MISMATCH,
+    ),
+    Vector(
+        "XTRAS.MISSING_WITNESS_SCRIPT", "multisig",
+        "A p2wsh multisig input with its witness_script left out. Malformed rather "
+        "than deceptive.",
+        Expect.REJECT_PARSER,
+        input_amount=200_000, output_amount=199_000, num_outputs=2, reject_code=RejectCode.MISSING_INPUT_SCRIPT,
+    ),
+    Vector(
+        "XTRAS.FOREIGN_INPUT_BAD_SCRIPT", "extras",
+        "A collaborative spend: our nested segwit input plus another party's, whose "
+        "redeem_script is not the one its scriptPubKey commits to. Inputs that claim "
+        "none of our keys are checked all the same.",
+        Expect.REJECT_PARSER,
+        num_outputs=2, reject_code=RejectCode.SCRIPT_HASH_MISMATCH,
+    ),
+    Vector(
+        "XTRAS.NESTED_CHANGE_NO_REDEEM", "binding",
+        "Negative control: genuine nested segwit change with its (BIP-174 optional) "
+        "redeem_script omitted. It reads as plain p2sh, but rebuilding it from the "
+        "seed proves it is change.",
+        Expect.PARSES,
+        input_amount=100_000_000, output_amount=99_990_000, num_outputs=2, owned_outputs=1,
+    ),
+    Vector(
+        "XTRAS.NESTED_CHANGE_NO_REDEEM_V2", "binding",
+        "BIP-370 twin of XTRAS.NESTED_CHANGE_NO_REDEEM.",
+        Expect.PARSES,
+        input_amount=100_000_000, output_amount=99_990_000, num_outputs=2, owned_outputs=1,
+    ),
+    Vector(
+        "TX-21.nested_bare_p2sh_claims_us_pays_other", "ownership",
+        "A redeem-less p2sh output that keeps this seed's derivation claim but pays a "
+        "stranger's nested segwit key. Without the redeem_script nothing short of "
+        "rebuilding it exposes the lie.",
+        Expect.REJECT_PARSER,
+        input_amount=100_000_000, output_amount=99_990_000, num_outputs=2, reject_code=RejectCode.FORGED_OUTPUT_OWNERSHIP,
+    ),
+    Vector(
+        "TX-21.nested_bare_p2sh_claims_us_pays_other_V2", "ownership",
+        "BIP-370 twin of TX-21.nested_bare_p2sh_claims_us_pays_other.",
+        Expect.REJECT_PARSER,
+        input_amount=100_000_000, output_amount=99_990_000, num_outputs=2, reject_code=RejectCode.FORGED_OUTPUT_OWNERSHIP,
+    ),
+    Vector(
+        "XTRAS.ZERO_FEE", "extras",
+        "Negative control: a zero fee. Pointless, but not malformed, so it is not "
+        "refused.",
+        Expect.PARSES,
+        input_amount=100_000_000, output_amount=100_000_000, num_outputs=2, owned_outputs=1,
+    ),
+    Vector(
+        "XTRAS.ZERO_FEE_V2", "extras",
+        "BIP-370 twin of XTRAS.ZERO_FEE.",
+        Expect.PARSES,
+        input_amount=100_000_000, output_amount=100_000_000, num_outputs=2, owned_outputs=1,
     ),
 ]
 
