@@ -20,9 +20,14 @@ logger = logging.getLogger(__name__)
 
 class OPCODES:
     OP_RETURN = 106
+
+    # Opcodes 0x01-0x4b are themselves the number of bytes to push, so 75 is the largest
+    # payload a direct push can carry.
+    OP_PUSHDATA_MAX_DIRECT = 75
     OP_PUSHDATA1 = 76
     OP_PUSHDATA2 = 77
     OP_PUSHDATA4 = 78
+    OP_16 = 96
     OP_CHECKLOCKTIMEVERIFY = 177
     OP_CHECKSEQUENCEVERIFY = 178
 
@@ -33,7 +38,7 @@ MAX_MONEY = 21_000_000 * 100_000_000
 # Outputs below this are uneconomic to spend and are flagged for review.
 DUST_THRESHOLD = 546
 
-# Fee at or above input_amount * HIGH_FEE_NUMERATOR / HIGH_FEE_DENOMINATOR is flagged.
+# Fee at or above verified_input_amount * HIGH_FEE_NUMERATOR / HIGH_FEE_DENOMINATOR is flagged.
 HIGH_FEE_NUMERATOR = 1
 HIGH_FEE_DENOMINATOR = 10
 
@@ -132,6 +137,24 @@ class RejectCode:
     EXTRANEOUS_WITNESS_SCRIPT = "EXTRANEOUS_WITNESS_SCRIPT"
     UTXO_MISMATCH = "UTXO_MISMATCH"
     SCRIPT_HASH_MISMATCH = "SCRIPT_HASH_MISMATCH"
+
+    # An input commits to a redeem or witness script (p2sh, p2wsh, or both for
+    # nested segwit multisig) that the psbt did not supply. Unlike a script that
+    # hashes to the wrong thing, an omission deceives no one, so it is graded as a
+    # malformed psbt rather than an attack. Upstream's PSBTMissingInputScriptError.
+    MISSING_INPUT_SCRIPT = "MISSING_INPUT_SCRIPT"
+
+    # A redeem_script on an input whose scriptPubKey is not p2sh: it hashes to
+    # nothing the input commits to, and could only distort how the parser reads
+    # the wallet being spent from. Upstream's PSBTExtraneousInputScriptError, as
+    # is EXTRANEOUS_WITNESS_SCRIPT.
+    EXTRANEOUS_REDEEM_SCRIPT = "EXTRANEOUS_REDEEM_SCRIPT"
+
+    # An OP_RETURN output whose script is not made of complete pushes: a push that
+    # runs past the end of the script, or an opcode that is not a push at all.
+    # Bitcoin Core treats such an output as nonstandard, and no display of its data
+    # would be faithful. Upstream's PSBTMalformedOpReturnError.
+    MALFORMED_OP_RETURN = "MALFORMED_OP_RETURN"
     UNREACHABLE_CHANGE_PATH = "UNREACHABLE_CHANGE_PATH"
     NONZERO_OP_RETURN = "NONZERO_OP_RETURN"
     UNSUPPORTED_SIGHASH = "UNSUPPORTED_SIGHASH"
@@ -334,7 +357,9 @@ class PSBTParser():
         self.change_amount = 0
         self.change_data = []
         self.fee_amount = 0
-        self.input_amount = 0
+        # Only ever the total of inputs that passed _validate_input. Upstream's name;
+        # input_amount is kept as an alias for the fork's callers.
+        self.verified_input_amount = 0
         self.num_inputs = 0
         self.verified_input_prefixes: set = set()
         self.verified_max_input_index: int = -1
@@ -452,6 +477,12 @@ class PSBTParser():
 
 
     @property
+    def input_amount(self) -> int:
+        """Alias for verified_input_amount."""
+        return self.verified_input_amount
+
+
+    @property
     def op_return_data(self) -> bytes | None:
         """The first OP_RETURN payload, or None. See op_return_payloads for all of them."""
         return self.op_return_payloads[0] if self.op_return_payloads else None
@@ -498,7 +529,11 @@ class PSBTParser():
 
           4. _parse_inputs: every input must resolve to the same policy, otherwise
              RejectCode.MIXED_INPUTS. Each input is also structurally validated here
-             (RejectCode.MISSING_UTXO, UNSUPPORTED_SIGHASH, and the rest).
+             (RejectCode.MISSING_UTXO, UNSUPPORTED_SIGHASH, and the rest): its declared
+             amount must be proven (a non_witness_utxo that hashes to its txid) or
+             committed to by its sighash, and it must supply exactly the redeem/witness
+             scripts its scriptPubKey commits to. Only then is it totaled into
+             verified_input_amount.
 
              A policy is one of:
                - single-sig: the script type alone. Says nothing about keys.
@@ -1033,6 +1068,8 @@ class PSBTParser():
                     f"Input {index} spends an output its previous tx does not have.",
                     code=RejectCode.UTXO_MISMATCH,
                 )
+            # Proven above; let embit record it too (InputScope.is_verified).
+            inp.verify()
 
         if witness_utxo is not None and non_witness_utxo is not None:
             # Both forms supplied: they must describe the same prevout. This is
@@ -1083,12 +1120,23 @@ class PSBTParser():
                 code=RejectCode.INVALID_WITNESS_UTXO,
             )
 
+        # Every input must supply exactly the scripts its scriptPubKey commits to: a
+        # p2sh or p2wsh scriptPubKey holds only a hash, so the supplied script is
+        # rebuilt into it and compared, and any script beyond those is refused. A
+        # misleading script could otherwise distort how the parser reads the wallet
+        # being spent from, and so which outputs it treats as change.
+        #
+        # TODO: Support finalized inputs, such as a payjoin receiver's input.
+        # Finalizing an input clears its script fields and leaves the script only in
+        # its final scriptSig or witness, so a finalized p2sh or p2wsh input is
+        # refused here for missing its script. Recover the script from the final
+        # fields, verify it the same way, and read the policy from it.
         effective_type = script_type
         if script_type == "p2sh":
             if inp.redeem_script is None:
                 raise InvalidPSBTError(
                     f"Input {index} is p2sh with no redeem_script.",
-                    code=RejectCode.SCRIPT_HASH_MISMATCH,
+                    code=RejectCode.MISSING_INPUT_SCRIPT,
                 )
             if script.p2sh(inp.redeem_script).data != script_pubkey.data:
                 raise InvalidPSBTError(
@@ -1109,7 +1157,7 @@ class PSBTParser():
             if inp.witness_script is None:
                 raise InvalidPSBTError(
                     f"Input {index} is p2wsh with no witness_script.",
-                    code=RejectCode.SCRIPT_HASH_MISMATCH,
+                    code=RejectCode.MISSING_INPUT_SCRIPT,
                 )
             expected = inp.redeem_script if script_type == "p2sh" else script_pubkey
             if script.p2wsh(inp.witness_script).data != expected.data:
@@ -1125,9 +1173,23 @@ class PSBTParser():
                 code=RejectCode.EXTRANEOUS_WITNESS_SCRIPT,
             )
 
+        if inp.redeem_script is not None and script_type != "p2sh":
+            # Likewise a redeem_script on anything but a p2sh input (e.g. one on a
+            # native segwit input) commits to nothing.
+            raise InvalidPSBTError(
+                f"Input {index} has a stray redeem_script.",
+                code=RejectCode.EXTRANEOUS_REDEEM_SCRIPT,
+            )
+
 
     def _parse_inputs(self, child_key_derivation_cache: dict):
-        self.input_amount = 0
+        """
+        Validates every input (see _validate_input), totals their now-verified amounts
+        as verified_input_amount, and determines the wallet policy. Every input must
+        resolve to the same policy, otherwise RejectCode.MIXED_INPUTS.
+        """
+        self.verified_input_amount = 0
+        verified_input_amount = 0
         self.num_inputs = len(self.psbt.inputs)
         self.verified_input_prefixes = set()
         self.verified_max_input_index = -1
@@ -1179,18 +1241,20 @@ class PSBTParser():
                         derivation[-1] & 0x7FFFFFFF,
                     )
 
-            if inp.witness_utxo:
-                self.input_amount += inp.witness_utxo.value
-                script_pubkey = inp.witness_utxo.script_pubkey
-            elif inp.non_witness_utxo:
-                self.input_amount += inp.utxo.value
-                script_pubkey = inp.script_pubkey
+            # _validate_input proved the utxo (or refused the psbt), and that a
+            # witness_utxo supplied alongside a non_witness_utxo agrees with it.
+            verified_input_amount += inp.utxo.value
+            script_pubkey = inp.script_pubkey
 
             inp_policy = PSBTParser._get_policy(inp, script_pubkey, self.psbt.xpubs, child_key_derivation_cache)
             if self.policy == None:
                 self.policy = inp_policy
             else:
                 if self.policy != inp_policy:
+                    # TODO: Read the policy only from the user's own inputs. Requiring
+                    # every input to share one policy rejects a collaborative spend whose
+                    # other party spends from a different script type or multisig wallet,
+                    # which is allowed by BIP-174 and BIP-78.
                     raise InvalidPSBTError(
                         "Mixed inputs in the transaction",
                         code=RejectCode.MIXED_INPUTS,
@@ -1198,11 +1262,15 @@ class PSBTParser():
 
         # Each input was range-checked on its own; together they can still claim
         # more than can exist.
-        if self.input_amount > MAX_MONEY:
+        if verified_input_amount > MAX_MONEY:
             raise InvalidPSBTError(
-                f"Inputs total {self.input_amount} sats, more than can exist.",
+                f"Inputs total {verified_input_amount} sats, more than can exist.",
                 code=RejectCode.AMOUNT_OUT_OF_RANGE,
             )
+
+        # Only assigned once every input has passed, so a rejected psbt leaves no
+        # partial total.
+        self.verified_input_amount = verified_input_amount
 
     @staticmethod
     def is_reachable_derivation(derivation: list[int], input_prefixes: set | None) -> bool:
@@ -1473,7 +1541,7 @@ class PSBTParser():
             # Is this output change? If this output's policy is superficially similar to
             # the spending wallet's policy (e.g. they're both 2-of-3 p2wsh), then it's a
             # candidate for being change.
-            if PSBTParser._policy_shape_matches(out_policy, self.policy):
+            if self._is_change_candidate(out, out_policy):
                 # Begin the extensive work to fully verify whether this output is indeed
                 # change.
 
@@ -1788,15 +1856,10 @@ class PSBTParser():
                             )
 
             if vout[i].script_pubkey.data[0] == OPCODES.OP_RETURN:
-                payload = PSBTParser._op_return_payload(vout[i].script_pubkey.data)
-                if payload is None:
-                    # Shown as whatever its pushes happen to yield, it would not be
-                    # what the output carries. Standard OP_RETURNs are push-only.
-                    raise InvalidPSBTError(
-                        f"Output {i} OP_RETURN data is malformed.",
-                        code=RejectCode.UNDISPLAYABLE_OUTPUT,
-                    )
-                self.op_return_payloads.append(payload)
+                # Raises RejectCode.MALFORMED_OP_RETURN unless the script is push-only
+                self.op_return_payloads.append(
+                    PSBTParser._parse_op_return_payload(vout[i].script_pubkey.data)
+                )
 
                 # Bitcoin Core v30 relaxed OP_RETURN standardness, so the amount
                 # cannot be assumed to be zero. An OP_RETURN is provably
@@ -1857,6 +1920,9 @@ class PSBTParser():
                 self.destination_amounts.append(vout[i].value)
                 self.spend_amount += vout[i].value
 
+        # embit computes the fee as inputs minus outputs and does not look at the sign of
+        # the result. Zero is left alone: it is a pointless transaction, but not a
+        # malformed one.
         self.fee_amount = self.psbt.fee()
 
         if self.fee_amount < 0:
@@ -1869,9 +1935,9 @@ class PSBTParser():
             )
 
         accounted = self.spend_amount + self.change_amount + self.op_return_amount + self.fee_amount
-        if accounted != self.input_amount:
+        if accounted != self.verified_input_amount:
             raise InvalidPSBTError(
-                f"Amounts do not add up: {accounted} vs {self.input_amount} in.",
+                f"Amounts do not add up: {accounted} vs {self.verified_input_amount} in.",
                 code=RejectCode.AMOUNT_OUT_OF_RANGE,
             )
 
@@ -1900,8 +1966,8 @@ class PSBTParser():
         Flag the things a user would want to know before approving, none of
         which make the transaction invalid.
         """
-        if self.input_amount > 0 and (
-            self.fee_amount * HIGH_FEE_DENOMINATOR >= self.input_amount * HIGH_FEE_NUMERATOR
+        if self.verified_input_amount > 0 and (
+            self.fee_amount * HIGH_FEE_DENOMINATOR >= self.verified_input_amount * HIGH_FEE_NUMERATOR
         ):
             self.risk_warnings.add(RiskWarning.HIGH_FEE)
 
@@ -2026,42 +2092,83 @@ class PSBTParser():
 
 
     @staticmethod
-    def _op_return_payload(data: bytes) -> bytes | None:
+    def _parse_op_return_payload(script_data: bytes) -> bytes:
         """
-        The data an OP_RETURN script carries: everything its pushes push, in order.
-        None if anything after the OP_RETURN is not a complete data push -- a push
-        that runs past the end of the script, or a non-push opcode -- since no
-        display of it would be faithful.
+        Extracts the data an OP_RETURN output carries, for every way the script can push
+        it.
 
-        Payloads of 75 bytes or fewer are pushed directly (OP_RETURN <len> <data>),
-        which is how Bitcoin Core writes them; OP_PUSHDATA1 is only for longer ones.
-        Slicing at a fixed offset dropped the first byte of every short payload.
+        Script pushes data with a variable-width opcode: opcodes 0x01 through 0x4b are
+        themselves the byte count, while OP_PUSHDATA1, 2, and 4 are followed by a 1, 2,
+        or 4 byte little-endian length. Bitcoin Core emits the minimal encoding, so a
+        payload of 75 bytes or fewer arrives as a direct push. (Slicing at a fixed
+        offset, as this used to, dropped the first byte of every short payload.)
+
+        A script may hold more than one push after OP_RETURN. That is unusual but legal,
+        and the pushes are concatenated here rather than returned separately, since where
+        the encoder chose to break the data into pushes carries no consensus meaning.
+
+        Bitcoin Core treats an OP_RETURN output as nonstandard unless everything after the
+        opcode is a push (IsPushOnly: any opcode up to OP_16). Raises InvalidPSBTError
+        with RejectCode.MALFORMED_OP_RETURN for a push that runs past the end of the
+        script or an opcode that is not a push, since no display of it would be faithful.
+        OP_0, OP_1NEGATE, OP_RESERVED, and OP_1 through OP_16 carry no data bytes but
+        Core still counts them as pushes, so their opcode bytes are kept as-is. Runes, for
+        one, opens every runestone with OP_13. The caller gets raw bytes and decides how
+        to render them.
         """
-        body = data[1:]
-        payload = b""
-        pos = 0
-        while pos < len(body):
-            op = body[pos]
-            pos += 1
-            if op == 0x00:
-                # OP_0: an empty push.
+        pushes = []
+
+        # Start after the OP_RETURN opcode itself
+        i = 1
+        while i < len(script_data):
+            opcode = script_data[i]
+
+            if 1 <= opcode <= OPCODES.OP_PUSHDATA_MAX_DIRECT:
+                # The opcode is itself the length; no separate length field follows
+                length_size = 0
+            elif opcode == OPCODES.OP_PUSHDATA1:
+                length_size = 1
+            elif opcode == OPCODES.OP_PUSHDATA2:
+                length_size = 2
+            elif opcode == OPCODES.OP_PUSHDATA4:
+                length_size = 4
+            elif opcode <= OPCODES.OP_16:
+                # No data bytes follow; keep the opcode byte itself so it is shown
+                pushes.append(script_data[i:i + 1])
+                i += 1
                 continue
-            if op <= 0x4B:
-                length = op
-            elif op in (OPCODES.OP_PUSHDATA1, OPCODES.OP_PUSHDATA2, OPCODES.OP_PUSHDATA4):
-                width = {OPCODES.OP_PUSHDATA1: 1, OPCODES.OP_PUSHDATA2: 2,
-                         OPCODES.OP_PUSHDATA4: 4}[op]
-                if pos + width > len(body):
-                    return None
-                length = int.from_bytes(body[pos:pos + width], "little")
-                pos += width
             else:
-                return None
-            if pos + length > len(body):
-                return None
-            payload += body[pos:pos + length]
-            pos += length
-        return payload
+                # Not a push, so the script cannot be read as OP_RETURN data
+                raise InvalidPSBTError(
+                    f"OP_RETURN script holds non-push opcode 0x{opcode:02x}",
+                    code=RejectCode.MALFORMED_OP_RETURN,
+                )
+
+            if length_size == 0:
+                length = opcode
+            else:
+                length_end = i + 1 + length_size
+                if length_end > len(script_data):
+                    # The length field itself is truncated, so the push size is unknown
+                    raise InvalidPSBTError(
+                        "OP_RETURN push length field is truncated",
+                        code=RejectCode.MALFORMED_OP_RETURN,
+                    )
+                length = int.from_bytes(script_data[i + 1:length_end], "little")
+
+            data_start = i + 1 + length_size
+            data_end = data_start + length
+            if data_end > len(script_data):
+                # The push claims more data than the script carries
+                raise InvalidPSBTError(
+                    f"OP_RETURN push declares {length} bytes but only {len(script_data) - data_start} remain",
+                    code=RejectCode.MALFORMED_OP_RETURN,
+                )
+
+            pushes.append(script_data[data_start:data_end])
+            i = data_end
+
+        return b"".join(pushes)
 
 
     @staticmethod
@@ -2093,9 +2200,8 @@ class PSBTParser():
 
 
     @staticmethod
-    def _get_policy(scope, scriptpubkey, xpubs, child_key_derivation_cache: dict | None):
-        """Parse scope and get policy"""
-        # we don't know the policy yet, let's parse it
+    def _get_script_type(scope, scriptpubkey) -> str:
+        """Like script_type(), but tells nested segwit p2sh apart from legacy p2sh"""
         script_type = scriptpubkey.script_type()
         # p2sh can be either legacy multisig, or nested segwit multisig
         # or nested segwit singlesig
@@ -2107,6 +2213,14 @@ class PSBTParser():
                 and scope.redeem_script.script_type() == "p2wpkh"
             ):
                 script_type = "p2sh-p2wpkh"
+        return script_type
+
+
+    @staticmethod
+    def _get_policy(scope, scriptpubkey, xpubs, child_key_derivation_cache: dict | None):
+        """Parse scope and get policy"""
+        # we don't know the policy yet, let's parse it
+        script_type = PSBTParser._get_script_type(scope, scriptpubkey)
         policy = {"type": script_type}
 
         # expected multisig
@@ -2147,23 +2261,49 @@ class PSBTParser():
         return policy
 
 
-    @staticmethod
-    def _policy_shape_matches(policy_a: dict, policy_b: dict) -> bool:
+    def _is_change_candidate(self, out: OutputScope, out_policy: dict) -> bool:
         """
-        Compares two policies on the shape of the script they describe: the script type,
-        plus m-of-n for multisig.
+        Determines whether an output is worth the full ownership check in _parse_outputs.
 
-        A policy can also carry the cosigners resolved from the coordinator's global
-        xpubs. Those are never authoritative here, and comparing them would let a psbt
-        decide which of its own outputs get verified: one misannotated fingerprint makes
-        that output's cosigners fail to resolve, and the output then stops matching the
-        inputs' policy. Shape comes from the scriptPubKey and the supplied script, and the
-        caller proves ownership rather than assuming it.
+        Returns True if the output's policy has the same "shape" as the inputs' policy:
+        the script type, plus m-of-n for multisig.
+
+        One outlier: Nested single sig (p2sh-p2wpkh). Its scriptPubKey is a p2sh hash of
+        its redeem script, but per BIP-174 the redeem script itself is optional.
+        When it is omitted, the output is superficially indistinguishable from plain p2sh.
+        If the inputs are p2sh-p2wpkh, then such an output would fail the policy
+        comparison test (p2sh != p2sh-p2wpkh) when it may have actually been possible to
+        verify it as our change.
+
+        So instead, when a p2sh output could be our own nested single sig change we let it
+        through and leave it to the rebuild process to verify if the output really is our
+        change.
+
+        Note: A multisig's input or output policy can also include the cosigners if
+        they're supplied in the global xpubs. Those are never authoritative here, and
+        comparing them would let a psbt decide which of its own outputs get verified:
+          * One misannotated derivation path would make that output's cosigners fail
+            to resolve.
+          * The output's missing cosigners would mean that it would not match the inputs'
+            cosigners.
+          * End result: the output would not be considered a change candidate and would
+            not go through the same scrutiny that change candidates do.
+
+        Shape comes from the scriptPubKey and the supplied script, and the caller proves
+        ownership rather than assuming it.
         """
+        # The outlier: a single sig p2sh output when the inputs are p2sh-p2wpkh.
+        if (
+            self.policy["type"] == "p2sh-p2wpkh"    # Input is nested single sig
+            and out_policy["type"] == "p2sh"        # Output parses as plain p2sh
+            and out.redeem_script is None           # Output omits its redeem script
+        ):
+            return True
+
+        # All other outputs must have the same policy shape as the inputs
         for field in ("type", "m", "n"):
-            if policy_a.get(field) != policy_b.get(field):
+            if out_policy.get(field) != self.policy.get(field):
                 return False
-
         return True
 
 
@@ -2755,12 +2895,8 @@ class PSBTParser():
             if script_pubkey is None:
                 continue
 
-            script_type = script_pubkey.script_type()
-            is_single_key = script_type in ("p2pkh", "p2wpkh") or (
-                script_type == "p2sh"
-                and scope.redeem_script is not None
-                and scope.redeem_script.script_type() == "p2wpkh"
-            )
+            script_type = PSBTParser._get_script_type(scope, script_pubkey)
+            is_single_key = script_type in ("p2pkh", "p2wpkh", "p2sh-p2wpkh")
             key_path_claims = [pub for pub, leaf_hashes in taproot if not leaf_hashes]
             if (is_single_key and len(ecdsa) > 1) or (script_type == "p2tr" and len(key_path_claims) > 1):
                 raise InvalidPSBTError(

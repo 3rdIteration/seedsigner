@@ -5,12 +5,13 @@ from embit import bip32, script
 from embit.psbt import PSBT, DerivationPath
 
 from base import BaseTest, FlowTest, FlowStep
-from psbt_testing_util import (PSBTTestData, claim_seed_owns_key, create_output,
-    foreign_public_key, root_for_seed)
+from psbt_testing_util import (PSBTTestData, claim_seed_owns_key, create_op_return_output,
+    create_output, foreign_public_key, root_for_seed)
 
 from seedsigner.controller import Controller
 from seedsigner.views.view import MainMenuView
 from seedsigner.views import scan_views, seed_views, psbt_views
+from seedsigner.models.psbt_parser import OPCODES
 from seedsigner.models.seed import Seed
 from seedsigner.models.settings import SettingsConstants
 
@@ -77,6 +78,37 @@ class TestPSBTFlows(FlowTest):
 
         # Selecting the existing seed should have set it as the signing seed
         assert self.controller.psbt_seed is self.controller.storage.seeds[0]
+
+
+    def test_tampered_input_amounts_routes_to_input_verification_failed(self):
+        """
+            A psbt whose non_witness_utxo doesn't verify can declare any input amounts it
+            likes, which means it can display any fee it likes. It should be discarded
+            outright with no option to proceed.
+        """
+        def load_tampered_psbt_into_decoder(view: scan_views.ScanView):
+            # Editing the non_witness_utxo changes the txid it hashes to, so it no longer
+            # matches the txid the input claims to spend.
+            psbt = PSBT.parse(a2b_base64(PSBTTestData.SINGLE_SIG_NATIVE_SEGWIT_2_INPUTS))
+            psbt.inputs[0].non_witness_utxo.vout[0].value += 100_000
+            view.decoder.add_data(str(psbt))
+
+        def load_seed_into_decoder(view: scan_views.ScanView):
+            view.decoder.add_data("080115060387063104071857067618681125136207731354")
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(scan_views.ScanView, before_run=load_tampered_psbt_into_decoder),
+            FlowStep(psbt_views.PSBTSelectSeedView, button_data_selection=psbt_views.PSBTSelectSeedView.SCAN_SEED),
+            FlowStep(scan_views.ScanSeedQRView, before_run=load_seed_into_decoder),
+            FlowStep(seed_views.SeedFinalizeView, button_data_selection=seed_views.SeedFinalizeView.FINALIZE),
+            FlowStep(seed_views.SeedOptionsView, is_redirect=True),
+
+            # Parsing fails, so the overview never renders; it redirects straight to the warning
+            FlowStep(psbt_views.PSBTOverviewView, is_redirect=True),
+            FlowStep(psbt_views.PSBTInputAmountVerificationFailedView),
+            FlowStep(MainMenuView),
+        ])
 
 
     def test_scan_psbt_first_then_load_electrum_seed(self):
@@ -511,9 +543,10 @@ class TestPSBTMultisigDescriptorMismatch(BaseTest):
 
 class TestPSBTOwnershipClaimRouting(FlowTest):
     """
-    A psbt carrying an ownership claim that does not hold up is rejected while it is being
-    parsed, before the user is shown anything about the transaction. These cover the
-    routing that turns that rejection into a warning screen instead of a crash.
+    A psbt whose own description of itself does not hold up, or whose arithmetic is
+    impossible, is refused during parsing, before the user is shown anything about the
+    transaction. These cover what the user meets when that happens: a warning screen that
+    ends the flow, not a crash.
     """
 
     def _load_psbt_for_signing(self, psbt: PSBT, seed: Seed = None):
@@ -663,6 +696,120 @@ class TestPSBTOwnershipClaimRouting(FlowTest):
         ])
 
 
+    def test_missing_input_utxo_terminates_signing_flow(self):
+        """
+        An input that carries no utxo data gives us no amount to verify, so parsing
+        refuses the psbt.
+
+        It ends the flow at its own warning before any transaction detail is rendered.
+        """
+        psbt = PSBT.parse(a2b_base64(PSBTTestData.SINGLE_SIG_NATIVE_SEGWIT_2_INPUTS))
+
+        # Input 0 is left intact, so the seed can still sign and the parse gets as far as
+        # the amount check.
+        psbt.inputs[1].witness_utxo = None
+        psbt.inputs[1].non_witness_utxo = None
+
+        self._load_psbt_for_signing(psbt, seed=PSBTTestData.two_input_seed)
+
+        self.run_sequence([
+            FlowStep(psbt_views.PSBTSelectSeedView, screen_return_value=0),
+            FlowStep(psbt_views.PSBTOverviewView, is_redirect=True),
+            FlowStep(psbt_views.PSBTMissingInputUtxoView, button_data_selection=psbt_views.PSBTMissingInputUtxoView.DISCARD),
+            FlowStep(MainMenuView),
+        ])
+
+
+    def test_malformed_op_return_terminates_signing_flow(self):
+        """
+        An OP_RETURN push that claims more bytes than its script carries is malformed
+        rather than hostile, but it is still refused during the parse and routes to a
+        warning that aborts the signing flow.
+        """
+        psbt = self._psbt_with_change()
+        truncated_push = script.Script(bytes([OPCODES.OP_RETURN, 10]) + b"abc")
+        psbt.outputs.append(create_op_return_output(b"", script_pubkey=truncated_push))
+        self._load_psbt_for_signing(psbt)
+
+        self.run_sequence([
+            FlowStep(psbt_views.PSBTSelectSeedView, screen_return_value=0),
+            FlowStep(psbt_views.PSBTOverviewView, is_redirect=True),
+            FlowStep(psbt_views.PSBTMalformedOpReturnView, button_data_selection=psbt_views.PSBTMalformedOpReturnView.DISCARD),
+            FlowStep(MainMenuView),
+        ])
+
+
+    def test_missing_input_script_terminates_signing_flow(self):
+        """
+        The psbt leaves out the witness script that a p2wsh input commits to.
+
+        The flow should stop at PSBTMissingInputScriptView, before any transaction detail
+        is rendered.
+        """
+        psbt = PSBT.parse(a2b_base64(PSBTTestData.MULTISIG_NATIVE_SEGWIT_1_INPUT))
+        psbt.outputs.append(create_output(PSBTTestData.MULTISIG_NATIVE_SEGWIT_CHANGE, 10_000))
+        psbt.inputs[0].witness_script = None
+
+        self._load_psbt_for_signing(psbt)
+
+        self.run_sequence([
+            FlowStep(psbt_views.PSBTSelectSeedView, screen_return_value=0),
+            FlowStep(psbt_views.PSBTOverviewView, is_redirect=True),
+            FlowStep(psbt_views.PSBTMissingInputScriptView, button_data_selection=psbt_views.PSBTMissingInputScriptView.DISCARD),
+            FlowStep(MainMenuView),
+        ])
+
+
+    def test_input_script_mismatch_terminates_signing_flow(self):
+        """
+        The psbt replaces a p2wsh input's witness script with a stranger's. The coin
+        really is the user's, but the supplied script hashes to something other than what
+        the input's scriptPubKey commits to.
+
+        The flow should stop at PSBTInputScriptMismatchView, before any transaction detail
+        is rendered.
+        """
+        psbt = PSBT.parse(a2b_base64(PSBTTestData.MULTISIG_NATIVE_SEGWIT_1_INPUT))
+        psbt.outputs.append(create_output(PSBTTestData.MULTISIG_NATIVE_SEGWIT_CHANGE, 10_000))
+        foreign_multisig_keys = [foreign_public_key(f"m/48h/1h/0h/2h/0/{i}") for i in range(3)]
+        psbt.inputs[0].witness_script = script.multisig(2, foreign_multisig_keys)
+
+        self._load_psbt_for_signing(psbt)
+
+        self.run_sequence([
+            FlowStep(psbt_views.PSBTSelectSeedView, screen_return_value=0),
+            FlowStep(psbt_views.PSBTOverviewView, is_redirect=True),
+            FlowStep(psbt_views.PSBTInputScriptMismatchView, button_data_selection=psbt_views.PSBTInputScriptMismatchView.DISCARD),
+            FlowStep(MainMenuView),
+        ])
+
+
+    def test_extraneous_input_script_terminates_signing_flow(self):
+        """
+        The psbt adds a witness script to a legacy multisig input, in addition to the
+        input's own redeem script. The coin really is the user's and the redeem script
+        still hashes to the scriptPubKey, but a legacy p2sh multisig input should never
+        have a witness script.
+
+        The flow should stop at PSBTExtraneousInputScriptView, before any transaction
+        detail is rendered.
+        """
+        psbt = PSBT.parse(a2b_base64(PSBTTestData.MULTISIG_LEGACY_P2SH_1_INPUT))
+        psbt.outputs.append(create_output(PSBTTestData.MULTISIG_LEGACY_P2SH_CHANGE, 10_000))
+
+        # The extraneous script's content is irrelevant, so an arbitrary script will do
+        psbt.inputs[0].witness_script = script.Script(b"\x51")  # OP_TRUE
+
+        self._load_psbt_for_signing(psbt)
+
+        self.run_sequence([
+            FlowStep(psbt_views.PSBTSelectSeedView, screen_return_value=0),
+            FlowStep(psbt_views.PSBTOverviewView, is_redirect=True),
+            FlowStep(psbt_views.PSBTExtraneousInputScriptView, button_data_selection=psbt_views.PSBTExtraneousInputScriptView.DISCARD),
+            FlowStep(MainMenuView),
+        ])
+
+
     def test_wrong_seed_routes_back_to_seed_selection_flow(self):
         """
         The wrong seed for a psbt redirects before any transaction detail is rendered and
@@ -684,3 +831,21 @@ class TestPSBTOwnershipClaimRouting(FlowTest):
         # The psbt itself is kept: the user is choosing a different seed for it, not
         # starting over
         assert self.controller.psbt is not None
+
+
+    def test_negative_fee_terminates_signing_flow(self):
+        """
+        A psbt whose outputs spend more than its inputs bring in is malformed rather than
+        hostile, but it is still rejected during the parse and routes to a warning that
+        aborts the signing flow.
+        """
+        psbt = self._psbt_with_change()
+        psbt.outputs[0].value = sum(inp.utxo.value for inp in psbt.inputs) + 1
+        self._load_psbt_for_signing(psbt)
+
+        self.run_sequence([
+            FlowStep(psbt_views.PSBTSelectSeedView, screen_return_value=0),
+            FlowStep(psbt_views.PSBTOverviewView, is_redirect=True),
+            FlowStep(psbt_views.PSBTNegativeFeeView, button_data_selection=psbt_views.PSBTNegativeFeeView.DISCARD),
+            FlowStep(MainMenuView),
+        ])

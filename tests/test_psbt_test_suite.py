@@ -1064,11 +1064,18 @@ class TestOpReturnPayload:
         (b"j", b""),                                       # bare OP_RETURN
         (b"j\x03ab", None),                         # truncated push: refused, not partly shown
         (b"j\x4c", None),                           # OP_PUSHDATA1 with no length byte
-        (b"j\x51", None),                           # a non-push opcode
-        (b"j\x00\x02hi", b"hi"),                  # OP_0 is an empty push
+        (b"j\xac", None),                           # a non-push opcode (OP_CHECKSIG)
+        (b"j\x00\x02hi", b"\x00hi"),              # OP_0 counts as a push; its byte is kept
+        (b"j\x51", b"\x51"),                       # OP_1: push-only per Core's IsPushOnly
+        (b"j\x5d\x03abc", b"\x5dabc"),            # Runes: OP_RETURN OP_13 <pushes>
     ])
     def test_payload_parsing(self, script, expected):
-        assert PSBTParser._op_return_payload(script) == expected
+        if expected is None:
+            with pytest.raises(InvalidPSBTError) as excinfo:
+                PSBTParser._parse_op_return_payload(script)
+            assert excinfo.value.code == RejectCode.MALFORMED_OP_RETURN
+        else:
+            assert PSBTParser._parse_op_return_payload(script) == expected
 
     def test_malformed_payload_is_refused(self):
         """A push that runs past the end would be shown as data the output doesn't carry."""
@@ -1079,7 +1086,7 @@ class TestOpReturnPayload:
         with pytest.raises(InvalidPSBTError) as excinfo:
             PSBTParser(p=psbt, seed=suite_seed(), network=SUITE_NETWORK,
                        max_fee_rate=SUITE_MAX_FEE_RATE)
-        assert excinfo.value.code == RejectCode.UNDISPLAYABLE_OUTPUT
+        assert excinfo.value.code == RejectCode.MALFORMED_OP_RETURN
 
     def test_every_op_return_is_shown(self):
         """Each OP_RETURN's payload is kept, in output order -- not just the last one."""
