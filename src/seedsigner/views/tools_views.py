@@ -367,6 +367,7 @@ class ToolsMenuView(View):
     BATTERY_CALIBRATION = ButtonOption("Battery Calibration")
     GPG = ButtonOption("GPG Tools")
     LUCKFOX_BUILD_TOOLS = ButtonOption("Luckfox Build Tools")
+    FORGEBOX_SIGNING = ButtonOption("ForgeBox Signing")
     CLEAR_DESCRIPTOR = ButtonOption("Clear Multisig Descriptor")
     NETWORK_INFO = ButtonOption("Network Info")
 
@@ -376,6 +377,7 @@ class ToolsMenuView(View):
 
     def run(self):
         button_data = [self.IMAGE, self.DICE]
+        from seedsigner.helpers import forgebox_tools
 
         if getattr(self, "include_password_generator", True):
             button_data.append(self.PASSWORD_GENERATOR)
@@ -395,6 +397,7 @@ class ToolsMenuView(View):
             self.VERIFY_ADDRESS,
             self.TEXTQRCODE,
             self.MICROSD,
+            self.FORGEBOX_SIGNING if forgebox_tools.is_available() else None,
             # Two gates, both deliberate. The setting is off by default because
             # this turns the device into a signing machine for SeedSigner OS
             # releases. The availability check is because the signers are
@@ -454,6 +457,10 @@ class ToolsMenuView(View):
         elif button_data[selected_menu_num] == self.LUCKFOX_BUILD_TOOLS:
             from seedsigner.views.resign_views import ToolsLuckfoxBuildToolsMenuView
             return Destination(ToolsLuckfoxBuildToolsMenuView)
+
+        elif button_data[selected_menu_num] == self.FORGEBOX_SIGNING:
+            from seedsigner.views.forgebox_views import ToolsForgeBoxMenuView
+            return Destination(ToolsForgeBoxMenuView)
 
         elif button_data[selected_menu_num] == self.PASSWORD_GENERATOR:
             return Destination(ToolsPasswordGeneratorTypeView)

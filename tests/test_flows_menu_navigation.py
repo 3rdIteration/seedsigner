@@ -155,6 +155,38 @@ def _patch_javacard_diy(cap_dir=None):
 
 
 class TestMenuNavigationFlows(FlowTest):
+    def test_forgebox_menu_and_back(self):
+        from seedsigner.views.forgebox_views import ToolsForgeBoxMenuView
+        with patch('seedsigner.helpers.forgebox_tools.is_available', return_value=True):
+            self.run_sequence([
+                FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+                FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.FORGEBOX_SIGNING),
+                FlowStep(ToolsForgeBoxMenuView, screen_return_value=RET_CODE__BACK_BUTTON),
+                FlowStep(tools_views.ToolsMenuView),
+            ])
+
+    def test_forgebox_export_no_seed_returns_to_entry_menu(self):
+        from seedsigner.views.forgebox_views import ToolsForgeBoxMenuView, ToolsForgeBoxRunView
+        with patch('seedsigner.helpers.forgebox_tools.is_available', return_value=True), \
+             patch('seedsigner.helpers.forgebox_tools.load', return_value=MagicMock()):
+            self.run_sequence([
+                FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+                FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.FORGEBOX_SIGNING),
+                FlowStep(ToolsForgeBoxMenuView, button_data_selection=ToolsForgeBoxMenuView.EXPORT),
+                FlowStep(ToolsForgeBoxRunView, screen_return_value=0),
+                FlowStep(ToolsForgeBoxMenuView, screen_return_value=RET_CODE__BACK_BUTTON),
+                FlowStep(tools_views.ToolsMenuView),
+            ])
+
+    def test_forgebox_hidden_without_os_tool(self):
+        with patch('seedsigner.helpers.forgebox_tools.is_available', return_value=False):
+            view = tools_views.ToolsMenuView()
+            def screen(screen_class, **kwargs):
+                assert view.FORGEBOX_SIGNING not in kwargs['button_data']
+                return RET_CODE__BACK_BUTTON
+            view.run_screen = screen
+            assert view.run().View_cls is BackStackView
+
     """Walk every menu path in the UI to catch import errors, reachability bugs,
     stuck states, and settings gating regressions.
 
