@@ -5,7 +5,7 @@ No private material is written, logged, placed in destinations or cached.
 """
 from gettext import gettext as _
 from seedsigner.gui.components import GUIConstants, reflow_text_into_pages
-from seedsigner.gui.screens import ButtonListScreen, WarningScreen, RET_CODE__BACK_BUTTON
+from seedsigner.gui.screens import ButtonListScreen, WarningScreen
 from seedsigner.gui.screens.screen import ButtonOption, PagedTextScreen
 from seedsigner.gui.screens.seed_screens import SeedBIP85SelectChildIndexScreen
 from seedsigner.hardware.microsd import MicroSD
@@ -27,7 +27,7 @@ class ToolsForgeBoxMenuView(View):
             return Destination(BackStackView)
         buttons = [self.EXPORT, self.SIGN]
         selected = self.run_screen(ButtonListScreen, title=_('ForgeBox Signing'), button_data=buttons)
-        if selected == RET_CODE__BACK_BUTTON:
+        if selected not in (0, 1):
             return Destination(BackStackView)
         return Destination(ToolsForgeBoxRunView, view_args={'action': 'export' if selected == 0 else 'sign'})
 
@@ -44,7 +44,7 @@ class ToolsForgeBoxRunView(View):
         pages = reflow_text_into_pages(text=text, width=width, height=height,
                                       font_size=GUIConstants.get_body_font_size())
         for page in range(len(pages)):
-            if self.run_screen(PagedTextScreen, title=title, paged_info=pages, page_num=page) == RET_CODE__BACK_BUTTON:
+            if self.run_screen(PagedTextScreen, title=title, paged_info=pages, page_num=page) != 0:
                 return False
         return True
 
@@ -62,7 +62,7 @@ class ToolsForgeBoxRunView(View):
                     text=_('Registration binds a lifetime firmware key. Compare the full public key on ForgeBox.')
                          if registering else _('The firmware is not on this device. Only sign hashes prepared on your trusted PC.'),
                     button_data=[ButtonOption('Review')])
-                if selected == RET_CODE__BACK_BUTTON:
+                if selected != 0:
                     return Destination(BackStackView)
                 if registering:
                     review = _('Registration mode: {}\nNonce: {}').format(
@@ -80,10 +80,10 @@ class ToolsForgeBoxRunView(View):
             network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
             selected = self.run_screen(ButtonListScreen, title=_('Signing Seed'),
                 button_data=[ButtonOption(seed.get_fingerprint(network)) for seed in seeds])
-            if selected == RET_CODE__BACK_BUTTON:
+            if type(selected) is not int or not 0 <= selected < len(seeds):
                 return Destination(BackStackView)
             index = self.run_screen(SeedBIP85SelectChildIndexScreen, title=_('ForgeBox Key Index'))
-            if index == RET_CODE__BACK_BUTTON:
+            if not isinstance(index, str):
                 return Destination(BackStackView)
             # get_root supports mnemonic-backed seeds and XprvSeed (seed_bytes=None).
             key = tools.key_from_root(seeds[selected].get_root(network), int(index))
@@ -99,7 +99,7 @@ class ToolsForgeBoxRunView(View):
                 text=_('Only the public key is saved. Record the seed, passphrase and index for recovery.')
                      if self.action == 'export' else _('Authorize this exact request with the displayed signing key?'),
                 button_data=[ButtonOption('Export' if self.action == 'export' else 'Sign')])
-            if selected == RET_CODE__BACK_BUTTON:
+            if selected != 0:
                 return Destination(BackStackView)
             if self.action == 'export':
                 tools.export_public(card, key, int(index))

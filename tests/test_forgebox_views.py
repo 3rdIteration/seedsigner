@@ -5,7 +5,7 @@ import pytest
 import base  # repository hardware/renderer test doubles
 from seedsigner.views import forgebox_views as views
 from seedsigner.views.view import BackStackView
-from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, RET_CODE__POWER_BUTTON
 from seedsigner.models.seed import Seed, XprvSeed
 from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.helpers import forgebox_tools
@@ -55,14 +55,15 @@ def test_sign_with_bip39_and_xprv_uses_get_root(monkeypatch, xprv):
 
 
 @pytest.mark.parametrize('stop_at', range(4))
-def test_back_at_every_input_stops_signing(monkeypatch, stop_at):
+@pytest.mark.parametrize('exit_code', [RET_CODE__BACK_BUTTON, RET_CODE__POWER_BUTTON])
+def test_exit_at_every_input_stops_signing(monkeypatch, stop_at, exit_code):
     view, tools, request, calls, text = make_view(monkeypatch)
     real_screen = view.run_screen
     count = [0]
     def screen(kind, **kwargs):
         i = count[0]
         count[0] += 1
-        return RET_CODE__BACK_BUTTON if i == stop_at else real_screen(kind, **kwargs)
+        return exit_code if i == stop_at else real_screen(kind, **kwargs)
     view.run_screen = screen
     assert view.run().View_cls is BackStackView
     tools.sign_request.assert_not_called()
